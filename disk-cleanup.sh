@@ -34,7 +34,7 @@ NC='\033[0m' # No Color
 DRY_RUN=false
 INTERACTIVE=true
 LOG_FILE="/tmp/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
-VERBOSE=false
+VERBOSE=false  # Reserved for future verbose output feature
 SKIP_GIT_GC=false
 ROLLBACK_MODE=false
 ROLLBACK_MANIFEST=""
@@ -315,6 +315,12 @@ EXAMPLES:
     $0 -y --skip-git-gc        # Quick cleanup, skip git gc
     $0 --rollback /tmp/manifest_123.json  # View rollback info
 
+NOTES:
+    • Git gc operations have 30-minute timeout protection (requires timeout/gtimeout)
+    • On macOS without coreutils, git gc runs without timeout (with warning)
+    • Install coreutils for timeout support: brew install coreutils
+    • All operations logged to /tmp/disk_cleanup_YYYYMMDD_HHMMSS.log
+
 EOF
 }
 
@@ -549,8 +555,8 @@ if [ "$SKIP_GIT_GC" = false ]; then
                     print_info "Running git gc (size: $size_before_human)..."
 
                     # Run git gc with timeout if available
-                    local gc_output
-                    local gc_exit_code
+                    gc_output=""
+                    gc_exit_code=0
                     if [ -n "$TIMEOUT_CMD" ]; then
                         gc_output=$($TIMEOUT_CMD 1800 git gc --aggressive --prune=now 2>&1)
                         gc_exit_code=$?

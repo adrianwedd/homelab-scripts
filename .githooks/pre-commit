@@ -1,0 +1,99 @@
+#!/bin/bash
+#
+# Pre-commit hook for bash script quality checks
+# Runs shellcheck and shfmt on staged .sh files
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo "🔍 Running pre-commit checks..."
+
+# Get list of staged .sh files
+STAGED_SCRIPTS=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
+
+if [ -z "$STAGED_SCRIPTS" ]; then
+    echo -e "${GREEN}✓${NC} No shell scripts staged for commit"
+    exit 0
+fi
+
+echo "📝 Checking scripts: $STAGED_SCRIPTS"
+echo ""
+
+ERRORS=0
+
+# Check if shellcheck is available
+if command -v shellcheck &> /dev/null; then
+    echo "Running shellcheck..."
+    for script in $STAGED_SCRIPTS; do
+        if [ -f "$script" ]; then
+            echo "  • $script"
+            # Run shellcheck, exclude non-critical warnings:
+            # SC2034: unused variables (ok if documented/reserved)
+            # SC2155: declare and assign separately (non-critical style issue)
+            if ! shellcheck -S warning -e SC2034,SC2155 "$script"; then
+                echo -e "${RED}✗${NC} shellcheck failed for $script"
+                ERRORS=$((ERRORS + 1))
+            fi
+        fi
+    done
+    echo ""
+else
+    echo -e "${YELLOW}⚠${NC}  shellcheck not found (install with: brew install shellcheck)"
+    echo ""
+fi
+
+# Check if shfmt is available
+if command -v shfmt &> /dev/null; then
+    echo "Running shfmt (formatting check)..."
+    for script in $STAGED_SCRIPTS; do
+        if [ -f "$script" ]; then
+            echo "  • $script"
+            # Check formatting (don't auto-format, just check)
+            if ! shfmt -d "$script" > /dev/null 2>&1; then
+                echo -e "${YELLOW}⚠${NC}  $script has formatting issues (run: shfmt -w $script)"
+                # Note: We don't fail on formatting issues, just warn
+            fi
+        fi
+    done
+    echo ""
+else
+    echo -e "${YELLOW}⚠${NC}  shfmt not found (install with: brew install shfmt)"
+    echo ""
+fi
+
+# Check for common issues
+echo "Running additional checks..."
+for script in $STAGED_SCRIPTS; do
+    if [ -f "$script" ]; then
+        # Check for unset variable usage (should use ${VAR:?} or ${VAR:-default})
+        if grep -nE '\$\{[A-Z_]+\}/\*' "$script" > /dev/null 2>&1; then
+            echo -e "${YELLOW}⚠${NC}  $script: Found potential unsafe variable expansion in paths"
+        fi
+
+        # Check for 'bc' usage (should use awk instead)
+        if grep -nE '\bbc\b' "$script" > /dev/null 2>&1; then
+            echo -e "${RED}✗${NC} $script: Found 'bc' usage (use awk instead)"
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+done
+
+echo ""
+
+# Summary
+if [ $ERRORS -eq 0 ]; then
+    echo -e "${GREEN}✓${NC} All checks passed!"
+    exit 0
+else
+    echo -e "${RED}✗${NC} Found $ERRORS error(s) - commit blocked"
+    echo ""
+    echo "To skip this check (not recommended):"
+    echo "  git commit --no-verify"
+    exit 1
+fi

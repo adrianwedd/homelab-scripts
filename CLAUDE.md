@@ -215,6 +215,8 @@ Default exclusions:
 
 ### For disk-cleanup.sh:
 - No special requirements (skips unavailable tools)
+- Optional: `coreutils` on macOS for timeout protection (`brew install coreutils`)
+  - Without it, git gc runs without timeout (with warning)
 
 ### For rclone-sync.sh:
 1. Install rclone: `brew install rclone`
@@ -226,8 +228,8 @@ Default exclusions:
 
 ### For smart-cleanup.sh:
 - Requires `disk-cleanup.sh` in same directory
-- Uses `bc` for calculations
-- Uses `stty` for single-char input
+- Uses `awk` for all arithmetic operations (no bc dependency)
+- Uses `stty` for single-char input in interactive menu
 
 ## Log Files
 
