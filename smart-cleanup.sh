@@ -76,7 +76,7 @@ TEMP_LOG="$LOGS_DIR/smart_cleanup_$$.log"
 mkdir -p "$LOGS_DIR"
 
 # Cleanup temp file on exit
-trap "rm -f $TEMP_LOG" EXIT
+trap 'rm -f "$TEMP_LOG"' EXIT
 
 if [ ! -f "$CLEANUP_SCRIPT" ]; then
     echo -e "${RED}✗${NC} Cleanup script not found: $CLEANUP_SCRIPT"
@@ -793,7 +793,7 @@ echo -e "${BOLD}Discovered cleanup targets:${NC}"
 echo ""
 
 # Create item counter
-items=0
+item_count=0
 
 # Helper function to get color based on size
 get_size_color() {
@@ -809,56 +809,56 @@ get_size_color() {
 
 # VS Code
 if [ -n "$vscode_size" ]; then
-    items=$((items + 1))
+    item_count=$((item_count + 1))
     color=$(get_size_color "$vscode_mb")
-    echo -e "  ${DIM}[${NC}${GREEN}${items}${NC}${DIM}]${NC} ${BOLD}VS Code${NC} ${DIM}→${NC} ${color}$vscode_size${NC} ${DIM}reclaimable${NC}"
+    echo -e "  ${DIM}[${NC}${GREEN}${item_count}${NC}${DIM}]${NC} ${BOLD}VS Code${NC} ${DIM}→${NC} ${color}$vscode_size${NC} ${DIM}reclaimable${NC}"
     echo -e "      ${DIM}└─ cache dirs, extensions, workspace storage${NC}"
     echo ""
 fi
 
 # Docker
 if [ "$docker_running" -eq 1 ] && [ -n "$docker_size" ]; then
-    items=$((items + 1))
+    item_count=$((item_count + 1))
     color=$(get_size_color "$docker_mb")
     biggest=""
     if awk "BEGIN {exit !($docker_mb == $total_mb || $docker_mb / $total_mb > 0.5)}"; then
         biggest=" ${MAGENTA}← PRIMARY TARGET${NC}"
     fi
-    echo -e "  ${DIM}[${NC}${GREEN}${items}${NC}${DIM}]${NC} ${BOLD}Docker${NC} ${DIM}→${NC} ${color}$docker_size${NC} ${DIM}reclaimable${NC}$biggest"
+    echo -e "  ${DIM}[${NC}${GREEN}${item_count}${NC}${DIM}]${NC} ${BOLD}Docker${NC} ${DIM}→${NC} ${color}$docker_size${NC} ${DIM}reclaimable${NC}$biggest"
     echo -e "      ${DIM}└─ unused images, containers, volumes, build cache${NC}"
     echo ""
 fi
 
 # NPM
 if [ -n "$npm_size" ]; then
-    items=$((items + 1))
+    item_count=$((item_count + 1))
     color=$(get_size_color "$npm_mb")
-    echo -e "  ${DIM}[${NC}${GREEN}${items}${NC}${DIM}]${NC} ${BOLD}NPM${NC} ${DIM}→${NC} ${color}$npm_size${NC} ${DIM}reclaimable${NC}"
+    echo -e "  ${DIM}[${NC}${GREEN}${item_count}${NC}${DIM}]${NC} ${BOLD}NPM${NC} ${DIM}→${NC} ${color}$npm_size${NC} ${DIM}reclaimable${NC}"
     echo -e "      ${DIM}└─ package cache (safe, rebuilds on install)${NC}"
     echo ""
 fi
 
 # pip
 if [ -n "$pip_size" ]; then
-    items=$((items + 1))
+    item_count=$((item_count + 1))
     color=$(get_size_color "$pip_mb")
-    echo -e "  ${DIM}[${NC}${GREEN}${items}${NC}${DIM}]${NC} ${BOLD}Python pip${NC} ${DIM}→${NC} ${color}$pip_size${NC} ${DIM}reclaimable${NC}"
+    echo -e "  ${DIM}[${NC}${GREEN}${item_count}${NC}${DIM}]${NC} ${BOLD}Python pip${NC} ${DIM}→${NC} ${color}$pip_size${NC} ${DIM}reclaimable${NC}"
     echo -e "      ${DIM}└─ wheel cache (safe, rebuilds on install)${NC}"
     echo ""
 fi
 
 # Homebrew
 if grep -q "Would run: brew cleanup" "$TEMP_LOG"; then
-    items=$((items + 1))
-    echo -e "  ${DIM}[${NC}${GREEN}${items}${NC}${DIM}]${NC} ${BOLD}Homebrew${NC} ${DIM}→${NC} ${GREEN}~200MB${NC} ${DIM}reclaimable${NC}"
+    item_count=$((item_count + 1))
+    echo -e "  ${DIM}[${NC}${GREEN}${item_count}${NC}${DIM}]${NC} ${BOLD}Homebrew${NC} ${DIM}→${NC} ${GREEN}~200MB${NC} ${DIM}reclaimable${NC}"
     echo -e "      ${DIM}└─ old formula versions${NC}"
     echo ""
 fi
 
 # pnpm
 if grep -q "Would run: pnpm store prune" "$TEMP_LOG"; then
-    items=$((items + 1))
-    echo -e "  ${DIM}[${NC}${GREEN}${items}${NC}${DIM}]${NC} ${BOLD}pnpm${NC} ${DIM}→${NC} ${GREEN}~100MB${NC} ${DIM}reclaimable${NC}"
+    item_count=$((item_count + 1))
+    echo -e "  ${DIM}[${NC}${GREEN}${item_count}${NC}${DIM}]${NC} ${BOLD}pnpm${NC} ${DIM}→${NC} ${GREEN}~100MB${NC} ${DIM}reclaimable${NC}"
     echo -e "      ${DIM}└─ unreferenced packages${NC}"
     echo ""
 fi

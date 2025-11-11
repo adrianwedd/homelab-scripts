@@ -14,15 +14,19 @@ NC='\033[0m' # No Color
 
 echo "🔍 Running pre-commit checks..."
 
-# Get list of staged .sh files
-STAGED_SCRIPTS=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
+# Get list of staged .sh files (using -z for safe handling of filenames with spaces)
+# Use read with -d '' for compatibility with bash 3.x
+STAGED_SCRIPTS=()
+while IFS= read -r -d '' script; do
+    STAGED_SCRIPTS+=("$script")
+done < <(git diff --cached --name-only -z --diff-filter=ACM | grep -z '\.sh$' || true)
 
-if [ -z "$STAGED_SCRIPTS" ]; then
+if [ ${#STAGED_SCRIPTS[@]} -eq 0 ]; then
     echo -e "${GREEN}✓${NC} No shell scripts staged for commit"
     exit 0
 fi
 
-echo "📝 Checking scripts: $STAGED_SCRIPTS"
+echo "📝 Checking ${#STAGED_SCRIPTS[@]} script(s)"
 echo ""
 
 ERRORS=0
@@ -30,7 +34,7 @@ ERRORS=0
 # Check if shellcheck is available
 if command -v shellcheck &> /dev/null; then
     echo "Running shellcheck..."
-    for script in $STAGED_SCRIPTS; do
+    for script in "${STAGED_SCRIPTS[@]}"; do
         if [ -f "$script" ]; then
             echo "  • $script"
             # Run shellcheck, exclude non-critical warnings:
@@ -51,7 +55,7 @@ fi
 # Check if shfmt is available
 if command -v shfmt &> /dev/null; then
     echo "Running shfmt (formatting check)..."
-    for script in $STAGED_SCRIPTS; do
+    for script in "${STAGED_SCRIPTS[@]}"; do
         if [ -f "$script" ]; then
             echo "  • $script"
             # Check formatting (don't auto-format, just check)
@@ -69,11 +73,13 @@ fi
 
 # Check for common issues
 echo "Running additional checks..."
-for script in $STAGED_SCRIPTS; do
+for script in "${STAGED_SCRIPTS[@]}"; do
     if [ -f "$script" ]; then
-        # Check for unset variable usage (should use ${VAR:?} or ${VAR:-default})
-        if grep -nE '\$\{[A-Z_]+\}/\*' "$script" > /dev/null 2>&1; then
-            echo -e "${YELLOW}⚠${NC}  $script: Found potential unsafe variable expansion in paths"
+        # Check for unsafe variable expansions in rm/delete operations
+        # Matches: $VAR/*, ${VAR}/*, but not ${VAR:?}/* or ${VAR:-default}/*
+        if grep -nE '(rm|del|rmdir).*(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/\*' "$script" | grep -vE '\$\{[^}]*(:\?|:-)[^}]*\}' > /dev/null 2>&1; then
+            echo -e "${YELLOW}⚠${NC}  $script: Found potential unsafe variable expansion in deletion paths"
+            echo -e "      ${DIM}Consider using \${VAR:?}/* to prevent empty expansion${NC}"
         fi
 
         # Check for 'bc' usage (should use awk instead)
