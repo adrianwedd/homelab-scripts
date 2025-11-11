@@ -40,6 +40,14 @@ ROLLBACK_MODE=false
 ROLLBACK_MANIFEST=""
 MANIFEST_FILE="/tmp/cleanup_manifest_$(date +%s).json"
 
+# Detect timeout command (GNU timeout or macOS gtimeout)
+TIMEOUT_CMD=""
+if command -v timeout &> /dev/null; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout &> /dev/null; then
+    TIMEOUT_CMD="gtimeout"
+fi
+
 # Track total space freed (in bytes)
 TOTAL_FREED_BYTES=0
 
@@ -85,10 +93,10 @@ size_to_bytes() {
     local unit=$(echo "$size" | sed 's/[0-9.]*//g' | tr '[:lower:]' '[:upper:]')
 
     case "$unit" in
-        K|KB) echo "$number * 1024" | bc -l | cut -d. -f1 ;;
-        M|MB) echo "$number * 1024 * 1024" | bc -l | cut -d. -f1 ;;
-        G|GB) echo "$number * 1024 * 1024 * 1024" | bc -l | cut -d. -f1 ;;
-        T|TB) echo "$number * 1024 * 1024 * 1024 * 1024" | bc -l | cut -d. -f1 ;;
+        K|KB) awk "BEGIN {printf \"%.0f\", $number * 1024}" ;;
+        M|MB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024}" ;;
+        G|GB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024}" ;;
+        T|TB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024 * 1024}" ;;
         B|*) echo "${number%.*}" ;;
     esac
 }
@@ -540,8 +548,24 @@ if [ "$SKIP_GIT_GC" = false ]; then
                     # Run git gc with timeout protection
                     print_info "Running git gc (size: $size_before_human)..."
 
-                    if timeout 1800 git gc --aggressive --prune=now 2>&1 | tee -a "$LOG_FILE" | grep -qE "error|fatal"; then
-                        print_warning "Git gc encountered issues in $repo"
+                    # Run git gc with timeout if available
+                    local gc_output
+                    local gc_exit_code
+                    if [ -n "$TIMEOUT_CMD" ]; then
+                        gc_output=$($TIMEOUT_CMD 1800 git gc --aggressive --prune=now 2>&1)
+                        gc_exit_code=$?
+                    else
+                        print_warning "No timeout command available (install coreutils for gtimeout on macOS)"
+                        gc_output=$(git gc --aggressive --prune=now 2>&1)
+                        gc_exit_code=$?
+                    fi
+
+                    # Log output
+                    echo "$gc_output" | tee -a "$LOG_FILE"
+
+                    # Check exit status instead of grepping output
+                    if [ $gc_exit_code -ne 0 ]; then
+                        print_warning "Git gc failed or timed out in $repo (exit code: $gc_exit_code)"
                         failed=$((failed + 1))
                     else
                         size_after=$(get_dir_size_bytes ".")
@@ -760,7 +784,7 @@ if [ -d "$AWS_CACHE_DIR" ]; then
         if [ "$DRY_RUN" = true ]; then
             print_info "[DRY RUN] Would remove: $AWS_CACHE_DIR/*"
         else
-            rm -rf "$AWS_CACHE_DIR"/* 2>&1 | tee -a "$LOG_FILE"
+            rm -rf "${AWS_CACHE_DIR:?}"/* 2>&1 | tee -a "$LOG_FILE"
 
             freed=$(track_freed_space "$size_before" 0)
             print_success "AWS CLI cache cleaned: $(bytes_to_human $freed) freed"

@@ -90,10 +90,10 @@ size_to_mb() {
     local unit=$(echo "$size" | grep -oE '[KMGT]B')
 
     case "$unit" in
-        KB) echo "scale=2; $value / 1024" | bc ;;
+        KB) awk "BEGIN {printf \"%.2f\", $value / 1024}" ;;
         MB) echo "$value" ;;
-        GB) echo "scale=2; $value * 1024" | bc ;;
-        TB) echo "scale=2; $value * 1024 * 1024" | bc ;;
+        GB) awk "BEGIN {printf \"%.2f\", $value * 1024}" ;;
+        TB) awk "BEGIN {printf \"%.2f\", $value * 1024 * 1024}" ;;
         *) echo "0" ;;
     esac
 }
@@ -101,10 +101,10 @@ size_to_mb() {
 # Helper function to format MB back to human readable
 mb_to_human() {
     local mb=$1
-    if (( $(echo "$mb >= 1024" | bc -l) )); then
-        echo "scale=2; $mb / 1024" | bc | awk '{printf "%.2fGB", $1}'
+    if awk "BEGIN {exit !($mb >= 1024)}"; then
+        awk "BEGIN {printf \"%.2fGB\", $mb / 1024}"
     else
-        echo "scale=0; $mb / 1" | bc | awk '{printf "%.0fMB", $1}'
+        awk "BEGIN {printf \"%.0fMB\", $mb}"
     fi
 }
 
@@ -222,7 +222,7 @@ show_interactive_menu() {
                 checkbox="${GREEN}[✓]${NC}"
                 # Calculate totals
                 size_mb=$(size_to_mb "$size")
-                total_size_mb=$(echo "$total_size_mb + $size_mb" | bc)
+                total_size_mb=$(awk "BEGIN {printf \"%.2f\", $total_size_mb + $size_mb}")
                 total_time_sec=$((total_time_sec + time))
                 item_count=$((item_count + 1))
             fi
@@ -335,7 +335,7 @@ analyze_and_suggest() {
 
     # Check Docker size
     if [ "$docker_running" -eq 1 ] && [ -n "$docker_size" ]; then
-        if (( $(echo "$docker_mb > 15000" | bc -l) )); then
+        if awk "BEGIN {exit !($docker_mb > 15000)}"; then
             echo -e "  ${YELLOW}💡 DOCKER${NC} Unusually large (${BOLD}$docker_size${NC})"
             echo -e "     ${DIM}→ Hasn't been cleaned recently${NC}"
             suggestions=$((suggestions + 1))
@@ -345,7 +345,7 @@ analyze_and_suggest() {
 
     # Check for large caches
     if [ -n "$npm_size" ]; then
-        if (( $(echo "$npm_mb > 3000" | bc -l) )); then
+        if awk "BEGIN {exit !($npm_mb > 3000)}"; then
             echo -e "  ${CYAN}📦 NPM${NC} Cache is large (${BOLD}$npm_size${NC})"
             echo -e "     ${DIM}→ Safe to clear, rebuilds automatically${NC}"
             suggestions=$((suggestions + 1))
@@ -354,7 +354,7 @@ analyze_and_suggest() {
     fi
 
     if [ -n "$pip_size" ]; then
-        if (( $(echo "$pip_mb > 2000" | bc -l) )); then
+        if awk "BEGIN {exit !($pip_mb > 2000)}"; then
             echo -e "  ${CYAN}🐍 PIP${NC} Cache is large (${BOLD}$pip_size${NC})"
             echo -e "     ${DIM}→ Safe to clear, rebuilds automatically${NC}"
             suggestions=$((suggestions + 1))
@@ -482,16 +482,16 @@ show_beautiful_report() {
 
         if [ -n "$total" ] && [ -n "$avail" ]; then
             # Calculate used and percent
-            local total_bytes=$(echo "$total" | sed 's/GB/*1000000000/' | sed 's/Gi/*1073741824/' | bc 2>/dev/null || echo "0")
-            local avail_bytes=$(echo "$avail" | sed 's/GB/*1000000000/' | sed 's/Gi/*1073741824/' | bc 2>/dev/null || echo "0")
-            local used_bytes=$(echo "$total_bytes - $avail_bytes" | bc 2>/dev/null || echo "0")
+            local total_bytes=$(echo "$total" | awk '{gsub(/GB/, "*1000000000"); gsub(/Gi/, "*1073741824"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+            local avail_bytes=$(echo "$avail" | awk '{gsub(/GB/, "*1000000000"); gsub(/Gi/, "*1073741824"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+            local used_bytes=$(awk "BEGIN {printf \"%.0f\", $total_bytes - $avail_bytes}" 2>/dev/null || echo "0")
 
             if [ "$total_bytes" != "0" ]; then
-                local percent_num=$(echo "scale=0; ($used_bytes * 100) / $total_bytes" | bc)
+                local percent_num=$(awk "BEGIN {printf \"%.0f\", ($used_bytes * 100) / $total_bytes}")
                 percent="${percent_num}%"
 
                 # Format used
-                local used_gb=$(echo "scale=1; $used_bytes / 1000000000" | bc)
+                local used_gb=$(awk "BEGIN {printf \"%.1f\", $used_bytes / 1000000000}")
                 used="${used_gb}GB"
             else
                 # Fallback
@@ -552,16 +552,16 @@ if diskutil info / &>/dev/null; then
         total_initial="$container_total"
         avail_initial="$container_free"
         # Calculate used
-        total_bytes=$(echo "$container_total" | sed 's/Gi/*1024*1024*1024/' | sed 's/GB/*1000*1000*1000/' | bc 2>/dev/null || echo "0")
-        avail_bytes=$(echo "$container_free" | sed 's/Gi/*1024*1024*1024/' | sed 's/GB/*1000*1000*1000/' | bc 2>/dev/null || echo "0")
-        used_bytes=$(echo "$total_bytes - $avail_bytes" | bc 2>/dev/null || echo "0")
+        total_bytes=$(echo "$container_total" | awk '{gsub(/Gi/, "*1024*1024*1024"); gsub(/GB/, "*1000*1000*1000"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+        avail_bytes=$(echo "$container_free" | awk '{gsub(/Gi/, "*1024*1024*1024"); gsub(/GB/, "*1000*1000*1000"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+        used_bytes=$(awk "BEGIN {printf \"%.0f\", $total_bytes - $avail_bytes}" 2>/dev/null || echo "0")
 
         if [ "$total_bytes" != "0" ]; then
-            percent_num=$(echo "scale=0; ($used_bytes * 100) / $total_bytes" | bc)
+            percent_num=$(awk "BEGIN {printf \"%.0f\", ($used_bytes * 100) / $total_bytes}")
             percent_initial="${percent_num}%"
 
             # Format used in human readable
-            used_gb=$(echo "scale=1; $used_bytes / 1000000000" | bc)
+            used_gb=$(awk "BEGIN {printf \"%.1f\", $used_bytes / 1000000000}")
             used_initial="${used_gb}GB"
         else
             # Fallback to df if calculation fails
@@ -722,7 +722,7 @@ if grep -q "Would remove.*Code" "$TEMP_LOG"; then
         size=$(echo "$line" | grep -oE '\([0-9.]+[KMGT]B\)' | tr -d '()')
         if [ -n "$size" ]; then
             mb=$(size_to_mb "$size")
-            vscode_total_mb=$(echo "$vscode_total_mb + $mb" | bc)
+            vscode_total_mb=$(awk "BEGIN {printf \"%.2f\", $vscode_total_mb + $mb}")
         fi
     done < <(grep "Would remove.*Code" "$TEMP_LOG")
     vscode_mb=$vscode_total_mb
@@ -739,7 +739,7 @@ if [ "$docker_running" -eq 1 ]; then
         size=$(grep "$pattern" "$TEMP_LOG" | grep -oE '[0-9.]+[KMGT]B' | tail -1)
         if [ -n "$size" ]; then
             mb=$(size_to_mb "$size")
-            docker_total_mb=$(echo "$docker_total_mb + $mb" | bc)
+            docker_total_mb=$(awk "BEGIN {printf \"%.2f\", $docker_total_mb + $mb}")
         fi
     done
     docker_mb=$docker_total_mb
@@ -771,19 +771,19 @@ if grep -q "Would run: pnpm store prune" "$TEMP_LOG"; then
 fi
 
 # Calculate actual total
-total_mb=$(echo "$vscode_mb + $docker_mb + $npm_mb + $pip_mb + $brew_mb + $pnpm_mb" | bc)
+total_mb=$(awk "BEGIN {printf \"%.2f\", $vscode_mb + $docker_mb + $npm_mb + $pip_mb + $brew_mb + $pnpm_mb}")
 total_estimate=$(mb_to_human "$total_mb")
 
 # Calculate time estimate
 time_estimate="~2-3 min"
 time_seconds=120
-if (( $(echo "$docker_mb > 5000" | bc -l) )); then
+if awk "BEGIN {exit !($docker_mb > 5000)}"; then
     time_seconds=$((time_seconds + 60))
 fi
-if (( $(echo "$npm_mb > 2000" | bc -l) )); then
+if awk "BEGIN {exit !($npm_mb > 2000)}"; then
     time_seconds=$((time_seconds + 30))
 fi
-time_minutes=$(echo "scale=0; $time_seconds / 60" | bc)
+time_minutes=$(awk "BEGIN {printf \"%.0f\", $time_seconds / 60}")
 if [ "$time_minutes" -gt 3 ]; then
     time_estimate="~$time_minutes min"
 fi
@@ -798,9 +798,9 @@ items=0
 # Helper function to get color based on size
 get_size_color() {
     local mb=$1
-    if (( $(echo "$mb >= 5120" | bc -l) )); then
+    if awk "BEGIN {exit !($mb >= 5120)}"; then
         echo "$RED"  # >= 5GB
-    elif (( $(echo "$mb >= 1024" | bc -l) )); then
+    elif awk "BEGIN {exit !($mb >= 1024)}"; then
         echo "$YELLOW"  # >= 1GB
     else
         echo "$GREEN"  # < 1GB
@@ -821,7 +821,7 @@ if [ "$docker_running" -eq 1 ] && [ -n "$docker_size" ]; then
     items=$((items + 1))
     color=$(get_size_color "$docker_mb")
     biggest=""
-    if (( $(echo "$docker_mb == $total_mb || $docker_mb / $total_mb > 0.5" | bc -l) )); then
+    if awk "BEGIN {exit !($docker_mb == $total_mb || $docker_mb / $total_mb > 0.5)}"; then
         biggest=" ${MAGENTA}← PRIMARY TARGET${NC}"
     fi
     echo -e "  ${DIM}[${NC}${GREEN}${items}${NC}${DIM}]${NC} ${BOLD}Docker${NC} ${DIM}→${NC} ${color}$docker_size${NC} ${DIM}reclaimable${NC}$biggest"
@@ -875,8 +875,8 @@ echo ""
 
 # Show what disk will look like after
 avail_after_cleanup_mb=$(echo "$avail_initial" | sed 's/Gi//' | awk '{print $1 * 1024}')
-total_mb_num=$(echo "$total_mb" | bc)
-avail_after_cleanup_mb=$(echo "$avail_after_cleanup_mb + $total_mb_num" | bc)
+total_mb_num=$(awk "BEGIN {printf \"%.2f\", $total_mb}")
+avail_after_cleanup_mb=$(awk "BEGIN {printf \"%.2f\", $avail_after_cleanup_mb + $total_mb_num}")
 avail_after_human=$(mb_to_human "$avail_after_cleanup_mb")
 
 echo -e "  ${DIM}Disk after cleanup: ${NC}${BOLD}~$avail_after_human${NC} ${DIM}free${NC}"
@@ -885,10 +885,10 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 
 # Smart recommendations based on findings
-if [ "$docker_running" -eq 1 ] && [ -n "$docker_size" ] && (( $(echo "$docker_mb > 5120" | bc -l) )); then
+if [ "$docker_running" -eq 1 ] && [ -n "$docker_size" ] && awk "BEGIN {exit !($docker_mb > 5120)}"; then
     echo -e "${DIM}[${NC}${YELLOW}!${NC}${DIM}] Primary target: Docker (${NC}${BOLD}$docker_size${NC}${DIM}) - largest reclaimable${NC}"
 fi
-if [ -n "$npm_size" ] && (( $(echo "$npm_mb > 1024" | bc -l) )); then
+if [ -n "$npm_size" ] && awk "BEGIN {exit !($npm_mb > 1024)}"; then
     echo -e "${DIM}[${NC}${CYAN}~${NC}${DIM}] NPM cache (${NC}${BOLD}$npm_size${NC}${DIM}) safe to clear, rebuilds automatically${NC}"
 fi
 if [ "$percent_num" -ge 85 ]; then
@@ -943,16 +943,16 @@ run_cleanup_with_progress() {
 
         if [ -n "$total_disk" ] && [ -n "$avail_before" ]; then
             # Calculate used and percent
-            local total_bytes=$(echo "$total_disk" | sed 's/GB/*1000000000/' | sed 's/Gi/*1073741824/' | bc 2>/dev/null || echo "0")
-            local avail_bytes=$(echo "$avail_before" | sed 's/GB/*1000000000/' | sed 's/Gi/*1073741824/' | bc 2>/dev/null || echo "0")
-            local used_bytes=$(echo "$total_bytes - $avail_bytes" | bc 2>/dev/null || echo "0")
+            local total_bytes=$(echo "$total_disk" | awk '{gsub(/GB/, "*1000000000"); gsub(/Gi/, "*1073741824"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+            local avail_bytes=$(echo "$avail_before" | awk '{gsub(/GB/, "*1000000000"); gsub(/Gi/, "*1073741824"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+            local used_bytes=$(awk "BEGIN {printf \"%.0f\", $total_bytes - $avail_bytes}" 2>/dev/null || echo "0")
 
             if [ "$total_bytes" != "0" ]; then
-                local percent_num=$(echo "scale=0; ($used_bytes * 100) / $total_bytes" | bc)
+                local percent_num=$(awk "BEGIN {printf \"%.0f\", ($used_bytes * 100) / $total_bytes}")
                 percent_before="${percent_num}%"
 
                 # Format used
-                local used_gb=$(echo "scale=1; $used_bytes / 1000000000" | bc)
+                local used_gb=$(awk "BEGIN {printf \"%.1f\", $used_bytes / 1000000000}")
                 used_before="${used_gb}GB"
             else
                 # Fallback
@@ -1082,16 +1082,16 @@ run_cleanup_with_progress() {
 
         if [ -n "$avail_after" ]; then
             # Calculate used and percent
-            local total_bytes=$(echo "$total_disk" | sed 's/GB/*1000000000/' | sed 's/Gi/*1073741824/' | bc 2>/dev/null || echo "0")
-            local avail_bytes=$(echo "$avail_after" | sed 's/GB/*1000000000/' | sed 's/Gi/*1073741824/' | bc 2>/dev/null || echo "0")
-            local used_bytes=$(echo "$total_bytes - $avail_bytes" | bc 2>/dev/null || echo "0")
+            local total_bytes=$(echo "$total_disk" | awk '{gsub(/GB/, "*1000000000"); gsub(/Gi/, "*1073741824"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+            local avail_bytes=$(echo "$avail_after" | awk '{gsub(/GB/, "*1000000000"); gsub(/Gi/, "*1073741824"); print}' | awk '{print $1}' 2>/dev/null || echo "0")
+            local used_bytes=$(awk "BEGIN {printf \"%.0f\", $total_bytes - $avail_bytes}" 2>/dev/null || echo "0")
 
             if [ "$total_bytes" != "0" ]; then
-                local percent_num=$(echo "scale=0; ($used_bytes * 100) / $total_bytes" | bc)
+                local percent_num=$(awk "BEGIN {printf \"%.0f\", ($used_bytes * 100) / $total_bytes}")
                 percent_after="${percent_num}%"
 
                 # Format used
-                local used_gb=$(echo "scale=1; $used_bytes / 1000000000" | bc)
+                local used_gb=$(awk "BEGIN {printf \"%.1f\", $used_bytes / 1000000000}")
                 used_after="${used_gb}GB"
             else
                 # Fallback
@@ -1120,9 +1120,9 @@ run_cleanup_with_progress() {
     local avail_after_mb=$(echo "$avail_after" | sed 's/[^0-9.]//g')
     local freed_size="Unknown"
     if [ -n "$avail_before_mb" ] && [ -n "$avail_after_mb" ]; then
-        local freed_diff=$(echo "$avail_after_mb - $avail_before_mb" | bc 2>/dev/null || echo "0")
+        local freed_diff=$(awk "BEGIN {printf \"%.2f\", $avail_after_mb - $avail_before_mb}" 2>/dev/null || echo "0")
         if [ -n "$freed_diff" ] && [ "$freed_diff" != "0" ]; then
-            if (( $(echo "$freed_diff > 1" | bc -l) )); then
+            if awk "BEGIN {exit !($freed_diff > 1)}"; then
                 freed_size="${freed_diff}GB"
             else
                 freed_size="${freed_diff}MB"

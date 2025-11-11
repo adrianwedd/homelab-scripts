@@ -374,6 +374,40 @@ nano rclone-sync.sh
 
 ---
 
+## Dependencies
+
+### Required Dependencies
+
+All scripts require standard POSIX utilities (available by default on macOS and Linux):
+- `awk` - Used for arithmetic and text processing (replaces bc for calculations)
+- `sed` - Stream editing for text transformations
+- `grep` - Text searching and pattern matching
+- `date` - Date and time formatting
+- `du` - Disk usage calculations
+- `df` - Filesystem statistics
+
+### Optional Dependencies
+
+**For macOS users:**
+- `coreutils` - Provides `gtimeout` for git gc timeout protection
+  ```bash
+  brew install coreutils
+  ```
+  Without this, git gc operations will run without timeout protection (with warning message).
+
+**For script-specific features:**
+- `docker` - Required only if cleaning Docker artifacts (disk-cleanup.sh)
+- `rclone` - Required for backup sync functionality (rclone-sync.sh)
+- `git` - Required for git gc operations (disk-cleanup.sh)
+
+### Notes
+
+- **No bc dependency:** All arithmetic operations use awk for maximum portability
+- **Cross-platform:** Scripts detect platform (macOS vs Linux) and adapt automatically
+- **Graceful degradation:** Scripts warn but continue if optional dependencies are missing
+
+---
+
 ## Scheduling Automation
 
 ### Using cron (macOS/Linux)
@@ -400,9 +434,9 @@ Create a plist file for more reliable scheduling on macOS. See Apple's documenta
 ## Support
 
 For issues or improvements:
-- Check the detailed documentation in `SYSTEM_CLEANUP_RESULTS.md`
-- Review logs in `~/rclone-sync.log`
+- Review logs in `~/rclone-sync.log` or `logs/cleanup_*.log`
 - Ensure all prerequisites are installed
+- Check the implementation documentation in the repo
 
 ---
 
