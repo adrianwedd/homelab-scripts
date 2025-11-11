@@ -40,6 +40,14 @@ ROLLBACK_MODE=false
 ROLLBACK_MANIFEST=""
 MANIFEST_FILE="/tmp/cleanup_manifest_$(date +%s).json"
 
+# UX/features
+ENABLE_GAUGE=true
+SHOW_FUN_FACTS=true
+SMART_GC=true
+FULL_GC=false
+GC_THRESHOLD_GB=1
+GC_MAX_AGE_DAYS=30
+
 # Detect timeout command (GNU timeout or macOS gtimeout)
 TIMEOUT_CMD=""
 if command -v timeout &> /dev/null; then
@@ -84,6 +92,10 @@ print_section() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
     echo -e "${BLUE}${BOLD}  ${1}${NC}" | tee -a "$LOG_FILE"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
+    # Optional small fun fact between sections
+    if [ "$SHOW_FUN_FACTS" = true ]; then
+        show_fun_fact
+    fi
 }
 
 # Function to convert size to bytes
@@ -304,7 +316,13 @@ OPTIONS:
     -d, --dry-run       Preview what would be cleaned without making changes
     -y, --yes           Skip confirmation prompts (non-interactive mode)
     -v, --verbose       Show detailed output
-    --skip-git-gc       Skip git garbage collection (saves time)
+    --skip-git-gc       Skip git garbage collection entirely
+    --full-gc           Force git gc for all repos (disables smart GC)
+    --smart-gc          Enable smart git gc (default)
+    --gc-threshold GB   Only gc repos with pack size >= GB (default: $GC_THRESHOLD_GB)
+    --no-fun            Disable fun facts between sections
+    --gauge             Enable live disk gauge (default if interactive)
+    --no-gauge          Disable live disk gauge
     --rollback <file>   View rollback info from manifest file
     -h, --help          Show this help message
 
@@ -313,6 +331,8 @@ EXAMPLES:
     $0 --dry-run               # Preview cleanup without changes
     $0 -y                      # Non-interactive cleanup (auto-confirm)
     $0 -y --skip-git-gc        # Quick cleanup, skip git gc
+    $0 --full-gc               # Run git gc on all repos (no smart filtering)
+    $0 --smart-gc --gc-threshold 2  # Smart GC only for repos >= 2GB
     $0 --rollback /tmp/manifest_123.json  # View rollback info
 
 NOTES:
@@ -343,6 +363,32 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-git-gc)
             SKIP_GIT_GC=true
+            shift
+            ;;
+        --full-gc)
+            FULL_GC=true
+            SMART_GC=false
+            shift
+            ;;
+        --smart-gc)
+            SMART_GC=true
+            FULL_GC=false
+            shift
+            ;;
+        --gc-threshold)
+            GC_THRESHOLD_GB="$2"
+            shift 2
+            ;;
+        --no-fun)
+            SHOW_FUN_FACTS=false
+            shift
+            ;;
+        --gauge)
+            ENABLE_GAUGE=true
+            shift
+            ;;
+        --no-gauge)
+            ENABLE_GAUGE=false
             shift
             ;;
         --rollback)
@@ -383,6 +429,9 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 echo "" | tee -a "$LOG_FILE"
+
+# Start live gauge if enabled
+start_gauge
 
 ################################################################################
 # 1. VS Code Caches
@@ -524,9 +573,14 @@ if [ "$SKIP_GIT_GC" = false ]; then
         repo_count=${#git_repos[@]}
         print_info "Found $repo_count Git repositories"
 
-        if confirm_action "Run git gc on all repositories? (This may take a while)"; then
+        # Smart GC threshold in KiB
+        GC_THRESHOLD_KIB=$(awk "BEGIN {printf \"%.0f\", $GC_THRESHOLD_GB * 1024 * 1024}")
+
+        if confirm_action "Run git gc (smart=$SMART_GC, threshold=${GC_THRESHOLD_GB}GB)?"; then
             current=0
             failed=0
+            processed=0
+            skipped=0
             ORIGINAL_DIR=$(pwd)
 
             for repo in "${git_repos[@]}"; do
@@ -548,9 +602,53 @@ if [ "$SKIP_GIT_GC" = false ]; then
                 size_before=$(get_dir_size_bytes ".")
                 size_before_human=$(bytes_to_human "$size_before")
 
+                should_gc=true
+                reason="full"
+                if [ "$SMART_GC" = true ] && [ "$FULL_GC" = false ]; then
+                    # Evaluate heuristics
+                    # size-pack in KiB
+                    size_pack_kib=$(git count-objects -v 2>/dev/null | awk '/^size-pack:/ {print $2+0}')
+                    # last GC time from marker
+                    last_gc_file=".git/.last_gc"
+                    last_gc_age_days=9999
+                    if [ -f "$last_gc_file" ]; then
+                        if [[ "$OSTYPE" == "darwin"* ]]; then
+                            mtime=$(stat -f %m "$last_gc_file" 2>/dev/null || echo 0)
+                        else
+                            mtime=$(stat -c %Y "$last_gc_file" 2>/dev/null || echo 0)
+                        fi
+                        now_ts=$(date +%s)
+                        age_sec=$((now_ts - mtime))
+                        [ "$age_sec" -lt 0 ] && age_sec=0
+                        last_gc_age_days=$(awk "BEGIN {printf \"%.0f\", $age_sec / 86400}")
+                    fi
+                    should_gc=false
+                    reason="threshold_not_met"
+                    if [ "$size_pack_kib" -ge "$GC_THRESHOLD_KIB" ]; then
+                        should_gc=true
+                        reason="pack>=${GC_THRESHOLD_GB}GB"
+                    elif [ "$last_gc_age_days" -ge "$GC_MAX_AGE_DAYS" ]; then
+                        should_gc=true
+                        reason=">=${GC_MAX_AGE_DAYS}d_since_last_gc"
+                    fi
+                fi
+
                 if [ "$DRY_RUN" = true ]; then
-                    print_info "[DRY RUN] Would run git gc on: $repo (Current size: $size_before_human)"
+                    if [ "$should_gc" = true ] || [ "$FULL_GC" = true ]; then
+                        print_info "[DRY RUN] Would run git gc on: $repo (size: $size_before_human; reason: $reason)"
+                        processed=$((processed + 1))
+                    else
+                        print_info "Skipping git gc (reason: $reason)"
+                        skipped=$((skipped + 1))
+                    fi
                 else
+                    if [ "$should_gc" = false ] && [ "$FULL_GC" = false ]; then
+                        print_info "Skipping git gc (reason: $reason)"
+                        skipped=$((skipped + 1))
+                        cd "$ORIGINAL_DIR" >/dev/null 2>&1 || true
+                        continue
+                    fi
+                    processed=$((processed + 1))
                     # Run git gc with timeout protection
                     print_info "Running git gc (size: $size_before_human)..."
 
@@ -583,6 +681,8 @@ if [ "$SKIP_GIT_GC" = false ]; then
                         else
                             print_success "Completed (no size change)"
                         fi
+                        # Update last GC marker
+                        date +%s > .git/.last_gc 2>/dev/null || true
                     fi
                 fi
             done
@@ -593,6 +693,7 @@ if [ "$SKIP_GIT_GC" = false ]; then
             if [ $failed -gt 0 ]; then
                 print_warning "Git gc failed for $failed repositories"
             fi
+            print_info "Git gc summary: processed=$processed, skipped=$skipped, failed=$failed"
         else
             print_info "Skipping Git garbage collection"
         fi
@@ -834,3 +935,91 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 echo "" | tee -a "$LOG_FILE"
+
+# Stop gauge and send a desktop notification
+stop_gauge
+
+# Desktop notification (macOS/Linux) at completion
+notify_complete() {
+    local title="Disk Cleanup"
+    local msg="Completed. Freed $(bytes_to_human "$TOTAL_FREED_BYTES"). Log: $LOG_FILE"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v terminal-notifier >/dev/null 2>&1; then
+            terminal-notifier -title "$title" -message "$msg" >/dev/null 2>&1 || true
+        else
+            osascript -e "display notification \"$msg\" with title \"$title\"" >/dev/null 2>&1 || true
+        fi
+    else
+        if command -v notify-send >/dev/null 2>&1; then
+            notify-send "$title" "$msg" >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
+notify_complete
+# Fun facts to improve UX during long runs
+show_fun_fact() {
+    # Print to stdout and log, one random message
+    local facts=(
+        "Tip: Use --dry-run to preview cleanup safely."
+        "Did you know? Git gc can take hours on huge repos."
+        "Pro tip: Use --skip-git-gc for quick weekly cleanups."
+        "Heads up: Docker prune can free tens of GB quickly."
+        "FYI: You can set SOURCE_DIR for rclone without editing."
+    )
+    local idx=$((RANDOM % ${#facts[@]}))
+    echo -e "${YELLOW}💡${NC} ${facts[$idx]}" | tee -a "$LOG_FILE"
+}
+
+# Gauge: live disk usage header printed to TTY
+GAUGE_RUNNING=false
+GAUGE_PID=""
+GAUGE_START_TS=$(date +%s)
+
+gauge_line() {
+    # Build a single-line status: Disk, Freed, Elapsed
+    local df_line elapsed s used avail percent freed_human now
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        df_line=$(df -h / | tail -1)
+        # Filesystem Size Used Avail Capacity Mounted_on
+        used=$(echo "$df_line" | awk '{print $(NF-3)}')
+        avail=$(echo "$df_line" | awk '{print $(NF-1)}')
+        percent=$(echo "$df_line" | awk '{print $(NF-2)}')
+    else
+        df_line=$(df -h / | tail -1)
+        # Filesystem Size Used Avail Use% Mounted_on
+        used=$(echo "$df_line" | awk '{print $(NF-4)}')
+        avail=$(echo "$df_line" | awk '{print $(NF-2)}')
+        percent=$(echo "$df_line" | awk '{print $(NF-3)}')
+    fi
+    now=$(date +%s)
+    elapsed=$((now - GAUGE_START_TS))
+    if [ "$elapsed" -lt 0 ]; then elapsed=0; fi
+    local mins=$((elapsed / 60))
+    local secs=$((elapsed % 60))
+    freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
+    printf "\r💾 Disk: %s used, Avail %s | Freed: %s | ⏱ %dm %02ds" "$percent" "$avail" "$freed_human" "$mins" "$secs"
+}
+
+start_gauge() {
+    if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
+        GAUGE_RUNNING=true
+        (
+            while $GAUGE_RUNNING; do
+                gauge_line > /dev/tty 2>/dev/null || true
+                sleep 2
+            done
+        ) &
+        GAUGE_PID=$!
+    fi
+}
+
+stop_gauge() {
+    if [ "$GAUGE_PID" != "" ]; then
+        GAUGE_RUNNING=false
+        kill "$GAUGE_PID" 2>/dev/null || true
+        GAUGE_PID=""
+        # Print a trailing newline to move past the gauge line
+        echo "" > /dev/tty 2>/dev/null || true
+    fi
+}

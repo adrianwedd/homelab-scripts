@@ -50,6 +50,8 @@ Comprehensive system cleanup script that frees up disk space by cleaning caches 
 - **Complete logging** - All operations logged to timestamped file
 - **Safe error handling** - Continues cleanup even if individual operations fail
 - **Progress tracking** - Shows current/total for multi-repository operations
+- **Live disk gauge** - Optional real-time header with disk usage, freed space, elapsed time
+- **Desktop notifications** - macOS/Linux notifications at completion
 - **Color-coded output** - Easy-to-read status indicators
 - **Timeout protection** - 30-minute timeout for git gc operations
 - **Cross-platform** - Works on macOS and Linux
@@ -62,6 +64,11 @@ Comprehensive system cleanup script that frees up disk space by cleaning caches 
 | `-y, --yes` | Skip confirmation prompts (non-interactive) |
 | `-v, --verbose` | Show detailed output |
 | `--skip-git-gc` | Skip git garbage collection (faster) |
+| `--smart-gc` | Enable smart git gc (default) |
+| `--full-gc` | Force git gc on all repositories |
+| `--gc-threshold <GB>` | Smart GC: minimum pack size to run (default: 1) |
+| `--gauge` / `--no-gauge` | Enable/disable live disk gauge |
+| `--no-fun` | Disable fun facts between sections |
 | `-h, --help` | Show help message |
 
 #### Expected Results:
