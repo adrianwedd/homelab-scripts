@@ -265,3 +265,31 @@ Git gc operations timeout after 30 minutes per repository. To skip:
 ```bash
 ./disk-cleanup.sh --skip-git-gc
 ```
+
+## Development Workflow
+
+### Installing the Pre-commit Hook
+
+The repository includes a pre-commit hook for code quality checks:
+
+```bash
+# Install the hook (one-time setup)
+ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
+
+# Or copy it manually
+cp .githooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+**What the hook checks:**
+- shellcheck validation (blocks on errors, excludes SC2034/SC2155)
+- shfmt formatting (warns only, doesn't block)
+- bc usage detection (blocks - use awk instead)
+- Unsafe variable expansions in rm commands (warns)
+
+**Dependencies:**
+```bash
+brew install shellcheck shfmt  # macOS
+```
+
+See `.githooks/README.md` for detailed documentation.
