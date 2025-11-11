@@ -36,9 +36,15 @@ INTERACTIVE=true
 LOG_FILE="/tmp/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
 VERBOSE=false
 SKIP_GIT_GC=false
+ROLLBACK_MODE=false
+ROLLBACK_MANIFEST=""
+MANIFEST_FILE="/tmp/cleanup_manifest_$(date +%s).json"
 
 # Track total space freed (in bytes)
 TOTAL_FREED_BYTES=0
+
+# Track operations for manifest
+declare -a MANIFEST_OPERATIONS
 
 # Cleanup on exit
 cleanup_on_exit() {
@@ -191,6 +197,94 @@ safe_remove() {
     fi
 }
 
+# Add operation to manifest
+add_to_manifest() {
+    local type=$1
+    local description=$2
+    local can_rollback=$3
+    local rollback_data=$4
+
+    MANIFEST_OPERATIONS+=("$type|$description|$can_rollback|$rollback_data")
+}
+
+# Create cleanup manifest
+create_manifest() {
+    local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    cat > "$MANIFEST_FILE" << EOF
+{
+    "version": "1.0",
+    "timestamp": "$timestamp",
+    "log_file": "$LOG_FILE",
+    "operations": [
+EOF
+
+    local first=true
+    for op in "${MANIFEST_OPERATIONS[@]}"; do
+        IFS='|' read -r type desc can_rollback data <<< "$op"
+
+        [ "$first" = false ] && echo "," >> "$MANIFEST_FILE"
+        first=false
+
+        cat >> "$MANIFEST_FILE" << EOF
+        {
+            "type": "$type",
+            "description": "$desc",
+            "can_rollback": $can_rollback,
+            "rollback_data": "$data"
+        }
+EOF
+    done
+
+    cat >> "$MANIFEST_FILE" << EOF
+
+    ],
+    "total_freed_bytes": $TOTAL_FREED_BYTES,
+    "total_freed_human": "$(bytes_to_human $TOTAL_FREED_BYTES)"
+}
+EOF
+
+    print_info "Manifest saved: $MANIFEST_FILE"
+}
+
+# Rollback from manifest
+rollback_from_manifest() {
+    local manifest=$1
+
+    if [ ! -f "$manifest" ]; then
+        print_error "Manifest file not found: $manifest"
+        return 1
+    fi
+
+    print_section "Rollback from Manifest"
+    print_warning "This will attempt to restore cleaned items"
+    echo ""
+
+    # Parse manifest (simple grep-based parsing for bash compatibility)
+    local can_rollback=$(grep -c '"can_rollback": true' "$manifest")
+    local total_ops=$(grep -c '"type":' "$manifest")
+
+    print_info "Manifest: $manifest"
+    print_info "Operations: $total_ops total, $can_rollback can rollback"
+    echo ""
+
+    if [ "$can_rollback" -eq 0 ]; then
+        print_warning "No operations in this manifest can be rolled back"
+        print_info "Docker images and most caches cannot be reliably restored"
+        return 1
+    fi
+
+    if ! confirm_action "Proceed with rollback?"; then
+        print_info "Rollback cancelled"
+        return 1
+    fi
+
+    print_warning "Note: Most cleanup operations (Docker, caches) cannot be undone"
+    print_warning "This feature is for reference and future cache restoration"
+
+    return 0
+}
+
 # Function to show usage
 show_usage() {
     cat << EOF
@@ -203,13 +297,15 @@ OPTIONS:
     -y, --yes           Skip confirmation prompts (non-interactive mode)
     -v, --verbose       Show detailed output
     --skip-git-gc       Skip git garbage collection (saves time)
+    --rollback <file>   View rollback info from manifest file
     -h, --help          Show this help message
 
 EXAMPLES:
-    $0                  # Interactive cleanup with confirmations
-    $0 --dry-run        # Preview cleanup without changes
-    $0 -y               # Non-interactive cleanup (auto-confirm)
-    $0 -y --skip-git-gc # Quick cleanup, skip git gc
+    $0                         # Interactive cleanup with confirmations
+    $0 --dry-run               # Preview cleanup without changes
+    $0 -y                      # Non-interactive cleanup (auto-confirm)
+    $0 -y --skip-git-gc        # Quick cleanup, skip git gc
+    $0 --rollback /tmp/manifest_123.json  # View rollback info
 
 EOF
 }
@@ -235,6 +331,11 @@ while [[ $# -gt 0 ]]; do
             SKIP_GIT_GC=true
             shift
             ;;
+        --rollback)
+            ROLLBACK_MODE=true
+            ROLLBACK_MANIFEST="$2"
+            shift 2
+            ;;
         -h|--help)
             show_usage
             exit 0
@@ -248,11 +349,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 ################################################################################
+# Rollback mode
+################################################################################
+if [ "$ROLLBACK_MODE" = true ]; then
+    rollback_from_manifest "$ROLLBACK_MANIFEST"
+    exit $?
+fi
+
+################################################################################
 # Start cleanup
 ################################################################################
 print_section "Disk Cleanup Script"
 print_info "Started at: $(date)"
 print_info "Log file: $LOG_FILE"
+print_info "Manifest will be saved to: $MANIFEST_FILE"
 
 if [ "$DRY_RUN" = true ]; then
     print_warning "DRY RUN MODE - No changes will be made"
@@ -367,8 +477,12 @@ if command -v docker &> /dev/null; then
                 space_bytes=$(size_to_bytes "$space")
                 TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + space_bytes))
                 print_success "Docker cleanup completed. Space freed: $space"
+
+                # Add to manifest
+                add_to_manifest "docker_prune" "Docker system prune" "false" "Cannot restore Docker images reliably"
             else
                 print_success "Docker cleanup completed"
+                add_to_manifest "docker_prune" "Docker system prune" "false" "No space freed"
             fi
             rm -f /tmp/docker_cleanup.log
         fi
@@ -668,6 +782,14 @@ if [ "$DRY_RUN" = true ]; then
 else
     total_freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
     print_success "Total space freed: $total_freed_human"
+
+    # Create manifest for non-dry-run cleanups
+    if [ "${#MANIFEST_OPERATIONS[@]}" -gt 0 ]; then
+        create_manifest
+        echo "" | tee -a "$LOG_FILE"
+        print_info "💾 Manifest created for reference"
+        print_info "   View with: $0 --rollback $MANIFEST_FILE"
+    fi
 fi
 
 print_info "Completed at: $(date)"
