@@ -234,7 +234,7 @@ Default exclusions:
 ## Log Files
 
 All scripts use timestamped logs:
-- `/tmp/disk_cleanup_YYYYMMDD_HHMMSS.log` (disk-cleanup.sh)
+- `logs/disk_cleanup_YYYYMMDD_HHMMSS.log` (disk-cleanup.sh)
 - `~/rclone-sync.log` (rclone-sync.sh, with auto-rotation)
 - `logs/update_YYYYMMDD_HHMMSS.log` (update-all.sh)
 - `logs/cleanup_YYYYMMDD_HHMMSS.log` (smart-cleanup.sh)

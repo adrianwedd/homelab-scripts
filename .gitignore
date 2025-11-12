@@ -1,0 +1,39 @@
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# rclone exclude file (keep tracked as example, but ignore user customizations)
+# Comment out if you want to track your custom exclusions
+# .rclone-exclude
+
+# PID files
+*.pid
+
+# Manifest backups
+cleanup_manifest_*.json.bak
+
+# Test outputs
+test_output/
+test_results/

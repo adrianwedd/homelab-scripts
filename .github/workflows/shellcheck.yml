@@ -1,0 +1,42 @@
+name: ShellCheck
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/shellcheck.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/shellcheck.yml'
+
+jobs:
+  shellcheck:
+    name: ShellCheck Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        run: |
+          # Install shellcheck (latest version)
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+          # Run shellcheck on all .sh files
+          # Exclude SC2034 (unused variables - ok if documented/reserved)
+          # Exclude SC2155 (declare and assign separately - non-critical style)
+          echo "Running ShellCheck on all bash scripts..."
+          find . -name "*.sh" -type f | while read -r script; do
+            echo "Checking: $script"
+            shellcheck -S warning -e SC2034,SC2155 "$script"
+          done
+
+      - name: ShellCheck summary
+        if: success()
+        run: |
+          echo "✅ All scripts passed ShellCheck validation"

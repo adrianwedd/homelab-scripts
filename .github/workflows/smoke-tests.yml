@@ -1,0 +1,68 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/smoke-tests.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/smoke-tests.yml'
+
+jobs:
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Syntax validation
+        run: |
+          echo "Validating bash syntax..."
+          for script in *.sh; do
+            echo "Checking syntax: $script"
+            bash -n "$script"
+          done
+
+      - name: Help flags test
+        run: |
+          echo "Testing --help flags..."
+          ./disk-cleanup.sh --help
+          ./smart-cleanup.sh --help
+          ./update-all.sh --help
+          ./rclone-sync.sh --help
+
+      - name: Dry run tests
+        run: |
+          echo "Testing dry-run mode..."
+          # disk-cleanup.sh dry run (non-interactive, no gauge, no fun facts)
+          ./disk-cleanup.sh --dry-run -y --no-gauge --no-fun
+
+          # update-all.sh dry run
+          ./update-all.sh --dry-run
+
+      - name: Scan mode tests
+        run: |
+          echo "Testing scan/status modes..."
+          # Virtualenv scan (won't find much in CI, but tests the code path)
+          ./disk-cleanup.sh --scan-venvs -y --no-gauge
+
+          # Smart cleanup status
+          ./smart-cleanup.sh --status || true
+
+          # Rclone status (will fail without config, but tests argument parsing)
+          ./rclone-sync.sh --status || echo "Expected failure: rclone not configured"
+
+      - name: Smoke tests summary
+        if: success()
+        run: |
+          echo "✅ All smoke tests passed"
+          echo "   - Syntax validation: OK"
+          echo "   - Help flags: OK"
+          echo "   - Dry run modes: OK"
+          echo "   - Scan modes: OK"

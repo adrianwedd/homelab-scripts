@@ -33,20 +33,35 @@ NC='\033[0m' # No Color
 # Configuration
 DRY_RUN=false
 INTERACTIVE=true
-LOG_FILE="/tmp/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+LOG_FILE="$LOG_DIR/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
 VERBOSE=false  # Reserved for future verbose output feature
 SKIP_GIT_GC=false
 ROLLBACK_MODE=false
 ROLLBACK_MANIFEST=""
-MANIFEST_FILE="/tmp/cleanup_manifest_$(date +%s).json"
+MANIFEST_FILE="$LOG_DIR/cleanup_manifest_$(date +%s).json"
 
 # UX/features
 ENABLE_GAUGE=true
+GAUGE_UPDATE_INTERVAL=2
 SHOW_FUN_FACTS=true
 SMART_GC=true
 FULL_GC=false
 GC_THRESHOLD_GB=1
 GC_MAX_AGE_DAYS=30
+
+# Docker startup behavior
+DOCKER_WAIT_SECS=60
+SKIP_DOCKER=false
+
+# Virtualenv cleanup defaults
+FLAG_SCAN_VENVS=false
+FLAG_CLEAN_VENVS=false
+VENV_ROOTS=("$HOME/repos")
+VENV_MIN_GB=0.5
+VENV_MIN_AGE_DAYS=30
 
 # Detect timeout command (GNU timeout or macOS gtimeout)
 TIMEOUT_CMD=""
@@ -70,6 +85,36 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
+# Interrupt handling (Ctrl+C)
+ABORTED=0
+handle_interrupt() {
+    if [ "$ABORTED" -eq 0 ]; then
+        ABORTED=1
+        print_warning "Interrupt received. Attempting graceful stop..."
+        stop_gauge
+        if command -v pkill >/dev/null 2>&1; then
+            pkill -INT -f "git gc --aggressive --prune=now" 2>/dev/null || true
+            pkill -INT -f "timeout .* git gc" 2>/dev/null || true
+            pkill -INT -f "gtimeout .* git gc" 2>/dev/null || true
+        else
+            pgrep -f "git gc --aggressive --prune=now" 2>/dev/null | xargs -r kill -INT 2>/dev/null || true
+        fi
+        print_info "Stopped. Press Ctrl+C again to force quit."
+        exit 130
+    else
+        print_warning "Force stopping..."
+        if command -v pkill >/dev/null 2>&1; then
+            pkill -KILL -f "git gc" 2>/dev/null || true
+            pkill -KILL -f "timeout .* git gc" 2>/dev/null || true
+            pkill -KILL -f "gtimeout .* git gc" 2>/dev/null || true
+        else
+            pgrep -f "git gc" 2>/dev/null | xargs -r kill -KILL 2>/dev/null || true
+        fi
+        exit 137
+    fi
+}
+trap handle_interrupt INT TERM
+
 # Function to print colored output
 print_info() {
     echo -e "${BLUE}ℹ${NC} ${1}" | tee -a "$LOG_FILE"
@@ -87,14 +132,200 @@ print_error() {
     echo -e "${RED}✗${NC} ${1}" | tee -a "$LOG_FILE"
 }
 
+# Fun facts and live gauge helpers (defined early so they are available when called)
+show_fun_fact() {
+    local facts=(
+        "Tip: Use --dry-run to preview cleanup safely."
+        "Did you know? Git gc can take hours on huge repos."
+        "Pro tip: Use --skip-git-gc for quick weekly cleanups."
+        "Heads up: Docker prune can free tens of GB quickly."
+        "FYI: You can set SOURCE_DIR for rclone without editing."
+    )
+    local idx=$((RANDOM % ${#facts[@]}))
+    echo -e "${YELLOW}💡${NC} ${facts[$idx]}" | tee -a "$LOG_FILE"
+}
+
+FACT_COUNTER=0
+
+# Gauge state
+GAUGE_PID=""
+GAUGE_START_TS=$(date +%s)
+
+gauge_line() {
+    local df_line elapsed used avail percent freed_human now
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        df_line=$(df -h / | tail -1)
+        used=$(echo "$df_line" | awk '{print $(NF-3)}')
+        avail=$(echo "$df_line" | awk '{print $(NF-1)}')
+        percent=$(echo "$df_line" | awk '{print $(NF-2)}')
+    else
+        df_line=$(df -h / | tail -1)
+        used=$(echo "$df_line" | awk '{print $(NF-4)}')
+        avail=$(echo "$df_line" | awk '{print $(NF-2)}')
+        percent=$(echo "$df_line" | awk '{print $(NF-3)}')
+    fi
+    now=$(date +%s)
+    elapsed=$((now - GAUGE_START_TS))
+    [ -n "$elapsed" ] && [ "$elapsed" -lt 0 ] && elapsed=0
+    local mins=$((elapsed / 60))
+    local secs=$((elapsed % 60))
+    freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
+    printf "\r💾 Disk: %s used, Avail %s | Freed: %s | ⏱ %dm %02ds" "$percent" "$avail" "$freed_human" "$mins" "$secs"
+}
+
+start_gauge() {
+    if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
+        (
+            while true; do
+                gauge_line > /dev/tty 2>/dev/null || true
+                sleep "$GAUGE_UPDATE_INTERVAL"
+            done
+        ) &
+        GAUGE_PID=$!
+    fi
+}
+
+stop_gauge() {
+    if [ -n "$GAUGE_PID" ]; then
+        kill "$GAUGE_PID" 2>/dev/null || true
+        wait "$GAUGE_PID" 2>/dev/null || true
+        GAUGE_PID=""
+        echo "" > /dev/tty 2>/dev/null || true
+    fi
+}
+
+# Virtualenv helpers
+is_active_venv() {
+    # Returns 0 if the given path is the current active VIRTUAL_ENV
+    local path="$1"
+    if [ -n "${VIRTUAL_ENV:-}" ] && [ "$VIRTUAL_ENV" = "$path" ]; then
+        return 0
+    fi
+    return 1
+}
+
+scan_virtualenvs() {
+    print_section "Scanning Python Virtual Envs"
+    local min_bytes=$(awk "BEGIN {printf \"%.0f\", $VENV_MIN_GB * 1024 * 1024 * 1024}")
+    local total_found=0
+    local total_meets=0
+    local total_bytes=0
+
+    for root in "${VENV_ROOTS[@]}"; do
+        [ -d "$root" ] || continue
+        while IFS= read -r vdir; do
+            [ -d "$vdir" ] || continue
+            total_found=$((total_found + 1))
+            # Size and age
+            local size_bytes=$(get_dir_size_bytes "$vdir")
+            local size_human=$(bytes_to_human "$size_bytes")
+            local mtime
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                mtime=$(stat -f %m "$vdir" 2>/dev/null || echo 0)
+            else
+                mtime=$(stat -c %Y "$vdir" 2>/dev/null || echo 0)
+            fi
+            local now=$(date +%s)
+            local age_days=$(awk "BEGIN {printf \"%.0f\", ($now - $mtime) / 86400}")
+
+            local meets="no"
+            if [ "$size_bytes" -ge "$min_bytes" ] && [ "$age_days" -ge "$VENV_MIN_AGE_DAYS" ]; then
+                meets="yes"
+                total_meets=$((total_meets + 1))
+                total_bytes=$((total_bytes + size_bytes))
+            fi
+
+            echo "  - $vdir | $size_human | ${age_days}d old | meets: $meets" | tee -a "$LOG_FILE"
+        done < <(find "$root" -maxdepth 5 -type d \( -name ".venv" -o -name "venv" \) -prune 2>/dev/null)
+    done
+
+    print_info "Found $total_found virtualenv(s); candidates meeting thresholds: $total_meets (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
+    print_info "Potential reclaim: $(bytes_to_human $total_bytes)"
+}
+
+clean_virtualenvs() {
+    print_section "Cleaning Python Virtual Envs"
+    local min_bytes=$(awk "BEGIN {printf \"%.0f\", $VENV_MIN_GB * 1024 * 1024 * 1024}")
+    local removed=0
+    local freed_total=0
+    for root in "${VENV_ROOTS[@]}"; do
+        [ -d "$root" ] || continue
+        while IFS= read -r vdir; do
+            [ -d "$vdir" ] || continue
+            if is_active_venv "$vdir"; then
+                print_warning "Skipping active venv: $vdir"
+                continue
+            fi
+            # Size and age
+            local size_bytes=$(get_dir_size_bytes "$vdir")
+            local size_human=$(bytes_to_human "$size_bytes")
+            local mtime
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                mtime=$(stat -f %m "$vdir" 2>/dev/null || echo 0)
+            else
+                mtime=$(stat -c %Y "$vdir" 2>/dev/null || echo 0)
+            fi
+            local now=$(date +%s)
+            local age_days=$(awk "BEGIN {printf \"%.0f\", ($now - $mtime) / 86400}")
+
+            if [ "$size_bytes" -lt "$min_bytes" ] || [ "$age_days" -lt "$VENV_MIN_AGE_DAYS" ]; then
+                continue
+            fi
+
+            local prompt="Remove venv? $vdir ($size_human, ${age_days}d old)"
+            if [ "$DRY_RUN" = true ]; then
+                print_info "[DRY RUN] Would remove venv: $vdir ($size_human)"
+                continue
+            fi
+            if confirm_action "$prompt"; then
+                if rm -rf "${vdir:?}" 2>/dev/null; then
+                    print_success "Removed venv: $vdir ($size_human)"
+                    removed=$((removed + 1))
+                    freed_total=$((freed_total + size_bytes))
+                    add_to_manifest "venv_remove" "Removed venv $vdir" true "$vdir"
+                else
+                    print_error "Failed to remove venv: $vdir"
+                fi
+            else
+                print_info "Skipped: $vdir"
+            fi
+        done < <(find "$root" -maxdepth 5 -type d \( -name ".venv" -o -name "venv" \) -prune 2>/dev/null)
+    done
+
+    if [ "$removed" -gt 0 ]; then
+        print_success "Removed $removed venv(s), reclaimed $(bytes_to_human $freed_total)"
+        TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + freed_total))
+    else
+        print_info "No venvs removed by thresholds (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
+    fi
+}
+
 print_section() {
     echo "" | tee -a "$LOG_FILE"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
     echo -e "${BLUE}${BOLD}  ${1}${NC}" | tee -a "$LOG_FILE"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
     # Optional small fun fact between sections
-    if [ "$SHOW_FUN_FACTS" = true ]; then
+    FACT_COUNTER=$((FACT_COUNTER + 1))
+    if [ "$SHOW_FUN_FACTS" = true ] && [ $((FACT_COUNTER % 3)) -eq 0 ]; then
         show_fun_fact
+    fi
+}
+
+# Desktop notification (macOS/Linux) at completion
+notify_complete() {
+    local title="Disk Cleanup"
+    local msg="Completed. Freed $(bytes_to_human "$TOTAL_FREED_BYTES"). Log: $LOG_FILE"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v terminal-notifier >/dev/null 2>&1; then
+            terminal-notifier -title "$title" -message "$msg" >/dev/null 2>&1 || true
+        else
+            osascript -e "display notification \"$msg\" with title \"$title\"" >/dev/null 2>&1 || true
+        fi
+    else
+        if command -v notify-send >/dev/null 2>&1; then
+            notify-send "$title" "$msg" >/dev/null 2>&1 || true
+        fi
     fi
 }
 
@@ -323,6 +554,13 @@ OPTIONS:
     --no-fun            Disable fun facts between sections
     --gauge             Enable live disk gauge (default if interactive)
     --no-gauge          Disable live disk gauge
+    --scan-venvs        Only scan for Python virtualenvs and report sizes (dry-run style)
+    --clean-venvs       Remove stale virtualenvs based on thresholds
+    --venv-roots "PATHS" Space-separated roots to scan (default: "${VENV_ROOTS[*]}")
+    --venv-age DAYS     Minimum age (days) since last modification (default: $VENV_MIN_AGE_DAYS)
+    --venv-min-gb GB    Minimum size in GB to consider (default: $VENV_MIN_GB)
+    --docker-wait SECS  Wait up to SECS for Docker to start (default: $DOCKER_WAIT_SECS)
+    --skip-docker       Skip Docker cleanup entirely
     --rollback <file>   View rollback info from manifest file
     -h, --help          Show this help message
 
@@ -333,13 +571,15 @@ EXAMPLES:
     $0 -y --skip-git-gc        # Quick cleanup, skip git gc
     $0 --full-gc               # Run git gc on all repos (no smart filtering)
     $0 --smart-gc --gc-threshold 2  # Smart GC only for repos >= 2GB
+    $0 --scan-venvs            # Scan and report venv sizes only
+    $0 -y --clean-venvs        # Remove stale venvs by thresholds
     $0 --rollback /tmp/manifest_123.json  # View rollback info
 
 NOTES:
     • Git gc operations have 30-minute timeout protection (requires timeout/gtimeout)
     • On macOS without coreutils, git gc runs without timeout (with warning)
     • Install coreutils for timeout support: brew install coreutils
-    • All operations logged to /tmp/disk_cleanup_YYYYMMDD_HHMMSS.log
+    • All operations logged under ./logs/disk_cleanup_YYYYMMDD_HHMMSS.log
 
 EOF
 }
@@ -376,7 +616,12 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --gc-threshold)
-            GC_THRESHOLD_GB="$2"
+            if echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+                GC_THRESHOLD_GB="$2"
+            else
+                print_error "Invalid threshold: $2 (must be a number)"
+                exit 1
+            fi
             shift 2
             ;;
         --no-fun)
@@ -390,6 +635,50 @@ while [[ $# -gt 0 ]]; do
         --no-gauge)
             ENABLE_GAUGE=false
             shift
+            ;;
+        --docker-wait)
+            if echo "$2" | grep -Eq '^[0-9]+$'; then
+                DOCKER_WAIT_SECS="$2"
+            else
+                print_error "Invalid seconds: $2 (must be a positive integer)"
+                exit 1
+            fi
+            shift 2
+            ;;
+        --skip-docker)
+            SKIP_DOCKER=true
+            shift
+            ;;
+        --scan-venvs)
+            FLAG_SCAN_VENVS=true
+            shift
+            ;;
+        --clean-venvs)
+            FLAG_CLEAN_VENVS=true
+            shift
+            ;;
+        --venv-roots)
+            # Support colon-separated list to safely include paths with spaces
+            IFS=':' read -r -a VENV_ROOTS <<< "$2"
+            shift 2
+            ;;
+        --venv-age)
+            if echo "$2" | grep -Eq '^[0-9]+$'; then
+                VENV_MIN_AGE_DAYS="$2"
+            else
+                print_error "Invalid age: $2 (must be a positive integer)"
+                exit 1
+            fi
+            shift 2
+            ;;
+        --venv-min-gb)
+            if echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+                VENV_MIN_GB="$2"
+            else
+                print_error "Invalid venv size: $2 (must be a number)"
+                exit 1
+            fi
+            shift 2
             ;;
         --rollback)
             ROLLBACK_MODE=true
@@ -469,7 +758,9 @@ fi
 ################################################################################
 print_section "Cleaning Docker"
 
-if command -v docker &> /dev/null; then
+if [ "$SKIP_DOCKER" = true ]; then
+    print_info "Skipping Docker cleanup (--skip-docker)"
+elif command -v docker &> /dev/null; then
     # Check if Docker daemon is running
     if ! docker info &> /dev/null; then
         print_warning "Docker daemon is not running"
@@ -477,15 +768,13 @@ if command -v docker &> /dev/null; then
         if confirm_action "Start Docker daemon?"; then
             print_info "Starting Docker..."
 
-            # Try different methods based on OS
             if [[ "$OSTYPE" == "darwin"* ]]; then
-                # macOS - use open command
-                open -a Docker 2>/dev/null || open --background -a Docker 2>/dev/null
+                # macOS - multiple strategies
+                open --background -a Docker 2>/dev/null || open -a Docker 2>/dev/null || open -a /Applications/Docker.app 2>/dev/null || osascript -e 'tell application "Docker" to launch' 2>/dev/null || true
 
-                # Wait for Docker to start (up to 60 seconds)
-                print_info "Waiting for Docker daemon to start..."
+                print_info "Waiting for Docker daemon to start (up to ${DOCKER_WAIT_SECS}s)..."
                 waited=0
-                while [ $waited -lt 60 ] && ! docker info &> /dev/null; do
+                while [ $waited -lt "$DOCKER_WAIT_SECS" ] && ! docker info &> /dev/null; do
                     sleep 2
                     waited=$((waited + 2))
                     echo -n "."
@@ -496,28 +785,36 @@ if command -v docker &> /dev/null; then
                     print_success "Docker daemon started successfully"
                 else
                     print_error "Failed to start Docker daemon after ${waited}s"
-                    print_info "Please start Docker Desktop manually"
+                    print_info "Tip: Start Docker Desktop manually, or increase wait with --docker-wait SECS"
                     print_info "Skipping Docker cleanup"
                 fi
             else
-                # Linux - try systemctl
+                # Linux - try systemd/service, fallback to spawning dockerd
+                started=0
                 if command -v systemctl &> /dev/null; then
-                    if sudo systemctl start docker 2>/dev/null; then
-                        sleep 3
-                        if docker info &> /dev/null; then
-                            print_success "Docker daemon started successfully"
-                        else
-                            print_error "Failed to start Docker daemon"
-                            print_info "Skipping Docker cleanup"
-                        fi
-                    else
-                        print_error "Failed to start Docker daemon"
-                        print_info "Try: sudo systemctl start docker"
-                        print_info "Skipping Docker cleanup"
-                    fi
+                    sudo systemctl start docker 2>/dev/null && started=1 || true
+                elif command -v service &> /dev/null; then
+                    sudo service docker start 2>/dev/null && started=1 || true
+                fi
+                if [ "$started" -eq 0 ] && command -v dockerd &> /dev/null; then
+                    sudo sh -c 'nohup dockerd >/tmp/dockerd.out 2>&1 &'
+                    sleep 3
+                fi
+
+                print_info "Waiting for Docker daemon to start (up to ${DOCKER_WAIT_SECS}s)..."
+                waited=0
+                while [ $waited -lt "$DOCKER_WAIT_SECS" ] && ! docker info &> /dev/null; do
+                    sleep 2
+                    waited=$((waited + 2))
+                    echo -n "."
+                done
+                echo ""
+
+                if docker info &> /dev/null; then
+                    print_success "Docker daemon started successfully"
                 else
-                    print_error "Cannot start Docker daemon automatically"
-                    print_info "Please start Docker manually"
+                    print_error "Failed to start Docker daemon after ${waited}s"
+                    print_info "Tip: Try 'sudo systemctl start docker' or 'sudo service docker start'"
                     print_info "Skipping Docker cleanup"
                 fi
             fi
@@ -541,7 +838,6 @@ if command -v docker &> /dev/null; then
                 TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + space_bytes))
                 print_success "Docker cleanup completed. Space freed: $space"
 
-                # Add to manifest
                 add_to_manifest "docker_prune" "Docker system prune" "false" "Cannot restore Docker images reliably"
             else
                 print_success "Docker cleanup completed"
@@ -564,8 +860,11 @@ if [ "$SKIP_GIT_GC" = false ]; then
 
     print_info "Searching for Git repositories in ~/repos..."
 
-    # Use array to avoid word splitting issues
-    mapfile -t git_repos < <(find ~/repos -name ".git" -type d 2>/dev/null | sed 's|/.git||')
+    # Build repo list without using mapfile (macOS bash 3.2 compatible)
+    git_repos=()
+    while IFS= read -r repo; do
+        git_repos+=("$repo")
+    done < <(find ~/repos -name ".git" -type d 2>/dev/null | sed 's|/.git||')
 
     if [ ${#git_repos[@]} -eq 0 ]; then
         print_warning "No Git repositories found"
@@ -608,6 +907,7 @@ if [ "$SKIP_GIT_GC" = false ]; then
                     # Evaluate heuristics
                     # size-pack in KiB
                     size_pack_kib=$(git count-objects -v 2>/dev/null | awk '/^size-pack:/ {print $2+0}')
+                    [ -z "$size_pack_kib" ] && size_pack_kib=0
                     # last GC time from marker
                     last_gc_file=".git/.last_gc"
                     last_gc_age_days=9999
@@ -619,7 +919,7 @@ if [ "$SKIP_GIT_GC" = false ]; then
                         fi
                         now_ts=$(date +%s)
                         age_sec=$((now_ts - mtime))
-                        [ "$age_sec" -lt 0 ] && age_sec=0
+                        [ -n "$age_sec" ] && [ "$age_sec" -lt 0 ] && age_sec=0
                         last_gc_age_days=$(awk "BEGIN {printf \"%.0f\", $age_sec / 86400}")
                     fi
                     should_gc=false
@@ -904,6 +1204,17 @@ else
 fi
 
 ################################################################################
+# 10. Python Virtual Environments (optional)
+################################################################################
+if [ "$FLAG_SCAN_VENVS" = true ]; then
+    scan_virtualenvs
+fi
+
+if [ "$FLAG_CLEAN_VENVS" = true ]; then
+    clean_virtualenvs
+fi
+
+################################################################################
 # Summary
 ################################################################################
 print_section "Cleanup Complete!"
@@ -938,88 +1249,4 @@ echo "" | tee -a "$LOG_FILE"
 
 # Stop gauge and send a desktop notification
 stop_gauge
-
-# Desktop notification (macOS/Linux) at completion
-notify_complete() {
-    local title="Disk Cleanup"
-    local msg="Completed. Freed $(bytes_to_human "$TOTAL_FREED_BYTES"). Log: $LOG_FILE"
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        if command -v terminal-notifier >/dev/null 2>&1; then
-            terminal-notifier -title "$title" -message "$msg" >/dev/null 2>&1 || true
-        else
-            osascript -e "display notification \"$msg\" with title \"$title\"" >/dev/null 2>&1 || true
-        fi
-    else
-        if command -v notify-send >/dev/null 2>&1; then
-            notify-send "$title" "$msg" >/dev/null 2>&1 || true
-        fi
-    fi
-}
-
 notify_complete
-# Fun facts to improve UX during long runs
-show_fun_fact() {
-    # Print to stdout and log, one random message
-    local facts=(
-        "Tip: Use --dry-run to preview cleanup safely."
-        "Did you know? Git gc can take hours on huge repos."
-        "Pro tip: Use --skip-git-gc for quick weekly cleanups."
-        "Heads up: Docker prune can free tens of GB quickly."
-        "FYI: You can set SOURCE_DIR for rclone without editing."
-    )
-    local idx=$((RANDOM % ${#facts[@]}))
-    echo -e "${YELLOW}💡${NC} ${facts[$idx]}" | tee -a "$LOG_FILE"
-}
-
-# Gauge: live disk usage header printed to TTY
-GAUGE_RUNNING=false
-GAUGE_PID=""
-GAUGE_START_TS=$(date +%s)
-
-gauge_line() {
-    # Build a single-line status: Disk, Freed, Elapsed
-    local df_line elapsed s used avail percent freed_human now
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        df_line=$(df -h / | tail -1)
-        # Filesystem Size Used Avail Capacity Mounted_on
-        used=$(echo "$df_line" | awk '{print $(NF-3)}')
-        avail=$(echo "$df_line" | awk '{print $(NF-1)}')
-        percent=$(echo "$df_line" | awk '{print $(NF-2)}')
-    else
-        df_line=$(df -h / | tail -1)
-        # Filesystem Size Used Avail Use% Mounted_on
-        used=$(echo "$df_line" | awk '{print $(NF-4)}')
-        avail=$(echo "$df_line" | awk '{print $(NF-2)}')
-        percent=$(echo "$df_line" | awk '{print $(NF-3)}')
-    fi
-    now=$(date +%s)
-    elapsed=$((now - GAUGE_START_TS))
-    if [ "$elapsed" -lt 0 ]; then elapsed=0; fi
-    local mins=$((elapsed / 60))
-    local secs=$((elapsed % 60))
-    freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
-    printf "\r💾 Disk: %s used, Avail %s | Freed: %s | ⏱ %dm %02ds" "$percent" "$avail" "$freed_human" "$mins" "$secs"
-}
-
-start_gauge() {
-    if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
-        GAUGE_RUNNING=true
-        (
-            while $GAUGE_RUNNING; do
-                gauge_line > /dev/tty 2>/dev/null || true
-                sleep 2
-            done
-        ) &
-        GAUGE_PID=$!
-    fi
-}
-
-stop_gauge() {
-    if [ "$GAUGE_PID" != "" ]; then
-        GAUGE_RUNNING=false
-        kill "$GAUGE_PID" 2>/dev/null || true
-        GAUGE_PID=""
-        # Print a trailing newline to move past the gauge line
-        echo "" > /dev/tty 2>/dev/null || true
-    fi
-}

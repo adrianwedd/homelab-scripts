@@ -47,7 +47,7 @@ Comprehensive system cleanup script that frees up disk space by cleaning caches 
 - **Interactive confirmations** - Review each cleanup operation before proceeding
 - **Non-interactive mode** - Automated cleanup for scripts/cron jobs
 - **Accurate space tracking** - Precise byte-level calculation of freed space
-- **Complete logging** - All operations logged to timestamped file
+- **Complete logging** - All operations logged under `./logs/`
 - **Safe error handling** - Continues cleanup even if individual operations fail
 - **Progress tracking** - Shows current/total for multi-repository operations
 - **Live disk gauge** - Optional real-time header with disk usage, freed space, elapsed time
@@ -69,6 +69,13 @@ Comprehensive system cleanup script that frees up disk space by cleaning caches 
 | `--gc-threshold <GB>` | Smart GC: minimum pack size to run (default: 1) |
 | `--gauge` / `--no-gauge` | Enable/disable live disk gauge |
 | `--no-fun` | Disable fun facts between sections |
+| `--docker-wait <SECS>` | Wait up to SECS for Docker to start (default: 60) |
+| `--skip-docker` | Skip Docker cleanup entirely |
+| `--scan-venvs` | Scan and report Python virtualenv sizes/ages |
+| `--clean-venvs` | Remove stale virtualenvs (size/age thresholds) |
+| `--venv-roots <PATHS>` | Colon-separated roots to scan (e.g., `$HOME/repos:$HOME/projects`) |
+| `--venv-age <DAYS>` | Minimum age in days to consider stale (default: 30) |
+| `--venv-min-gb <GB>` | Minimum venv size in GB to consider (default: 0.5) |
 | `-h, --help` | Show help message |
 
 #### Expected Results:
@@ -231,6 +238,12 @@ No special setup required. The script will skip any tools that aren't installed.
 ```bash
 # Clean up system once a week
 ./disk-cleanup.sh
+
+# Scan venvs and review candidates (no changes)
+./disk-cleanup.sh --scan-venvs
+
+# Clean venvs older than 60 days and larger than 1GB
+./disk-cleanup.sh --clean-venvs --venv-age 60 --venv-min-gb 1
 
 # Start weekly backup
 ./rclone-sync.sh --start
@@ -441,7 +454,7 @@ Create a plist file for more reliable scheduling on macOS. See Apple's documenta
 ## Support
 
 For issues or improvements:
-- Review logs in `~/rclone-sync.log` or `logs/cleanup_*.log`
+- Review logs in `~/rclone-sync.log` or `logs/disk_cleanup_*.log`
 - Ensure all prerequisites are installed
 - Check the implementation documentation in the repo
 

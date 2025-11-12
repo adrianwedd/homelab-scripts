@@ -1,0 +1,46 @@
+name: Shell Format Check
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/shfmt.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/shfmt.yml'
+
+jobs:
+  shfmt:
+    name: Format Check (shfmt)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install shfmt
+        run: |
+          # Install shfmt from binary release
+          wget -qO- "https://github.com/mvdan/sh/releases/latest/download/shfmt_v3.8.0_linux_amd64" > /tmp/shfmt
+          chmod +x /tmp/shfmt
+          sudo mv /tmp/shfmt /usr/local/bin/shfmt
+
+      - name: Run shfmt (check only)
+        run: |
+          echo "Checking shell script formatting..."
+          find . -name "*.sh" -type f | while read -r script; do
+            echo "Checking format: $script"
+            if ! shfmt -d "$script"; then
+              echo "❌ Format issues found in: $script"
+              echo "   Fix with: shfmt -w $script"
+              exit 1
+            fi
+          done
+
+      - name: Format check summary
+        if: success()
+        run: |
+          echo "✅ All scripts are properly formatted"

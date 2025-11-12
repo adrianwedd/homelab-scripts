@@ -13,6 +13,11 @@ set -u
 AUTO_MODE=""
 STATUS_ONLY=0
 PROFILE=""
+CLEAN_VENVS=0
+SCAN_VENVS=0
+VENV_ROOTS=""
+VENV_MIN_AGE_DAYS=""
+VENV_MIN_GB=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,6 +37,26 @@ while [[ $# -gt 0 ]]; do
             PROFILE="$2"
             shift 2
             ;;
+        --clean-venvs)
+            CLEAN_VENVS=1
+            shift
+            ;;
+        --scan-venvs)
+            SCAN_VENVS=1
+            shift
+            ;;
+        --venv-roots)
+            VENV_ROOTS="$2"
+            shift 2
+            ;;
+        --venv-age)
+            VENV_MIN_AGE_DAYS="$2"
+            shift 2
+            ;;
+        --venv-min-gb)
+            VENV_MIN_GB="$2"
+            shift 2
+            ;;
         --help|-h)
             echo "Usage: $0 [options]"
             echo ""
@@ -42,10 +67,24 @@ while [[ $# -gt 0 ]]; do
             echo "  --profile <name>   Use cleanup profile: quick|thorough|emergency"
             echo "  --help, -h         Show this help message"
             echo ""
+            echo "Venv cleanup options (passed to disk-cleanup.sh):"
+            echo "  --scan-venvs       Scan and report virtualenv sizes"
+            echo "  --clean-venvs      Remove stale virtualenvs by thresholds"
+            echo "  --venv-roots \"PATHS\"  Space-separated roots to scan"
+            echo "  --venv-age DAYS    Minimum age in days (default 30)"
+            echo "  --venv-min-gb GB   Minimum size in GB (default 0.5)"
+            echo ""
             echo "Profiles:"
             echo "  quick      Fast cleanup (~2-3 min): Docker, caches, skip git gc"
             echo "  thorough   Deep cleanup (~3-6 hrs): Everything including git gc"
             echo "  emergency  Ultra-fast (~30 sec): Docker only, no confirmations"
+            echo ""
+            echo "Examples:"
+            echo "  $0 --status                      # Check what can be cleaned"
+            echo "  $0 --auto-best                   # Quick cleanup (skip git gc)"
+            echo "  $0 --auto-full                   # Full cleanup with git gc"
+            echo "  $0 --scan-venvs                  # Scan Python virtualenvs"
+            echo "  $0 --clean-venvs --venv-age 60   # Clean venvs older than 60 days"
             exit 0
             ;;
         *)
@@ -932,8 +971,9 @@ show_success_celebration() {
 # Function to run cleanup with real-time progress
 run_cleanup_with_progress() {
     local skip_git=$1
-    local timestamp=$(date +%Y%m%d_%H%M%S)
-    local cleanup_log="$LOGS_DIR/cleanup_${timestamp}.log"
+    local timestamp_str=$(date +%Y%m%d_%H%M%S)
+    local start_epoch=$(date +%s)
+    local cleanup_log="$LOGS_DIR/cleanup_${timestamp_str}.log"
 
     # Capture disk space before - use APFS container stats if available
     local total_disk used_before avail_before percent_before
@@ -982,10 +1022,18 @@ run_cleanup_with_progress() {
     echo ""
 
     # Run cleanup in background and track progress
+    # Build extra flags
+    local extra_flags=()
+    [ "$CLEAN_VENVS" -eq 1 ] && extra_flags+=("--clean-venvs")
+    [ "$SCAN_VENVS" -eq 1 ] && extra_flags+=("--scan-venvs")
+    [ -n "$VENV_ROOTS" ] && extra_flags+=("--venv-roots" "$VENV_ROOTS")
+    [ -n "$VENV_MIN_AGE_DAYS" ] && extra_flags+=("--venv-age" "$VENV_MIN_AGE_DAYS")
+    [ -n "$VENV_MIN_GB" ] && extra_flags+=("--venv-min-gb" "$VENV_MIN_GB")
+
     if [ "$skip_git" = "yes" ]; then
-        "$CLEANUP_SCRIPT" -y --skip-git-gc > "$cleanup_log" 2>&1 &
+        "$CLEANUP_SCRIPT" -y --skip-git-gc "${extra_flags[@]}" > "$cleanup_log" 2>&1 &
     else
-        "$CLEANUP_SCRIPT" -y > "$cleanup_log" 2>&1 &
+        "$CLEANUP_SCRIPT" -y "${extra_flags[@]}" > "$cleanup_log" 2>&1 &
     fi
 
     CLEANUP_PID=$!
@@ -1132,7 +1180,7 @@ run_cleanup_with_progress() {
 
     # Calculate time taken
     local end_time=$(date +%s)
-    local elapsed=$((end_time - timestamp))
+    local elapsed=$((end_time - start_epoch))
     local time_str="${elapsed}s"
     if [ "$elapsed" -gt 3600 ]; then
         time_str="$((elapsed / 3600))h $((elapsed % 3600 / 60))m"

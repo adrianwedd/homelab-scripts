@@ -12,6 +12,9 @@ set -u
 # Parse arguments
 DRY_RUN=0
 AUTO_YES=0
+# Allow system-wide pip updates in externally managed envs (PEP 668)
+# Default: 0 (skip safely). Enable via --pip-system or ALLOW_PIP_SYSTEM=1
+ALLOW_PIP_SYSTEM=${ALLOW_PIP_SYSTEM:-0}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -23,12 +26,17 @@ while [[ $# -gt 0 ]]; do
             AUTO_YES=1
             shift
             ;;
+        --pip-system)
+            ALLOW_PIP_SYSTEM=1
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
             echo "  --dry-run      Show what would be updated without making changes"
             echo "  -y, --yes      Skip confirmation prompts"
+            echo "  --pip-system   Allow system-wide pip updates (uses --break-system-packages)"
             echo "  --help, -h     Show this help message"
             exit 0
             ;;
@@ -51,6 +59,11 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
+# Disable colors when not attached to a TTY to avoid TERM issues
+if [ ! -t 1 ]; then
+    RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; MAGENTA=''; BOLD=''; DIM=''; NC=''
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOGS_DIR="$SCRIPT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -59,8 +72,8 @@ LOG_FILE="$LOGS_DIR/update_${TIMESTAMP}.log"
 # Create logs directory
 mkdir -p "$LOGS_DIR"
 
-# Clear screen
-clear
+# Clear screen (interactive only)
+[ -t 1 ] && clear
 
 # Header
 echo ""
@@ -126,6 +139,9 @@ fi
 
 echo ""
 echo -e "${DIM}[${NC}${BOLD}${managers_found}${NC}${DIM}] package managers detected${NC}"
+if [ ${#managers[@]} -gt 0 ]; then
+    echo -e "${DIM}Managers:${NC} ${managers[*]}"
+fi
 echo ""
 
 if [ "$managers_found" -eq 0 ]; then
@@ -159,6 +175,7 @@ echo "Managers detected: ${managers[*]}" >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"
 
 update_counter=0
+PIP_SKIPPED=0
 failed_updates=()
 
 # Update Homebrew
@@ -182,7 +199,7 @@ if [[ " ${managers[*]} " =~ " brew " ]]; then
                 echo -e "  ${GREEN}✓${NC} All packages up to date"
             fi
 
-            brew cleanup 2>&1 >> "$LOG_FILE"
+            brew cleanup >> "$LOG_FILE" 2>&1
         } && {
             echo -e "${DIM}[${NC}${GREEN}✓${NC}${DIM}] Homebrew updated${NC}"
             update_counter=$((update_counter + 1))
@@ -199,7 +216,8 @@ if [[ " ${managers[*]} " =~ " npm " ]]; then
     echo -e "${DIM}[${NC}${CYAN}→${NC}${DIM}] Updating NPM global packages...${NC}"
 
     if [ "$DRY_RUN" -eq 1 ]; then
-        echo -e "  ${DIM}Would run: npm update -g${NC}"
+        outdated_count=$(npm outdated -g --depth=0 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+        echo -e "  ${DIM}Would run: npm update -g${NC} ${DIM}(outdated: ${outdated_count:-0})${NC}"
     else
         {
             echo "=== NPM Global Update ===" >> "$LOG_FILE"
@@ -247,35 +265,59 @@ fi
 if [[ " ${managers[*]} " =~ " pip " ]]; then
     echo -e "${DIM}[${NC}${CYAN}→${NC}${DIM}] Updating pip packages...${NC}"
 
+    # Detect externally managed environment (PEP 668)
+    EXTERNALLY_MANAGED=0
+    if ls /usr/lib/python*/EXTERNALLY-MANAGED >/dev/null 2>&1 || ls /usr/lib/python3*/EXTERNALLY-MANAGED >/dev/null 2>&1; then
+        EXTERNALLY_MANAGED=1
+    fi
+
     if [ "$DRY_RUN" -eq 1 ]; then
-        echo -e "  ${DIM}Would run: pip3 list --outdated | pip3 install -U <packages>${NC}"
+        if [ "$EXTERNALLY_MANAGED" -eq 1 ] && [ "$ALLOW_PIP_SYSTEM" -ne 1 ]; then
+            echo -e "  ${YELLOW}⚠${NC} Externally managed Python detected (PEP 668). Skipping system pip updates."
+            echo -e "  ${DIM}Tip:${NC} Use ${BOLD}--pip-system${NC} to allow updates (adds --break-system-packages), or update via apt/venv."
+            PIP_SKIPPED=1
+        else
+            echo -e "  ${DIM}Would run: pip3 list --outdated | pip3 install -U <packages>${NC}"
+        fi
     else
-        {
-            echo "=== pip Update ===" >> "$LOG_FILE"
+        if [ "$EXTERNALLY_MANAGED" -eq 1 ] && [ "$ALLOW_PIP_SYSTEM" -ne 1 ]; then
+            echo -e "  ${YELLOW}⚠${NC} Externally managed Python detected (PEP 668). Skipping system pip updates."
+            echo -e "  ${DIM}Tip:${NC} Re-run with ${BOLD}--pip-system${NC} to override (uses --break-system-packages), or update via apt/venv."
+            PIP_SKIPPED=1
+        else
+            {
+                echo "=== pip Update ===" >> "$LOG_FILE"
 
-            # Update pip itself first
-            pip3 install --upgrade pip 2>&1 >> "$LOG_FILE"
+                # Build flags array for PEP 668 override
+                pip_flags=()
+                if [ "$ALLOW_PIP_SYSTEM" -eq 1 ]; then
+                    pip_flags+=(--break-system-packages)
+                fi
 
-            # Get list of outdated packages
-            outdated=$(pip3 list --outdated 2>/dev/null | tail -n +3 | awk '{print $1}')
+                # Update pip itself first
+                pip3 install --upgrade "${pip_flags[@]}" pip >> "$LOG_FILE" 2>&1
 
-            if [ -n "$outdated" ]; then
-                count=$(echo "$outdated" | wc -l | tr -d ' ')
-                echo -e "  ${DIM}Found ${NC}${BOLD}$count${NC}${DIM} outdated package(s)${NC}"
-                echo "$outdated" | while read -r pkg; do
-                    echo -e "  ${CYAN}•${NC} Upgrading $pkg..."
-                    pip3 install --upgrade "$pkg" 2>&1 >> "$LOG_FILE"
-                done
-            else
-                echo -e "  ${GREEN}✓${NC} All packages up to date"
-            fi
-        } && {
-            echo -e "${DIM}[${NC}${GREEN}✓${NC}${DIM}] pip updated${NC}"
-            update_counter=$((update_counter + 1))
-        } || {
-            echo -e "${DIM}[${NC}${RED}✗${NC}${DIM}] pip update failed${NC}"
-            failed_updates+=("pip")
-        }
+                # Get list of outdated packages
+                outdated=$(pip3 list --outdated 2>/dev/null | tail -n +3 | awk '{print $1}')
+
+                if [ -n "$outdated" ]; then
+                    count=$(echo "$outdated" | wc -l | tr -d ' ')
+                    echo -e "  ${DIM}Found ${NC}${BOLD}$count${NC}${DIM} outdated package(s)${NC}"
+                    echo "$outdated" | while read -r pkg; do
+                        echo -e "  ${CYAN}•${NC} Upgrading $pkg..."
+                        pip3 install --upgrade "${pip_flags[@]}" "$pkg" >> "$LOG_FILE" 2>&1
+                    done
+                else
+                    echo -e "  ${GREEN}✓${NC} All packages up to date"
+                fi
+            } && {
+                echo -e "${DIM}[${NC}${GREEN}✓${NC}${DIM}] pip updated${NC}"
+                update_counter=$((update_counter + 1))
+            } || {
+                echo -e "${DIM}[${NC}${RED}✗${NC}${DIM}] pip update failed${NC}"
+                failed_updates+=("pip")
+            }
+        fi
     fi
     echo ""
 fi
@@ -291,7 +333,7 @@ if [[ " ${managers[*]} " =~ " gem " ]]; then
             echo "=== RubyGems Update ===" >> "$LOG_FILE"
 
             # Update RubyGems itself
-            gem update --system 2>&1 >> "$LOG_FILE"
+            gem update --system >> "$LOG_FILE" 2>&1
 
             # Update all gems
             outdated=$(gem outdated 2>/dev/null | wc -l | tr -d ' ')
@@ -355,6 +397,9 @@ echo ""
 if [ "$DRY_RUN" -eq 1 ]; then
     echo -e "  ${YELLOW}⚠${NC} ${BOLD}Dry run completed${NC} ${DIM}(no changes made)${NC}"
     echo -e "  ${DIM}Would have updated ${BOLD}${managers_found}${NC}${DIM} package managers${NC}"
+    if [ "$PIP_SKIPPED" -eq 1 ]; then
+        echo -e "  ${DIM}Skipped pip:${NC} externally managed (PEP 668). Use --pip-system to override, or apt/venv."
+    fi
 else
     echo -e "  ${GREEN}✓${NC} ${BOLD}${update_counter}${NC} of ${BOLD}${managers_found}${NC} package managers updated"
 

@@ -1,0 +1,95 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in the scripts
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below to help us investigate.
+
+  - type: dropdown
+    id: script
+    attributes:
+      label: Which script?
+      description: Select the script where you encountered the bug
+      options:
+        - disk-cleanup.sh
+        - smart-cleanup.sh
+        - update-all.sh
+        - rclone-sync.sh
+        - Other / Multiple scripts
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+      placeholder: Describe the bug clearly and concisely
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Run command: ./disk-cleanup.sh --flag
+        2. Observe error message: ...
+        3. Expected behavior: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste any relevant log output or error messages
+      placeholder: |
+        Paste logs here (check logs/ directory or terminal output)
+      render: shell
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS (Darwin)
+        - Linux (Ubuntu/Debian)
+        - Linux (RHEL/CentOS/Fedora)
+        - Linux (Arch)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS Version
+      description: Output of `uname -a` or your OS version
+      placeholder: "e.g., Darwin 23.1.0 or Ubuntu 22.04"
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Details
+      description: Any relevant environment information
+      placeholder: |
+        - Bash version: (output of `bash --version`)
+        - ShellCheck version: (if applicable)
+        - Docker installed: yes/no
+        - Other relevant tools
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have checked existing issues for duplicates
+          required: true
+        - label: I have run the script with `--dry-run` to isolate the issue
+        - label: I have reviewed the logs in the `logs/` directory
+        - label: I am using the latest version from the main branch
