@@ -404,6 +404,99 @@ file       /etc/ssl/cert.pem         EXPIRED    -5              Expires: Nov 7 1
 
 ---
 
+### 5. `db-backup.sh`
+
+Automated database backup tool with retention policies and optional cloud sync. Supports PostgreSQL and MySQL.
+
+#### What it does:
+
+- **PostgreSQL backups** - Uses `pg_dump` with compression
+- **MySQL backups** - Uses `mysqldump` with compression
+- **Retention policies** - Configurable daily:weekly:monthly retention
+- **Cloud sync** - Optional rclone upload after backup
+- **Test restore** - Validates backups by restoring to temp database (PostgreSQL only)
+
+#### Usage:
+
+```bash
+# PostgreSQL backup (DSN from environment)
+export DB_DSN="postgres://user:pass@localhost:5432/mydb"
+./db-backup.sh --db pg --out ./backups
+
+# MySQL backup with custom retention
+export DB_DSN="mysql://root:pass@localhost:3306/appdb"
+./db-backup.sh --db mysql --retention 14:8:24
+
+# Backup with cloud sync
+./db-backup.sh --db pg --rclone gdrive:backups
+
+# Backup with test restore
+./db-backup.sh --db pg --test-restore
+
+# JSON output for monitoring
+./db-backup.sh --db pg --json
+
+# Dry run preview
+./db-backup.sh --db pg --dry-run
+
+# Show help
+./db-backup.sh --help
+```
+
+#### Features:
+
+- **Multi-database support** - PostgreSQL and MySQL
+- **Intelligent retention** - Keep daily, weekly, and monthly backups
+- **Compression** - Automatic gzip compression
+- **Cloud backup** - Optional rclone integration
+- **Test restore** - Validates backup integrity (PostgreSQL)
+- **Secure storage** - Backup files chmod 600, logs chmod 700
+- **Password masking** - DSN passwords never appear in logs
+- **JSON output** - Machine-readable backup metadata
+- **Dry-run mode** - Preview without executing
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--db <type>` | Database type: `pg` (PostgreSQL) or `mysql` (MySQL) |
+| `--dsn <url>` | Database DSN (or use `DB_DSN` environment variable) |
+| `--out <dir>` | Output directory (default: `./backups`) |
+| `--retention <d:w:m>` | Retention policy (default: `7:4:12`) |
+| `--rclone <remote>` | Upload to rclone remote (e.g., `gdrive:backups`) |
+| `--test-restore` | Verify backup by test restore (PostgreSQL only) |
+| `--json` | JSON summary output |
+| `--dry-run` | Preview without executing |
+| `--help` | Show help message |
+
+#### Retention Policy Format:
+
+`daily:weekly:monthly` - Number of backups to keep in each category
+
+- **daily**: Keep last N daily backups
+- **weekly**: Keep last N weekly backups (oldest of each week)
+- **monthly**: Keep last N monthly backups (oldest of each month)
+
+Example: `7:4:12` = 7 daily, 4 weekly, 12 monthly
+
+#### DSN Formats:
+
+```
+PostgreSQL:  postgres://username:password@host:port/database
+MySQL:       mysql://username:password@host:port/database
+```
+
+**Security Note**: Use `DB_DSN` environment variable to avoid password exposure in process list.
+
+#### Dependencies:
+
+- **pg_dump** (PostgreSQL backups) - `brew install postgresql` or `apt install postgresql-client`
+- **mysqldump** (MySQL backups) - `brew install mysql-client` or `apt install mysql-client`
+- **gzip** (compression) - Usually pre-installed
+- **rclone** (optional, cloud sync) - `brew install rclone` or `apt install rclone`
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites

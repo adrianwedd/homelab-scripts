@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Secure logging in `./logs/cert/` (mode 700)
   - Example config: `examples/domains.txt`
 
+- **db-backup.sh** - Automated database backups with retention policies
+  - PostgreSQL and MySQL support with DSN-based configuration
+  - Configurable retention (daily:weekly:monthly format, default: 7:4:12)
+  - Automatic compression with gzip
+  - Optional rclone cloud sync for off-site backups
+  - Test restore validation (PostgreSQL only)
+  - Table and JSON output formats
+  - Dry-run mode for testing
+  - DSN password masking in all output
+  - Cross-platform (macOS/Linux)
+  - Secure logging in `./logs/db-backup/` (mode 700)
+  - Example usage: `examples/db-backup-example.sh`
+
 ### Fixed - v1.1.0 (In Progress)
 - **disk-cleanup.sh**: Fixed unbound variable error in manifest check for `--scan-venvs`
   - Added default value check: `${#MANIFEST_OPERATIONS[@]:-0}`

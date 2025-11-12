@@ -136,6 +136,47 @@ jobs:
 
           echo "✓ cert-renewal-check.sh validation complete"
 
+      - name: db-backup.sh tests
+        run: |
+          echo "Testing db-backup.sh (database backup with retention)..."
+
+          # Test help (should always work)
+          ./db-backup.sh --help
+
+          # Test dry-run with PostgreSQL
+          export DB_DSN="postgres://testuser:testpass@localhost:5432/testdb"
+          ./db-backup.sh --db pg --dry-run
+
+          # Test dry-run with MySQL
+          export DB_DSN="mysql://root:password@localhost:3306/appdb"
+          ./db-backup.sh --db mysql --dry-run
+
+          # Test custom retention format
+          export DB_DSN="postgres://user:pass@localhost/db"
+          ./db-backup.sh --db pg --retention 14:8:24 --dry-run
+
+          # Test invalid database type (should fail)
+          ./db-backup.sh --db invalid && exit 1 || echo "✓ DB type validation works"
+
+          # Test invalid retention format (should fail)
+          ./db-backup.sh --db pg --retention "7-4-12" && exit 1 || echo "✓ Retention format validation works"
+
+          # Test missing DSN (should fail gracefully)
+          unset DB_DSN
+          ./db-backup.sh --db pg && exit 1 || echo "✓ DSN validation works"
+
+          # Test password masking in dry-run output
+          export DB_DSN="postgres://admin:secretpass@localhost/mydb"
+          output=$(./db-backup.sh --db pg --dry-run 2>&1)
+          if echo "$output" | grep -q "secretpass"; then
+            echo "✗ Password leaked in output!"
+            exit 1
+          else
+            echo "✓ Password masking works"
+          fi
+
+          echo "✓ db-backup.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -147,3 +188,4 @@ jobs:
           echo "   - nmap-scan.sh validation: OK"
           echo "   - service-health-check.sh validation: OK"
           echo "   - cert-renewal-check.sh validation: OK"
+          echo "   - db-backup.sh validation: OK"
