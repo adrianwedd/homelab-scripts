@@ -21,12 +21,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install shfmt
+      - name: Install shfmt (latest via Go)
         run: |
-          # Install shfmt from binary release
-          wget -qO- "https://github.com/mvdan/sh/releases/latest/download/shfmt_v3.8.0_linux_amd64" > /tmp/shfmt
-          chmod +x /tmp/shfmt
-          sudo mv /tmp/shfmt /usr/local/bin/shfmt
+          sudo apt-get update -y >/dev/null 2>&1 || true
+          sudo apt-get install -y golang >/dev/null 2>&1 || true
+          export GOPATH="$HOME/go"
+          export GOBIN="$GOPATH/bin"
+          export PATH="$GOBIN:$PATH"
+          GO111MODULE=on go install mvdan.cc/sh/v3/cmd/shfmt@latest
+          shfmt --version
 
       - name: Run shfmt (check only)
         run: |

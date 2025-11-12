@@ -20,7 +20,7 @@
 ################################################################################
 
 # Exit on undefined variables, but NOT on errors (we want to continue cleanup)
-set -u
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -62,6 +62,23 @@ GC_MAX_AGE_DAYS=30
 # Docker startup behavior
 DOCKER_WAIT_SECS=60
 SKIP_DOCKER=false
+
+# JSON summary output
+JSON_MODE=false
+JSON_FILE=""
+
+# Run timing and summary counters
+RUN_START_TS=$(date +%s)
+RUN_END_TS=0
+DOCKER_EXECUTED=false
+GIT_GC_PROCESSED=0
+GIT_GC_SKIPPED=0
+GIT_GC_FAILED=0
+VENV_FOUND=0
+VENV_CANDIDATES=0
+VENV_POTENTIAL_BYTES=0
+VENV_REMOVED=0
+VENV_FREED_BYTES=0
 
 # Virtualenv cleanup defaults
 FLAG_SCAN_VENVS=false
@@ -218,10 +235,22 @@ scan_virtualenvs() {
     local total_meets=0
     local total_bytes=0
 
+    # Deduplication: track seen venvs by realpath
+    declare -A seen_venvs
+
     for root in "${VENV_ROOTS[@]}"; do
         [ -d "$root" ] || continue
         while IFS= read -r vdir; do
             [ -d "$vdir" ] || continue
+
+            # Deduplicate: get canonical path and skip if already seen
+            local canonical_path
+            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os; print(os.path.realpath('$vdir'))" 2>/dev/null || echo "$vdir")
+            if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
+                continue
+            fi
+            seen_venvs[$canonical_path]=1
+
             total_found=$((total_found + 1))
             # Size and age
             local size_bytes=$(get_dir_size_bytes "$vdir")
@@ -248,6 +277,9 @@ scan_virtualenvs() {
 
     print_info "Found $total_found virtualenv(s); candidates meeting thresholds: $total_meets (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
     print_info "Potential reclaim: $(bytes_to_human $total_bytes)"
+    VENV_FOUND=$((VENV_FOUND + total_found))
+    VENV_CANDIDATES=$((VENV_CANDIDATES + total_meets))
+    VENV_POTENTIAL_BYTES=$((VENV_POTENTIAL_BYTES + total_bytes))
 }
 
 clean_virtualenvs() {
@@ -255,10 +287,33 @@ clean_virtualenvs() {
     local min_bytes=$(awk "BEGIN {printf \"%.0f\", $VENV_MIN_GB * 1024 * 1024 * 1024}")
     local removed=0
     local freed_total=0
+
+    # Deduplication: track seen venvs by realpath
+    declare -A seen_venvs
+
     for root in "${VENV_ROOTS[@]}"; do
         [ -d "$root" ] || continue
         while IFS= read -r vdir; do
-            [ -d "$vdir" ] || continue
+            # Security: ensure vdir is a directory and contains pyvenv.cfg
+            if [ ! -d "$vdir" ] || [ ! -f "$vdir/pyvenv.cfg" ]; then
+                print_warning "Skipping invalid or non-venv directory: $vdir"
+                continue
+            fi
+
+            # Security: ensure vdir is within the root
+            if [[ ! "$vdir" == "$root"* ]]; then
+                print_error "Security: venv path is outside of its root. Skipping: $vdir"
+                continue
+            fi
+
+            # Deduplicate: get canonical path and skip if already seen
+            local canonical_path
+            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os; print(os.path.realpath('$vdir'))" 2>/dev/null || echo "$vdir")
+            if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
+                continue
+            fi
+            seen_venvs[$canonical_path]=1
+
             if is_active_venv "$vdir"; then
                 print_warning "Skipping active venv: $vdir"
                 continue
@@ -285,7 +340,12 @@ clean_virtualenvs() {
                 continue
             fi
             if confirm_action "$prompt"; then
-                if rm -rf "${vdir:?}" 2>/dev/null; then
+                # Defensive: ensure path isn't prefixed with '-' and use parameter expansion guard
+                if [[ "$vdir" == -* ]]; then
+                    print_error "Security: venv path starts with '-': $vdir"
+                    continue
+                fi
+                if rm -rf -- "${vdir:?}"; then
                     print_success "Removed venv: $vdir ($size_human)"
                     removed=$((removed + 1))
                     freed_total=$((freed_total + size_bytes))
@@ -302,6 +362,8 @@ clean_virtualenvs() {
     if [ "$removed" -gt 0 ]; then
         print_success "Removed $removed venv(s), reclaimed $(bytes_to_human $freed_total)"
         TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + freed_total))
+        VENV_REMOVED=$((VENV_REMOVED + removed))
+        VENV_FREED_BYTES=$((VENV_FREED_BYTES + freed_total))
     else
         print_info "No venvs removed by thresholds (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
     fi
@@ -445,7 +507,7 @@ safe_remove() {
 
     print_info "Removing: $dir ($size_human)"
 
-    if rm -rf "$dir" 2>/dev/null; then
+    if rm -rf "$dir" 2>/dev/null || true; then
         local freed=$(track_freed_space "$size_before" 0)
         print_success "Removed $desc: $(bytes_to_human $freed) freed"
         return 0
@@ -647,13 +709,20 @@ while [[ $# -gt 0 ]]; do
             ENABLE_GAUGE=false
             shift
             ;;
+        --json)
+            JSON_MODE=true
+            shift
+            ;;
         --docker-wait)
-            if echo "$2" | grep -Eq '^[0-9]+$'; then
-                DOCKER_WAIT_SECS="$2"
-            else
+            if ! echo "$2" | grep -Eq '^[0-9]+$'; then
                 print_error "Invalid seconds: $2 (must be a positive integer)"
                 exit 1
             fi
+            if [ "$2" -lt 1 ] || [ "$2" -gt 3600 ]; then
+                print_error "Invalid wait time: $2 (must be between 1 and 3600 seconds)"
+                exit 1
+            fi
+            DOCKER_WAIT_SECS="$2"
             shift 2
             ;;
         --skip-docker)
@@ -672,20 +741,21 @@ while [[ $# -gt 0 ]]; do
             # Support colon-separated list to safely include paths with spaces
             IFS=':' read -r -a VENV_ROOTS <<< "$2"
             # Validate all paths for security
-            for root in "${VENV_ROOTS[@]}"; do
+            for i in "${!VENV_ROOTS[@]}"; do
+                root="${VENV_ROOTS[$i]}"
                 # Resolve to absolute path with multiple fallbacks
                 abs_root=""
                 if command -v realpath >/dev/null 2>&1; then
-                    abs_root=$(realpath "$root" 2>/dev/null || echo "")
+                    abs_root=$(realpath -m -- "$root" 2>/dev/null || echo "")
                 elif command -v readlink >/dev/null 2>&1; then
-                    abs_root=$(readlink -f "$root" 2>/dev/null || echo "")
+                    abs_root=$(readlink -f -- "$root" 2>/dev/null || echo "")
                 elif command -v python3 >/dev/null 2>&1; then
-                    abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$root" 2>/dev/null || echo "")
+                    abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" -- "$root" 2>/dev/null || echo "")
                 fi
 
                 # If no canonicalization tool available, reject paths with traversal sequences
                 if [ -z "$abs_root" ]; then
-                    if [[ "$root" == *"/../"* ]] || [[ "$root" == *"/.."* ]] || [[ "$root" == *"/./"* ]]; then
+                    if [[ "$root" == *"/../"* ]] || [[ "$root" == *"../*"* ]] || [[ "$root" == *"/./"* ]] || [[ "$root" == *"./*"* ]]; then
                         print_error "Security: Path contains traversal sequences and cannot be validated: $root"
                         print_info "Install realpath, readlink, or python3 for path canonicalization"
                         exit 1
@@ -693,9 +763,9 @@ while [[ $# -gt 0 ]]; do
                     abs_root="$root"
                 fi
 
-                # Security: Ensure path is under $HOME
-                if [[ ! "$abs_root" == "$HOME"* ]]; then
-                    print_error "Security: venv-roots must be under \$HOME: $root (resolved to: $abs_root)"
+                # Security: Ensure path is under $HOME and is a directory
+                if [[ ! "$abs_root" == "$HOME"* ]] || [ ! -d "$abs_root" ]; then
+                    print_error "Security: venv-roots must be existing directories under \$HOME: $root (resolved to: $abs_root)"
                     exit 1
                 fi
 
@@ -704,6 +774,7 @@ while [[ $# -gt 0 ]]; do
                     print_error "Security: Cannot scan system directories: $root (resolved to: $abs_root)"
                     exit 1
                 fi
+                VENV_ROOTS[$i]="$abs_root"
             done
             shift 2
             ;;
@@ -842,62 +913,11 @@ elif command -v docker &> /dev/null; then
                     print_info "Skipping Docker cleanup"
                 fi
             else
-                # Linux - try systemd/service, fallback to spawning dockerd
-                # Security: Warn user about sudo usage
-                print_warning "Docker startup requires elevated privileges"
-                print_info "Operations that will use sudo:"
-                print_info "  - systemctl start docker (or service docker start)"
-                print_info "  - docker system prune (if needed)"
-
-                if [ "$DRY_RUN" = false ] && [ "$INTERACTIVE" = true ]; then
-                    if ! confirm_action "Grant sudo privileges for Docker operations?"; then
-                        print_info "Skipping Docker cleanup"
-                        started=0
-                    else
-                        started=0
-                        if command -v systemctl &> /dev/null; then
-                            sudo systemctl start docker 2>/dev/null && started=1 || true
-                        elif command -v service &> /dev/null; then
-                            sudo service docker start 2>/dev/null && started=1 || true
-                        fi
-                        if [ "$started" -eq 0 ] && command -v dockerd &> /dev/null; then
-                            dockerd_log=$(mktemp /tmp/dockerd.XXXXXX.out)
-                            sudo sh -c "nohup dockerd >\"$dockerd_log\" 2>&1 &"
-                            sleep 3
-                            # Note: dockerd_log cleanup handled by EXIT trap
-                        fi
-                    fi
-                else
-                    started=0
-                    if command -v systemctl &> /dev/null; then
-                        sudo systemctl start docker 2>/dev/null && started=1 || true
-                    elif command -v service &> /dev/null; then
-                        sudo service docker start 2>/dev/null && started=1 || true
-                    fi
-                    if [ "$started" -eq 0 ] && command -v dockerd &> /dev/null; then
-                        dockerd_log=$(mktemp /tmp/dockerd.XXXXXX.out)
-                        sudo sh -c "nohup dockerd >\"$dockerd_log\" 2>&1 &"
-                        sleep 3
-                        # Note: dockerd_log cleanup handled by EXIT trap
-                    fi
-                fi
-
-                print_info "Waiting for Docker daemon to start (up to ${DOCKER_WAIT_SECS}s)..."
-                waited=0
-                while [ $waited -lt "$DOCKER_WAIT_SECS" ] && ! docker info &> /dev/null; do
-                    sleep 2
-                    waited=$((waited + 2))
-                    echo -n "."
-                done
-                echo ""
-
-                if docker info &> /dev/null; then
-                    print_success "Docker daemon started successfully"
-                else
-                    print_error "Failed to start Docker daemon after ${waited}s"
-                    print_info "Tip: Try 'sudo systemctl start docker' or 'sudo service docker start'"
-                    print_info "Skipping Docker cleanup"
-                fi
+                # Linux - user must start Docker manually
+                print_error "Docker daemon is not running."
+                print_info "Please start the Docker daemon manually and re-run the script."
+                print_info "e.g., 'sudo systemctl start docker' or 'sudo service docker start'"
+                print_info "Skipping Docker cleanup"
             fi
         else
             print_info "Skipping Docker cleanup"
@@ -925,7 +945,8 @@ elif command -v docker &> /dev/null; then
                 print_success "Docker cleanup completed"
                 add_to_manifest "docker_prune" "Docker system prune" "false" "No space freed"
             fi
-            rm -f "$docker_log"
+            rm -f "$docker_log" || true
+            DOCKER_EXECUTED=true
         fi
     else
         print_info "Skipping Docker cleanup"
@@ -1076,6 +1097,10 @@ if [ "$SKIP_GIT_GC" = false ]; then
                 print_warning "Git gc failed for $failed repositories"
             fi
             print_info "Git gc summary: processed=$processed, skipped=$skipped, failed=$failed"
+            # Save to globals for JSON summary
+            GIT_GC_PROCESSED=$processed
+            GIT_GC_SKIPPED=$skipped
+            GIT_GC_FAILED=$failed
         else
             print_info "Skipping Git garbage collection"
         fi
@@ -1106,7 +1131,7 @@ if command -v brew &> /dev/null; then
             else
                 print_success "Homebrew cleanup completed"
             fi
-            rm -f "$brew_log"
+            rm -f "$brew_log" || true
         fi
     else
         print_info "Skipping Homebrew cleanup"
@@ -1205,7 +1230,7 @@ if command -v pnpm &> /dev/null; then
             else
                 print_success "pnpm store pruned"
             fi
-            rm -f "$pnpm_log"
+            rm -f "$pnpm_log" || true
         fi
     else
         print_info "Skipping pnpm cleanup"
@@ -1248,7 +1273,7 @@ if command -v pip &> /dev/null || command -v pip3 &> /dev/null; then
                 else
                     print_success "pip cache purged: $(bytes_to_human $freed) freed"
                 fi
-                rm -f "$pip_log"
+                rm -f "$pip_log" || true
             fi
         else
             print_info "Skipping pip cleanup"
@@ -1335,3 +1360,24 @@ echo "" | tee -a "$LOG_FILE"
 # Stop gauge and send a desktop notification
 stop_gauge
 notify_complete
+
+# JSON summary (optional)
+RUN_END_TS=$(date +%s)
+if [ "$JSON_MODE" = true ]; then
+    JSON_FILE="$LOG_DIR/disk_cleanup_summary_$(date +%Y%m%d_%H%M%S).json"
+    {
+        echo '{'
+        echo "  \"version\": \"1.0\"," 
+        echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," 
+        if [ "$DRY_RUN" = true ]; then echo '  "dry_run": true,'; else echo '  "dry_run": false,'; fi
+        echo "  \"log_file\": \"$LOG_FILE\"," 
+        echo "  \"start_ts\": $RUN_START_TS,"
+        echo "  \"end_ts\": $RUN_END_TS,"
+        echo "  \"total_freed_bytes\": $TOTAL_FREED_BYTES,"
+        echo "  \"total_freed_human\": \"$(bytes_to_human \"$TOTAL_FREED_BYTES\")\"," 
+        if [ "$DOCKER_EXECUTED" = true ]; then echo '  "docker_executed": true,'; else echo '  "docker_executed": false,'; fi
+        echo "  \"git_gc\": { \"processed\": $GIT_GC_PROCESSED, \"skipped\": $GIT_GC_SKIPPED, \"failed\": $GIT_GC_FAILED },"
+        echo "  \"venv\": { \"found\": $VENV_FOUND, \"candidates\": $VENV_CANDIDATES, \"potential_bytes\": $VENV_POTENTIAL_BYTES, \"removed\": $VENV_REMOVED, \"freed_bytes\": $VENV_FREED_BYTES }"
+        echo '}'
+    } | tee "$JSON_FILE"
+fi

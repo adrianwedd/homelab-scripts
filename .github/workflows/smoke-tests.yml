@@ -36,6 +36,7 @@ jobs:
           ./smart-cleanup.sh --help
           ./update-all.sh --help
           ./rclone-sync.sh --help
+          ./nmap-scan.sh --help
 
       - name: Dry run tests
         run: |
@@ -58,6 +59,38 @@ jobs:
           # Rclone status (will fail without config, but tests argument parsing)
           ./rclone-sync.sh --status || echo "Expected failure: rclone not configured"
 
+      - name: nmap-scan.sh tests
+        run: |
+          echo "Testing nmap-scan.sh (graceful dependency handling)..."
+
+          # Test help (should work without nmap)
+          ./nmap-scan.sh --help
+
+          # Test dry-run with valid CIDR (should work without nmap)
+          ./nmap-scan.sh --cidr "192.168.1.0/24" --dry-run
+
+          # Test CIDR validation (invalid format, should fail gracefully)
+          ./nmap-scan.sh --cidr "invalid" --dry-run && exit 1 || echo "✓ CIDR validation works"
+
+          # Test CIDR validation (invalid octet, should fail gracefully)
+          ./nmap-scan.sh --cidr "999.168.1.0/24" --dry-run && exit 1 || echo "✓ Octet validation works"
+
+          # Test CIDR validation (invalid prefix, should fail gracefully)
+          ./nmap-scan.sh --cidr "192.168.1.0/99" --dry-run && exit 1 || echo "✓ Prefix validation works"
+
+          # Test rate validation (out of range, should fail)
+          ./nmap-scan.sh --cidr "192.168.1.0/24" --rate 99999 --dry-run && exit 1 || echo "✓ Rate bounds work"
+
+          # If nmap is available, test that scan fails gracefully when run without privileges
+          if command -v nmap >/dev/null 2>&1; then
+            echo "✓ nmap available, testing graceful non-root behavior"
+            # This will work in dry-run but shows the non-root warnings
+            ./nmap-scan.sh --cidr "127.0.0.1/32" --dry-run
+          else
+            echo "✓ nmap not installed (expected in CI), dependency check should fail gracefully"
+            ./nmap-scan.sh --cidr "192.168.1.0/24" && exit 1 || echo "✓ Graceful failure when nmap missing"
+          fi
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -66,3 +99,4 @@ jobs:
           echo "   - Help flags: OK"
           echo "   - Dry run modes: OK"
           echo "   - Scan modes: OK"
+          echo "   - nmap-scan.sh validation: OK"

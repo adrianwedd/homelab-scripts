@@ -37,6 +37,9 @@ Comprehensive system cleanup script that frees up disk space by cleaning caches 
 # Quick cleanup, skip slow git gc
 ./disk-cleanup.sh -y --skip-git-gc
 
+# Emit a machine-readable JSON summary alongside the log
+./disk-cleanup.sh --dry-run --json
+
 # Show help
 ./disk-cleanup.sh --help
 ```
@@ -48,6 +51,7 @@ Comprehensive system cleanup script that frees up disk space by cleaning caches 
 - **Non-interactive mode** - Automated cleanup for scripts/cron jobs
 - **Accurate space tracking** - Precise byte-level calculation of freed space
 - **Complete logging** - All operations logged under `./logs/`
+- **JSON summary (optional)** - `--json` writes `./logs/disk_cleanup_summary_YYYYMMDD_HHMMSS.json`
 - **Safe error handling** - Continues cleanup even if individual operations fail
 - **Progress tracking** - Shows current/total for multi-repository operations
 - **Live disk gauge** - Optional real-time header with disk usage, freed space, elapsed time
@@ -197,6 +201,101 @@ Default exclusions include:
 
 ---
 
+### 3. `nmap-scan.sh`
+
+Network discovery and change tracking tool that identifies active hosts on your LAN(s) and monitors changes over time.
+
+#### What it does:
+
+- **CIDR Auto-detection** - Automatically detects your primary network subnet
+- **Fast Scan Mode** - Quick ping sweep + TCP SYN to ports 22, 80, 443 (default)
+- **Full Scan Mode** - Comprehensive scan of top 1000 TCP ports
+- **Delta Tracking** - Compares current scan with previous to show new/removed hosts
+- **JSON Output** - Structured data for automation and analysis
+- **Table Output** - Human-readable tabular format
+- **Host Exclusions** - Filter out specific IPs or MAC addresses
+- **Rate Limiting** - Prevents network flooding (default: 100 pps)
+
+#### Usage:
+
+```bash
+# Fast scan on auto-detected subnet
+./nmap-scan.sh
+
+# Scan specific CIDR(s)
+./nmap-scan.sh --cidr "192.168.1.0/24"
+
+# Multi-subnet full scan
+./nmap-scan.sh --cidr "192.168.1.0/24,10.0.0.0/24" --full
+
+# Exclude specific hosts and limit rate
+./nmap-scan.sh --exclude "192.168.1.10,AA:BB:CC:*" --rate 50
+
+# JSON output only, no delta comparison
+./nmap-scan.sh --output json --no-delta
+
+# Preview scan configuration
+./nmap-scan.sh --cidr "192.168.1.0/24" --dry-run
+
+# Show help
+./nmap-scan.sh --help
+```
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--cidr CIDR` | Comma-separated CIDRs (auto-detects if not specified) |
+| `--fast` | Fast scan: ping + TCP 22,80,443 (default) |
+| `--full` | Full scan: top 1000 TCP ports (slower) |
+| `--output MODE` | Output mode: json, table, or both (default: both) |
+| `--no-delta` | Skip delta comparison with previous scan |
+| `--exclude LIST` | Comma-separated IPs or MAC patterns to exclude |
+| `--rate NUM` | Max packets per second (default: 100) |
+| `--dry-run` | Show configuration without executing scan |
+| `--help` | Show help message |
+
+#### Features:
+
+- **Non-intrusive defaults** - Ping sweep + 3 common ports only
+- **Auto CIDR detection** - Uses primary interface if not specified
+- **Delta tracking** - Shows new/removed hosts since last scan
+- **JSON storage** - All scans saved to `./logs/nmap/` with timestamps
+- **Secure logs** - Log directory permissions: 700, files: 600
+- **Rate limiting** - Prevents network flooding and DoS
+- **Host exclusions** - Filter noisy or sensitive hosts
+- **Dual output** - Both JSON (automation) and table (human-readable)
+- **Safe exit** - Graceful handling if nmap is not installed
+- **Cross-platform** - Works on macOS and Linux
+
+#### Output Example:
+
+```
+━━━ Scan Results ━━━
+
+IP Address       MAC Address        Vendor                         Open Ports
+──────────────────────────────────────────────────────────────────────────────
+192.168.1.1      AA:BB:CC:DD:EE:FF  NETGEAR                        22,80,443
+192.168.1.10     11:22:33:44:55:66  Apple, Inc.                    22
+192.168.1.50     99:88:77:66:55:44  Raspberry Pi Foundation        22,80
+
+━━━ Delta Analysis ━━━
+
+✓ New hosts detected:
+  + 192.168.1.50
+```
+
+#### Security & Ethics:
+
+- **Non-intrusive by default** - Only ping + 3 common ports
+- **Rate limiting** - Prevents network flooding
+- **Explicit full scan** - Must use `--full` flag for deeper scans
+- **Local use only** - Designed for your own network discovery
+- **No stealth mode** - Scans are intentionally detectable
+- **Secure storage** - All logs protected with umask 077
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites
@@ -204,6 +303,22 @@ Default exclusions include:
 #### For `disk-cleanup.sh`:
 
 No special setup required. The script will skip any tools that aren't installed.
+
+#### For `nmap-scan.sh`:
+
+1. **Install nmap:**
+   ```bash
+   # macOS
+   brew install nmap
+
+   # Linux
+   sudo apt install nmap
+   ```
+
+2. **Verify installation:**
+   ```bash
+   nmap --version
+   ```
 
 #### For `rclone-sync.sh`:
 
@@ -439,10 +554,10 @@ crontab -e
 # Add these lines:
 
 # Run cleanup every Sunday at 2 AM
-0 2 * * 0 /Users/adrian/repos/scripts/disk-cleanup.sh >> /tmp/cleanup.log 2>&1
+0 2 * * 0 /Users/adrian/repos/scripts/disk-cleanup.sh >> /Users/adrian/repos/scripts/logs/cron-disk-cleanup.log 2>&1
 
 # Run backup every day at 3 AM
-0 3 * * * /Users/adrian/repos/scripts/rclone-sync.sh --start >> /tmp/backup.log 2>&1
+0 3 * * * /Users/adrian/repos/scripts/rclone-sync.sh --start >> /Users/adrian/repos/scripts/logs/cron-rclone-sync.log 2>&1
 ```
 
 ### Using launchd (macOS recommended)
@@ -454,7 +569,7 @@ Create a plist file for more reliable scheduling on macOS. See Apple's documenta
 ## Support
 
 For issues or improvements:
-- Review logs in `~/rclone-sync.log` or `logs/disk_cleanup_*.log`
+- Review logs in `~/rclone-sync.log` or `logs/disk_cleanup_*.log` and JSON summaries in `logs/disk_cleanup_summary_*.json`
 - Ensure all prerequisites are installed
 - Check the implementation documentation in the repo
 

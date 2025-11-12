@@ -151,6 +151,7 @@ mb_to_human() {
 read_single_char() {
     local prompt="$1"
     local valid_chars="$2"
+    local timeout_secs=30
 
     # Print prompt to stderr so it doesn't interfere with return value
     echo -ne "$prompt" >&2
@@ -158,23 +159,57 @@ read_single_char() {
     # Save terminal settings
     local old_tty_settings=$(stty -g)
 
+    # Set up timeout handler using a background sleep + trap
+    local timed_out=0
+    (
+        sleep "$timeout_secs"
+        # Send signal to parent if still running
+        kill -ALRM $$ 2>/dev/null
+    ) &
+    local timeout_pid=$!
+
+    # Trap ALRM signal for timeout
+    trap 'timed_out=1' ALRM
+
     # Set terminal to raw mode (no echo, no line buffering)
-    stty -icanon -echo min 1 time 0
+    stty -icanon -echo min 1 time 0 2>/dev/null || true
 
     local char=""
-    while true; do
-        char=$(dd bs=1 count=1 2>/dev/null)
+    while [ "$timed_out" -eq 0 ]; do
+        # Try to read with short timeout to check timed_out flag
+        char=$(dd bs=1 count=1 2>/dev/null || echo "")
+
+        # Handle EOF (Ctrl+D or non-interactive)
+        if [ -z "$char" ] && [ ! -t 0 ]; then
+            # Non-interactive or EOF: default to abort
+            char="4"
+            break
+        fi
+
         # Check if character is valid
-        if [[ "$valid_chars" == *"$char"* ]]; then
+        if [ -n "$char" ] && [[ "$valid_chars" == *"$char"* ]]; then
             break
         fi
     done
 
-    # Restore terminal settings
-    stty "$old_tty_settings"
+    # Kill timeout background process if still running
+    kill "$timeout_pid" 2>/dev/null
+    wait "$timeout_pid" 2>/dev/null || true
 
-    # Echo the character for visual feedback to stderr, then newline
-    echo -e "${GREEN}$char${NC}" >&2
+    # Reset trap
+    trap - ALRM
+
+    # Restore terminal settings
+    stty "$old_tty_settings" 2>/dev/null || true
+
+    # If timed out, default to abort
+    if [ "$timed_out" -eq 1 ]; then
+        char="4"  # Abort option
+        echo -e "${YELLOW}[timeout]${NC}" >&2
+    else
+        # Echo the character for visual feedback to stderr
+        echo -e "${GREEN}$char${NC}" >&2
+    fi
     echo "" >&2
 
     # Return ONLY the character to stdout (this is captured by the caller)

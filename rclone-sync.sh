@@ -16,7 +16,7 @@
 ################################################################################
 
 # Exit on undefined variables, but NOT on all errors (allows cleanup)
-set -u
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -188,19 +188,33 @@ check_remote() {
 
 # Function to check if sync is already running (with locking)
 check_running() {
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE" 2>/dev/null)
-        if [ -n "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
-            if ps -p "$PID" -o command= 2>/dev/null | grep -q "rclone sync"; then
-                print_warning "rclone sync is already running (PID: $PID)"
-                print_info "To stop it: $0 --stop"
-                print_info "To monitor: $0 --status"
-                exit 1
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>"$PID_FILE"
+        if ! flock -n 9; then
+            PID=$(cat "$PID_FILE" 2>/dev/null)
+            print_warning "rclone sync is already running (PID: $PID)"
+            print_info "To stop it: $0 --stop"
+            print_info "To monitor: $0 --status"
+            exit 1
+        fi
+    else
+        # Portable locking: PID file + process verification
+        if [ -f "$PID_FILE" ]; then
+            OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
+            if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" > /dev/null 2>&1; then
+                if ps -p "$OLD_PID" -o command= 2>/dev/null | grep -q "rclone sync.*${REMOTE_NAME}"; then
+                    print_warning "rclone sync is already running (PID: $OLD_PID)"
+                    print_info "To stop it: $0 --stop"
+                    print_info "To monitor: $0 --status"
+                    exit 1
+                else
+                    print_warning "Removing stale PID file"
+                    rm -f "$PID_FILE"
+                fi
+            else
+                rm -f "$PID_FILE"
             fi
         fi
-        # PID file exists but process is not running, remove stale file
-        print_warning "Removing stale PID file"
-        rm -f "$PID_FILE"
     fi
 }
 
@@ -306,25 +320,22 @@ start_sync() {
     local -a args
     read -ra args <<< "$(build_rclone_args)"
 
-    # Start rclone in background with proper nohup
-    nohup rclone sync "$SOURCE_DIR" "${REMOTE_NAME}:${REMOTE_PATH}" \
+    # Start rclone in background
+    rclone sync "$SOURCE_DIR" "${REMOTE_NAME}:${REMOTE_PATH}" \
         "${args[@]}" \
         --log-file "$LOG_FILE" \
         --log-level INFO \
-        --stats "$STATS_INTERVAL" \
-        >> "$LOG_FILE" 2>&1 &
+        --stats "$STATS_INTERVAL" &
 
-    # Save PID atomically
+    # Save PID to the lock file
     SYNC_PID=$!
-    echo "$SYNC_PID" > "${PID_FILE}.tmp"
-    mv "${PID_FILE}.tmp" "$PID_FILE"
+    echo "$SYNC_PID" >&9
 
     # Verify process started
     sleep 1
     if ! ps -p "$SYNC_PID" > /dev/null 2>&1; then
         print_error "Failed to start rclone sync"
         print_info "Check log for errors: tail -50 $LOG_FILE"
-        rm -f "$PID_FILE"
         exit 1
     fi
 
@@ -345,12 +356,10 @@ stop_sync() {
 
     if [ ! -f "$PID_FILE" ]; then
         print_warning "No PID file found. Sync may not be running."
-
         # Check for any rclone sync processes
-        local pids=$(pgrep -f "rclone sync.*${REMOTE_NAME}" || true)
-        if [ -n "$pids" ]; then
-            print_warning "Found running rclone sync processes: $pids"
-            print_info "Kill them with: kill $pids"
+        if pgrep -f "rclone sync.*${REMOTE_NAME}" > /dev/null; then
+            print_warning "Found running rclone sync processes."
+            print_info "To stop them, run: pkill -f \"rclone sync.*${REMOTE_NAME}\""
         fi
         return 1
     fi
@@ -365,7 +374,8 @@ stop_sync() {
 
     if ps -p "$PID" > /dev/null 2>&1; then
         print_info "Stopping rclone sync (PID: $PID)..."
-        kill "$PID" 2>/dev/null
+        # Use pkill to be more specific
+        pkill -P "$PID" -f "rclone sync.*${REMOTE_NAME}" 2>/dev/null || kill "$PID" 2>/dev/null
 
         # Wait up to 10 seconds for graceful shutdown
         local waited=0
@@ -378,7 +388,7 @@ stop_sync() {
 
         if ps -p "$PID" > /dev/null 2>&1; then
             print_warning "Process still running, forcing kill..."
-            kill -9 "$PID" 2>/dev/null
+            pkill -9 -P "$PID" -f "rclone sync.*${REMOTE_NAME}" 2>/dev/null || kill -9 "$PID" 2>/dev/null
             sleep 1
         fi
 

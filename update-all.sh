@@ -7,7 +7,7 @@
 # Usage: ./update-all.sh [--dry-run] [-y|--yes]
 ################################################################################
 
-set -u
+set -euo pipefail
 
 # Parse arguments
 DRY_RUN=0
@@ -274,7 +274,8 @@ if [[ " ${managers[*]} " =~ " pip " ]]; then
     if [ "$DRY_RUN" -eq 1 ]; then
         if [ "$EXTERNALLY_MANAGED" -eq 1 ] && [ "$ALLOW_PIP_SYSTEM" -ne 1 ]; then
             echo -e "  ${YELLOW}⚠${NC} Externally managed Python detected (PEP 668). Skipping system pip updates."
-            echo -e "  ${DIM}Tip:${NC} Use ${BOLD}--pip-system${NC} to allow updates (adds --break-system-packages), or update via apt/venv."
+            echo -e "  ${DIM}Tip:${NC} It is strongly recommended to use a virtual environment (e.g., venv, conda) to manage Python packages."
+            echo -e "  ${DIM}If you are sure you want to modify the system Python, re-run with ${BOLD}--pip-system${NC} to override (uses --break-system-packages)."
             PIP_SKIPPED=1
         else
             echo -e "  ${DIM}Would run: pip3 list --outdated | pip3 install -U <packages>${NC}"
@@ -282,7 +283,8 @@ if [[ " ${managers[*]} " =~ " pip " ]]; then
     else
         if [ "$EXTERNALLY_MANAGED" -eq 1 ] && [ "$ALLOW_PIP_SYSTEM" -ne 1 ]; then
             echo -e "  ${YELLOW}⚠${NC} Externally managed Python detected (PEP 668). Skipping system pip updates."
-            echo -e "  ${DIM}Tip:${NC} Re-run with ${BOLD}--pip-system${NC} to override (uses --break-system-packages), or update via apt/venv."
+            echo -e "  ${DIM}Tip:${NC} It is strongly recommended to use a virtual environment (e.g., venv, conda) to manage Python packages."
+            echo -e "  ${DIM}If you are sure you want to modify the system Python, re-run with ${BOLD}--pip-system${NC} to override (uses --break-system-packages)."
             PIP_SKIPPED=1
         else
             {
@@ -303,7 +305,7 @@ if [[ " ${managers[*]} " =~ " pip " ]]; then
                 if [ -n "$outdated" ]; then
                     count=$(echo "$outdated" | wc -l | tr -d ' ')
                     echo -e "  ${DIM}Found ${NC}${BOLD}$count${NC}${DIM} outdated package(s)${NC}"
-                    echo "$outdated" | while read -r pkg; do
+                    echo "$outdated" | while IFS= read -r pkg; do
                         echo -e "  ${CYAN}•${NC} Upgrading $pkg..."
                         pip3 install --upgrade "${pip_flags[@]}" "$pkg" >> "$LOG_FILE" 2>&1
                     done
