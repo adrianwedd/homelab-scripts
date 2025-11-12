@@ -1,0 +1,18 @@
+# Sample domains file for cert-renewal-check.sh
+# One domain per line
+# Lines starting with # are comments
+
+# Public services
+github.com
+google.com
+cloudflare.com
+
+# Local services (examples)
+# homelab.local
+# nas.local
+# 192.168.1.100
+
+# Production domains (examples)
+# api.example.com
+# www.example.com
+# mail.example.com

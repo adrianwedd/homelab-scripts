@@ -109,6 +109,33 @@ jobs:
 
           echo "✓ service-health-check.sh validation complete"
 
+      - name: cert-renewal-check.sh tests
+        run: |
+          echo "Testing cert-renewal-check.sh (SSL certificate monitoring)..."
+
+          # Test help (should always work)
+          ./cert-renewal-check.sh --help
+
+          # Create test domains file
+          echo -e "github.com\ngoogle.com\n# comment line\ncloudflare.com" > /tmp/test-domains.txt
+
+          # Test dry-run with domains file
+          ./cert-renewal-check.sh --domains /tmp/test-domains.txt --dry-run
+
+          # Test warn-days validation (out of range, should fail)
+          ./cert-renewal-check.sh --domains /tmp/test-domains.txt --warn-days 999 && exit 1 || echo "✓ Warn-days bounds validation works"
+
+          # Test warn-days validation (negative, should fail)
+          ./cert-renewal-check.sh --domains /tmp/test-domains.txt --warn-days 0 && exit 1 || echo "✓ Warn-days minimum validation works"
+
+          # Test missing input (should fail gracefully)
+          ./cert-renewal-check.sh && exit 1 || echo "✓ Input validation works"
+
+          # Test JSON output format (dry-run)
+          ./cert-renewal-check.sh --domains /tmp/test-domains.txt --json --dry-run
+
+          echo "✓ cert-renewal-check.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -119,3 +146,4 @@ jobs:
           echo "   - Scan modes: OK"
           echo "   - nmap-scan.sh validation: OK"
           echo "   - service-health-check.sh validation: OK"
+          echo "   - cert-renewal-check.sh validation: OK"

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - v1.1.0 (In Progress)
+- **cert-renewal-check.sh** - SSL certificate expiry monitoring and renewal
+  - Check domain certificates via HTTPS connection
+  - Inspect local certificate files
+  - Configurable warning threshold (default: 30 days, range: 1-365)
+  - Table and JSON output formats
+  - Optional certbot auto-renewal integration
+  - Dry-run mode for testing
+  - Cross-platform (macOS/Linux)
+  - Secure logging in `./logs/cert/` (mode 700)
+  - Example config: `examples/domains.txt`
+
+### Fixed - v1.1.0 (In Progress)
+- **disk-cleanup.sh**: Fixed unbound variable error in manifest check for `--scan-venvs`
+  - Added default value check: `${#MANIFEST_OPERATIONS[@]:-0}`
+
 ## [1.0.1] - 2025-11-12
 
 ### Security

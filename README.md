@@ -296,6 +296,114 @@ IP Address       MAC Address        Vendor                         Open Ports
 
 ---
 
+### 4. `cert-renewal-check.sh`
+
+SSL certificate expiry monitoring and renewal tool. Checks domain certificates via HTTPS or inspects local certificate files.
+
+#### What it checks:
+
+- **Domain certificates** - Connects via HTTPS and inspects certificate expiry
+- **Local certificate files** - Reads and validates certificate files
+- **Expiry warnings** - Configurable threshold (default: 30 days)
+- **Auto-renewal** - Optional certbot integration for automatic renewal
+
+#### Usage:
+
+```bash
+# Check domains from file
+./cert-renewal-check.sh --domains examples/domains.txt
+
+# Check specific certificate file
+./cert-renewal-check.sh --cert /etc/ssl/certs/homelab.pem
+
+# Custom warning threshold (14 days)
+./cert-renewal-check.sh --domains domains.txt --warn-days 14
+
+# JSON output for monitoring integration
+./cert-renewal-check.sh --domains domains.txt --json
+
+# Auto-renew with certbot if expiring
+./cert-renewal-check.sh --domains domains.txt --auto-renew
+
+# Dry run (preview without checking)
+./cert-renewal-check.sh --domains domains.txt --dry-run
+
+# Show help
+./cert-renewal-check.sh --help
+```
+
+#### Features:
+
+- **Multiple check types** - Domain HTTPS or local certificate files
+- **Table and JSON output** - Human-readable or machine-parseable
+- **Configurable warnings** - Set expiry threshold in days (1-365)
+- **Optional auto-renewal** - Integrates with certbot for Let's Encrypt
+- **Color-coded status** - OK (green), WARNING (yellow), EXPIRED/ERROR (red)
+- **Secure logging** - All logs protected in `./logs/cert/` (mode 700)
+- **Dry run mode** - Preview checks without executing
+- **Cross-platform** - Works on macOS and Linux
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--domains <file>` | File with domains to check (one per line) |
+| `--cert <file>` | Check specific certificate file (repeatable) |
+| `--warn-days <n>` | Warn if expires within N days (default: 30, range: 1-365) |
+| `--auto-renew` | Attempt certbot renewal if expiring (requires sudo) |
+| `--json` | JSON output format |
+| `--dry-run` | Preview without executing checks |
+| `--help` | Show help message |
+
+#### Domains File Format:
+
+```text
+# One domain per line
+# Lines starting with # are comments
+
+github.com
+google.com
+homelab.local
+192.168.1.100
+```
+
+See `examples/domains.txt` for a complete example.
+
+#### Expected Results:
+
+**Table Output (default):**
+```
+Type       Name                      Status     Days Remaining  Details
+──────────────────────────────────────────────────────────────────────
+domain     github.com                OK         89              Expires: Mar 15 12:00:00 2026 GMT
+domain     homelab.local             WARNING    25              Expires: Dec 7 15:30:00 2025 GMT
+file       /etc/ssl/cert.pem         EXPIRED    -5              Expires: Nov 7 10:00:00 2025 GMT
+```
+
+**JSON Output (--json):**
+```json
+{
+  "timestamp": "2025-11-12T13:45:00+11:00",
+  "warn_days": 30,
+  "certificates": [
+    {
+      "type": "domain",
+      "name": "github.com",
+      "status": "OK",
+      "days_remaining": 89,
+      "message": "Expires: Mar 15 12:00:00 2026 GMT"
+    }
+  ]
+}
+```
+
+#### Dependencies:
+
+- **openssl** (required) - Certificate inspection
+- **certbot** (optional) - For `--auto-renew` functionality
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites
