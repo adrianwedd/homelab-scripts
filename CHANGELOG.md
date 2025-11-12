@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-11-12
+
+### Security
+
+**Critical Fixes:**
+- **Temp file race conditions** - Replaced all predictable `/tmp/` files with `mktemp` (CVSS 7.1)
+  - Fixed: `docker_cleanup.log`, `brew_cleanup.log`, `pnpm_cleanup.log`, `pip_cleanup.log`
+  - Fixed: `dockerd.out` with secure temp file generation
+  - Impact: Prevents symlink attacks and file overwrite vulnerabilities
+- **Path traversal protection** - Added validation for `--venv-roots` parameter (CVSS 7.5)
+  - Multiple fallbacks for path canonicalization: `realpath`, `readlink -f`, `python3`
+  - Rejects paths with traversal sequences (`/../`, `/..`) if no canonicalization available
+  - Validates paths are under `$HOME` after canonicalization
+  - Prevents system directory access (`/usr`, `/etc`, `/var`, `/bin`, `/sbin`)
+  - Impact: Prevents unauthorized file deletion outside intended directories
+
+**Medium Fixes:**
+- **Bounds checking** - Added validation ranges for numeric parameters (CVSS 5.3)
+  - `--gc-threshold`: 0.1 to 1000 GB
+  - `--venv-age`: 1 to 3650 days
+  - `--venv-min-gb`: 0.01 to 100 GB
+  - Impact: Prevents DoS through resource exhaustion
+- **Secure log permissions** - Implemented secure log file creation (CVSS 4.4)
+  - Set `umask 077` for log files (owner read/write only)
+  - Log directory permissions: `700`
+  - New log files: `-rw-------` (600)
+  - Impact: Prevents information disclosure
+- **Explicit sudo warnings** - Added warnings before privilege escalation (CVSS 6.7)
+  - User informed before Docker daemon operations
+  - Clear listing of operations requiring sudo
+  - Interactive confirmation in non-dry-run mode
+  - Impact: Prevents silent privilege escalation
+
+### Changed
+- Improved error messages for security validation failures
+- Enhanced input validation with detailed bounds information
+
 ## [1.0.0] - 2025-11-12
 
 ### Added

@@ -35,7 +35,14 @@ DRY_RUN=false
 INTERACTIVE=true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
+
+# Security: Set secure umask for log files (owner read/write only)
+umask 077
+
+# Create logs directory with secure permissions
 mkdir -p "$LOG_DIR" 2>/dev/null || true
+chmod 700 "$LOG_DIR" 2>/dev/null || true
+
 LOG_FILE="$LOG_DIR/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
 VERBOSE=false  # Reserved for future verbose output feature
 SKIP_GIT_GC=false
@@ -616,12 +623,16 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --gc-threshold)
-            if echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-                GC_THRESHOLD_GB="$2"
-            else
+            if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
                 print_error "Invalid threshold: $2 (must be a number)"
                 exit 1
             fi
+            # Bounds check: reasonable range 0.1GB to 1000GB
+            if awk "BEGIN {exit !($2 < 0.1 || $2 > 1000)}"; then
+                print_error "Invalid threshold: $2 (must be between 0.1 and 1000 GB)"
+                exit 1
+            fi
+            GC_THRESHOLD_GB="$2"
             shift 2
             ;;
         --no-fun)
@@ -660,24 +671,66 @@ while [[ $# -gt 0 ]]; do
         --venv-roots)
             # Support colon-separated list to safely include paths with spaces
             IFS=':' read -r -a VENV_ROOTS <<< "$2"
+            # Validate all paths for security
+            for root in "${VENV_ROOTS[@]}"; do
+                # Resolve to absolute path with multiple fallbacks
+                abs_root=""
+                if command -v realpath >/dev/null 2>&1; then
+                    abs_root=$(realpath "$root" 2>/dev/null || echo "")
+                elif command -v readlink >/dev/null 2>&1; then
+                    abs_root=$(readlink -f "$root" 2>/dev/null || echo "")
+                elif command -v python3 >/dev/null 2>&1; then
+                    abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$root" 2>/dev/null || echo "")
+                fi
+
+                # If no canonicalization tool available, reject paths with traversal sequences
+                if [ -z "$abs_root" ]; then
+                    if [[ "$root" == *"/../"* ]] || [[ "$root" == *"/.."* ]] || [[ "$root" == *"/./"* ]]; then
+                        print_error "Security: Path contains traversal sequences and cannot be validated: $root"
+                        print_info "Install realpath, readlink, or python3 for path canonicalization"
+                        exit 1
+                    fi
+                    abs_root="$root"
+                fi
+
+                # Security: Ensure path is under $HOME
+                if [[ ! "$abs_root" == "$HOME"* ]]; then
+                    print_error "Security: venv-roots must be under \$HOME: $root (resolved to: $abs_root)"
+                    exit 1
+                fi
+
+                # Security: Prevent system directories
+                if [[ "$abs_root" == "/usr"* ]] || [[ "$abs_root" == "/etc"* ]] || [[ "$abs_root" == "/var"* ]] || [[ "$abs_root" == "/bin"* ]] || [[ "$abs_root" == "/sbin"* ]]; then
+                    print_error "Security: Cannot scan system directories: $root (resolved to: $abs_root)"
+                    exit 1
+                fi
+            done
             shift 2
             ;;
         --venv-age)
-            if echo "$2" | grep -Eq '^[0-9]+$'; then
-                VENV_MIN_AGE_DAYS="$2"
-            else
+            if ! echo "$2" | grep -Eq '^[0-9]+$'; then
                 print_error "Invalid age: $2 (must be a positive integer)"
                 exit 1
             fi
+            # Bounds check: 1 day to 3650 days (10 years)
+            if [ "$2" -lt 1 ] || [ "$2" -gt 3650 ]; then
+                print_error "Invalid age: $2 (must be between 1 and 3650 days)"
+                exit 1
+            fi
+            VENV_MIN_AGE_DAYS="$2"
             shift 2
             ;;
         --venv-min-gb)
-            if echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-                VENV_MIN_GB="$2"
-            else
+            if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
                 print_error "Invalid venv size: $2 (must be a number)"
                 exit 1
             fi
+            # Bounds check: 0.01GB (10MB) to 100GB
+            if awk "BEGIN {exit !($2 < 0.01 || $2 > 100)}"; then
+                print_error "Invalid venv size: $2 (must be between 0.01 and 100 GB)"
+                exit 1
+            fi
+            VENV_MIN_GB="$2"
             shift 2
             ;;
         --rollback)
@@ -790,15 +843,43 @@ elif command -v docker &> /dev/null; then
                 fi
             else
                 # Linux - try systemd/service, fallback to spawning dockerd
-                started=0
-                if command -v systemctl &> /dev/null; then
-                    sudo systemctl start docker 2>/dev/null && started=1 || true
-                elif command -v service &> /dev/null; then
-                    sudo service docker start 2>/dev/null && started=1 || true
-                fi
-                if [ "$started" -eq 0 ] && command -v dockerd &> /dev/null; then
-                    sudo sh -c 'nohup dockerd >/tmp/dockerd.out 2>&1 &'
-                    sleep 3
+                # Security: Warn user about sudo usage
+                print_warning "Docker startup requires elevated privileges"
+                print_info "Operations that will use sudo:"
+                print_info "  - systemctl start docker (or service docker start)"
+                print_info "  - docker system prune (if needed)"
+
+                if [ "$DRY_RUN" = false ] && [ "$INTERACTIVE" = true ]; then
+                    if ! confirm_action "Grant sudo privileges for Docker operations?"; then
+                        print_info "Skipping Docker cleanup"
+                        started=0
+                    else
+                        started=0
+                        if command -v systemctl &> /dev/null; then
+                            sudo systemctl start docker 2>/dev/null && started=1 || true
+                        elif command -v service &> /dev/null; then
+                            sudo service docker start 2>/dev/null && started=1 || true
+                        fi
+                        if [ "$started" -eq 0 ] && command -v dockerd &> /dev/null; then
+                            dockerd_log=$(mktemp /tmp/dockerd.XXXXXX.out)
+                            sudo sh -c "nohup dockerd >\"$dockerd_log\" 2>&1 &"
+                            sleep 3
+                            # Note: dockerd_log cleanup handled by EXIT trap
+                        fi
+                    fi
+                else
+                    started=0
+                    if command -v systemctl &> /dev/null; then
+                        sudo systemctl start docker 2>/dev/null && started=1 || true
+                    elif command -v service &> /dev/null; then
+                        sudo service docker start 2>/dev/null && started=1 || true
+                    fi
+                    if [ "$started" -eq 0 ] && command -v dockerd &> /dev/null; then
+                        dockerd_log=$(mktemp /tmp/dockerd.XXXXXX.out)
+                        sudo sh -c "nohup dockerd >\"$dockerd_log\" 2>&1 &"
+                        sleep 3
+                        # Note: dockerd_log cleanup handled by EXIT trap
+                    fi
                 fi
 
                 print_info "Waiting for Docker daemon to start (up to ${DOCKER_WAIT_SECS}s)..."
@@ -830,10 +911,11 @@ elif command -v docker &> /dev/null; then
             docker system df 2>&1 | tee -a "$LOG_FILE"
         else
             print_info "Running Docker system prune..."
-            docker system prune -af --volumes 2>&1 | tee -a "$LOG_FILE" | tee /tmp/docker_cleanup.log
+            docker_log=$(mktemp /tmp/docker_cleanup.XXXXXX.log)
+            docker system prune -af --volumes 2>&1 | tee -a "$LOG_FILE" | tee "$docker_log"
 
-            if grep -q "Total reclaimed space" /tmp/docker_cleanup.log; then
-                space=$(grep "Total reclaimed space" /tmp/docker_cleanup.log | awk '{print $(NF-1), $NF}')
+            if grep -q "Total reclaimed space" "$docker_log"; then
+                space=$(grep "Total reclaimed space" "$docker_log" | awk '{print $(NF-1), $NF}')
                 space_bytes=$(size_to_bytes "$space")
                 TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + space_bytes))
                 print_success "Docker cleanup completed. Space freed: $space"
@@ -843,7 +925,7 @@ elif command -v docker &> /dev/null; then
                 print_success "Docker cleanup completed"
                 add_to_manifest "docker_prune" "Docker system prune" "false" "No space freed"
             fi
-            rm -f /tmp/docker_cleanup.log
+            rm -f "$docker_log"
         fi
     else
         print_info "Skipping Docker cleanup"
@@ -1014,16 +1096,17 @@ if command -v brew &> /dev/null; then
             print_info "[DRY RUN] Would run: brew cleanup --prune=all -s"
         else
             print_info "Running brew cleanup..."
-            brew cleanup --prune=all -s 2>&1 | tee -a "$LOG_FILE" | tee /tmp/brew_cleanup.log
+            brew_log=$(mktemp /tmp/brew_cleanup.XXXXXX.log)
+            brew cleanup --prune=all -s 2>&1 | tee -a "$LOG_FILE" | tee "$brew_log"
 
             # Try to extract space freed
-            if grep -qE "Pruned|freed|removed" /tmp/brew_cleanup.log; then
-                space_line=$(grep -E "Pruned|freed|removed" /tmp/brew_cleanup.log | tail -1)
+            if grep -qE "Pruned|freed|removed" "$brew_log"; then
+                space_line=$(grep -E "Pruned|freed|removed" "$brew_log" | tail -1)
                 print_success "Homebrew cleanup completed: $space_line"
             else
                 print_success "Homebrew cleanup completed"
             fi
-            rm -f /tmp/brew_cleanup.log
+            rm -f "$brew_log"
         fi
     else
         print_info "Skipping Homebrew cleanup"
@@ -1113,15 +1196,16 @@ if command -v pnpm &> /dev/null; then
             print_info "[DRY RUN] Would run: pnpm store prune"
         else
             print_info "Running pnpm store prune..."
-            pnpm store prune 2>&1 | tee -a "$LOG_FILE" | tee /tmp/pnpm_cleanup.log
+            pnpm_log=$(mktemp /tmp/pnpm_cleanup.XXXXXX.log)
+            pnpm store prune 2>&1 | tee -a "$LOG_FILE" | tee "$pnpm_log"
 
-            if grep -q "removed" /tmp/pnpm_cleanup.log; then
-                packages=$(grep "removed" /tmp/pnpm_cleanup.log | head -1)
+            if grep -q "removed" "$pnpm_log"; then
+                packages=$(grep "removed" "$pnpm_log" | head -1)
                 print_success "pnpm store pruned: $packages"
             else
                 print_success "pnpm store pruned"
             fi
-            rm -f /tmp/pnpm_cleanup.log
+            rm -f "$pnpm_log"
         fi
     else
         print_info "Skipping pnpm cleanup"
@@ -1152,18 +1236,19 @@ if command -v pip &> /dev/null || command -v pip3 &> /dev/null; then
                 print_info "[DRY RUN] Would run: $PIP_CMD cache purge"
             else
                 print_info "Running pip cache purge..."
-                $PIP_CMD cache purge 2>&1 | tee -a "$LOG_FILE" | tee /tmp/pip_cleanup.log
+                pip_log=$(mktemp /tmp/pip_cleanup.XXXXXX.log)
+                $PIP_CMD cache purge 2>&1 | tee -a "$LOG_FILE" | tee "$pip_log"
 
                 size_after=$(get_dir_size_bytes "$cache_dir")
                 freed=$(track_freed_space "$size_before" "$size_after")
 
-                if grep -q "Files removed" /tmp/pip_cleanup.log; then
-                    files=$(grep "Files removed" /tmp/pip_cleanup.log)
+                if grep -q "Files removed" "$pip_log"; then
+                    files=$(grep "Files removed" "$pip_log")
                     print_success "pip cache purged: $files ($(bytes_to_human $freed) freed)"
                 else
                     print_success "pip cache purged: $(bytes_to_human $freed) freed"
                 fi
-                rm -f /tmp/pip_cleanup.log
+                rm -f "$pip_log"
             fi
         else
             print_info "Skipping pip cleanup"
