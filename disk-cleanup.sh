@@ -1353,7 +1353,7 @@ else
     print_success "Total space freed: $total_freed_human"
 
     # Create manifest for non-dry-run cleanups
-    if [ "${#MANIFEST_OPERATIONS[@]}" -gt 0 ]; then
+    if [ "${#MANIFEST_OPERATIONS[@]:-0}" -gt 0 ]; then
         create_manifest
         echo "" | tee -a "$LOG_FILE"
         print_info "💾 Manifest created for reference"
