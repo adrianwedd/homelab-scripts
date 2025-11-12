@@ -443,9 +443,10 @@ parse_nmap_xml() {
         mac = arr[1]
         match($0, /vendor="([^"]+)"/, arr)
         vendor = arr[1]
-        # Escape quotes and backslashes in vendor name for JSON safety
-        gsub(/\\/, "\\\\", vendor)
-        gsub(/"/, "\\\"", vendor)
+        # Sanitize vendor name for JSON safety
+        gsub(/\\/, "\\\\", vendor)             # Escape backslashes
+        gsub(/"/, "\\\"", vendor)              # Escape quotes
+        gsub(/[\x00-\x1F\x7F]/, "", vendor)    # Remove control characters
     }
     /<status state="([^"]+)"/ {
         match($0, /state="([^"]+)"/, arr)

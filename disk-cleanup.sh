@@ -22,6 +22,21 @@
 # Exit on undefined variables, but NOT on errors (we want to continue cleanup)
 set -euo pipefail
 
+# Check Bash version for virtualenv deduplication (requires 4.0+)
+check_bash_version_for_venv() {
+    if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+        echo "Error: Bash 4.0+ required for --scan-venvs and --clean-venvs"
+        echo "Current version: ${BASH_VERSION}"
+        echo ""
+        echo "Install Bash 4.0+ with:"
+        echo "  macOS:  brew install bash"
+        echo "  Linux:  sudo apt install bash (usually already 4.0+)"
+        echo ""
+        echo "Or run without virtualenv flags (all other features work with Bash 3.2+)"
+        exit 1
+    fi
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -730,10 +745,12 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --scan-venvs)
+            check_bash_version_for_venv
             FLAG_SCAN_VENVS=true
             shift
             ;;
         --clean-venvs)
+            check_bash_version_for_venv
             FLAG_CLEAN_VENVS=true
             shift
             ;;

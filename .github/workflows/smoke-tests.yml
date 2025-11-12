@@ -91,6 +91,24 @@ jobs:
             ./nmap-scan.sh --cidr "192.168.1.0/24" && exit 1 || echo "✓ Graceful failure when nmap missing"
           fi
 
+      - name: service-health-check.sh tests
+        run: |
+          echo "Testing service-health-check.sh (graceful config handling)..."
+
+          # Test help (should always work)
+          ./service-health-check.sh --help
+
+          # Test dry-run with example config
+          ./service-health-check.sh --dry-run --config examples/services.conf
+
+          # Test --once mode with example config
+          ./service-health-check.sh --once --config examples/services.conf || echo "✓ Expected failure without actual services"
+
+          # Test invalid config path (should fail gracefully)
+          ./service-health-check.sh --config /nonexistent/config.conf && exit 1 || echo "✓ Config validation works"
+
+          echo "✓ service-health-check.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -100,3 +118,4 @@ jobs:
           echo "   - Dry run modes: OK"
           echo "   - Scan modes: OK"
           echo "   - nmap-scan.sh validation: OK"
+          echo "   - service-health-check.sh validation: OK"

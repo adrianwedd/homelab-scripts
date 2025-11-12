@@ -302,7 +302,13 @@ IP Address       MAC Address        Vendor                         Open Ports
 
 #### For `disk-cleanup.sh`:
 
-No special setup required. The script will skip any tools that aren't installed.
+**Bash Version:**
+- Bash 3.2+ for basic cleanup (VS Code, Docker, Git, Homebrew, NPM, pip, etc.)
+- **Bash 4.0+ required** for virtualenv management (`--scan-venvs`, `--clean-venvs`)
+  - macOS: `brew install bash` (default is Bash 3.2)
+  - Linux: Usually 4.0+ by default
+
+No other special setup required. The script will skip any tools that aren't installed.
 
 #### For `nmap-scan.sh`:
 
