@@ -748,6 +748,104 @@ $ ./compose-redeploy.sh --backup-volumes
 
 ---
 
+### 8. `docker-volume-backup.sh`
+
+Consistent Docker volume snapshots with compression and optional container management.
+
+#### What it does:
+
+- **Volume backup** - Backup individual or all Docker volumes
+- **Container management** - Optional stop/restart for consistency
+- **Compression** - Automatic tar.gz compression
+- **Helper container approach** - No local volume mount required
+- **JSON output** - Machine-readable backup metadata
+
+#### Usage:
+
+```bash
+# Backup single volume
+./docker-volume-backup.sh --volume postgres_data
+
+# Backup all volumes
+./docker-volume-backup.sh --all
+
+# Backup with container stop for consistency
+./docker-volume-backup.sh --all --stop
+
+# Custom output directory
+./docker-volume-backup.sh --volume app_data --out ~/backups
+
+# Dry run to preview
+./docker-volume-backup.sh --all --dry-run
+
+# Show help
+./docker-volume-backup.sh --help
+```
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--volume <name>` | Backup specific volume |
+| `--all` | Backup all Docker volumes |
+| `--out <dir>` | Output directory (default: ./backups/volumes) |
+| `--stop` | Stop dependent containers during backup |
+| `--no-stop` | Backup while containers running (default) |
+| `--dry-run` | Show backup plan without executing |
+| `--json` | JSON summary output |
+| `--help` | Show help message |
+
+#### Features:
+
+- **Flexible backup** - Single volume or all volumes
+- **Consistency options** - Stop containers for consistent backups
+- **Compression** - Automatic gzip compression
+- **Helper container** - Uses Alpine container to avoid local mounts
+- **Auto-restart** - Restarts stopped containers after backup
+- **Progress tracking** - Real-time status updates
+- **Secure storage** - Backups chmod 600, logs chmod 700
+
+#### Dependencies:
+
+- **docker** - Docker Engine (`docker --version`)
+
+#### Example Output:
+
+```bash
+$ ./docker-volume-backup.sh --volume postgres_data --stop
+
+━━━ Docker Volume Backup ━━━
+
+ℹ Mode: Backup single volume: postgres_data
+ℹ Output directory: ./backups/volumes
+ℹ Container stop: enabled
+ℹ Log file: ./logs/volume-backup/volume_backup_20251113_120000.log
+
+━━━ Pre-flight Checks ━━━
+
+✓ Docker installed
+✓ Docker daemon running
+✓ Volume exists: postgres_data
+✓ Pre-flight checks passed
+
+━━━ Backing Up: postgres_data ━━━
+
+ℹ Volume used by containers: app_db
+ℹ Stopping containers for consistency...
+✓ Stopped: app_db
+ℹ Creating backup: ./backups/volumes/postgres_data_20251113_120000.tar.gz
+✓ Backup created: ./backups/volumes/postgres_data_20251113_120000.tar.gz (245MB)
+ℹ Restarting containers...
+✓ Restarted: app_db
+
+━━━ Backup Summary ━━━
+
+✓ Backed up 1 volume(s)
+ℹ Total backup size: 245MB
+```
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites

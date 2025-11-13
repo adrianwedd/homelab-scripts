@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dry-run mode for preview
   - Example: `examples/compose-redeploy-example.sh` and `examples/test-app-compose.yml`
 
+- **docker-volume-backup.sh** - Consistent Docker volume snapshots
+  - Backup individual volumes or all volumes
+  - Optional container stop/restart for consistency
+  - Tar.gz compression via helper container
+  - Automatic container restart after backup
+  - Container dependency detection (which containers use which volumes)
+  - Detailed logging in `./logs/volume-backup/` (mode 700)
+  - JSON summary output with backup sizes
+  - Dry-run mode for preview
+  - Example: `examples/docker-volume-backup-example.sh`
+
 ## [1.1.1] - 2025-11-13
 
 ### Security

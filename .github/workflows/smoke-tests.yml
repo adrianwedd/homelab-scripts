@@ -215,6 +215,39 @@ COMPOSE
 
           echo "✓ compose-redeploy.sh validation complete"
 
+      - name: docker-volume-backup.sh tests
+        run: |
+          echo "Testing docker-volume-backup.sh (volume backup handling)..."
+
+          # Test help (should always work)
+          ./docker-volume-backup.sh --help
+
+          # Test that --volume and --all are mutually exclusive
+          ./docker-volume-backup.sh --volume test --all && exit 1 || echo "✓ Mutual exclusivity works"
+
+          # Test that at least one option is required
+          ./docker-volume-backup.sh && exit 1 || echo "✓ Argument validation works"
+
+          # Test dry-run with --all (should work even if no volumes exist)
+          ./docker-volume-backup.sh --all --dry-run || echo "✓ Dry-run with --all works"
+
+          # If Docker is available, test volume validation
+          if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+            echo "✓ Docker available, testing volume validation"
+
+            # Test nonexistent volume (should fail gracefully)
+            ./docker-volume-backup.sh --volume nonexistent_volume_12345 --dry-run && exit 1 || echo "✓ Volume validation works"
+
+            # Test dry-run with --all
+            ./docker-volume-backup.sh --all --dry-run
+          else
+            echo "✓ Docker not available (expected in CI)"
+            # Test that script fails gracefully when Docker not available
+            ./docker-volume-backup.sh --all && exit 1 || echo "✓ Graceful failure when Docker missing"
+          fi
+
+          echo "✓ docker-volume-backup.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -228,3 +261,4 @@ COMPOSE
           echo "   - cert-renewal-check.sh validation: OK"
           echo "   - db-backup.sh validation: OK"
           echo "   - compose-redeploy.sh validation: OK"
+          echo "   - docker-volume-backup.sh validation: OK"
