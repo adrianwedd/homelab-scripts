@@ -16,7 +16,7 @@
 ################################################################################
 
 # Exit on undefined variables, but NOT on all errors (allows cleanup)
-set -euo pipefail
+set -u
 
 # Colors for output
 RED='\033[0;31m'

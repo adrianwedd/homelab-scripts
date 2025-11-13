@@ -12,6 +12,7 @@ BACKUP_DIR="${SCRIPT_DIR}/backups/compose-volumes"
 # Defaults
 COMPOSE_FILE="docker-compose.yml"
 BACKUP_VOLUMES=false
+BACKUP_IMAGE="alpine:latest"
 HEALTH_TIMEOUT=60
 NO_PULL=false
 DRY_RUN=false
@@ -71,6 +72,7 @@ USAGE:
 OPTIONS:
     --file <yaml>         Docker Compose file (default: docker-compose.yml)
     --backup-volumes      Backup volumes before update
+    --backup-image <img>  Image for volume backups (default: alpine:latest)
     --health-timeout <s>  Wait N seconds for health checks (default: 60)
     --no-pull             Skip image pull (use existing images)
     --dry-run             Show deployment plan without executing
@@ -118,6 +120,10 @@ while [[ $# -gt 0 ]]; do
 	--backup-volumes)
 		BACKUP_VOLUMES=true
 		shift
+		;;
+	--backup-image)
+		BACKUP_IMAGE="$2"
+		shift 2
 		;;
 	--health-timeout)
 		HEALTH_TIMEOUT="$2"
@@ -249,14 +255,14 @@ print_success "Pre-flight checks passed"
 if [ "$BACKUP_VOLUMES" = true ]; then
 	print_section "Backing Up Volumes"
 
-	# Ensure alpine image is available for backups
-	if ! docker image inspect alpine:latest >/dev/null 2>&1; then
-		print_info "Pulling alpine:latest for backup operations..."
-		if ! docker pull alpine:latest >>"$LOG_FILE" 2>&1; then
-			print_error "Failed to pull alpine:latest image (required for backups)"
+	# Ensure backup image is available for backups
+	if ! docker image inspect "$BACKUP_IMAGE" >/dev/null 2>&1; then
+		print_info "Pulling $BACKUP_IMAGE for backup operations..."
+		if ! docker pull "$BACKUP_IMAGE" >>"$LOG_FILE" 2>&1; then
+			print_error "Failed to pull $BACKUP_IMAGE image (required for backups)"
 			exit 1
 		fi
-		print_success "alpine:latest pulled"
+		print_success "$BACKUP_IMAGE pulled"
 	fi
 
 	# Get list of volumes
@@ -273,7 +279,7 @@ if [ "$BACKUP_VOLUMES" = true ]; then
 			if docker run --rm \
 				-v "${PROJECT_NAME}_${volume}:/data:ro" \
 				-v "$BACKUP_DIR:/backup" \
-				alpine tar czf "/backup/$(basename "$backup_file")" /data 2>>"$LOG_FILE"; then
+				"$BACKUP_IMAGE" tar czf "/backup/$(basename "$backup_file")" /data 2>>"$LOG_FILE"; then
 				chmod 600 "$backup_file"
 				print_success "Volume backed up: $backup_file"
 				BACKED_UP_VOLUMES+=("$volume:$backup_file")

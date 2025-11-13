@@ -7,7 +7,7 @@
 # Usage: ./update-all.sh [--dry-run] [-y|--yes]
 ################################################################################
 
-set -euo pipefail
+set -u
 
 # Parse arguments
 DRY_RUN=0

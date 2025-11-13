@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
 # service-health-check.sh - Config-driven uptime monitoring
 # Version: 1.1.0

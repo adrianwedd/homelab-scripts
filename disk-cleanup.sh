@@ -20,7 +20,7 @@
 ################################################################################
 
 # Exit on undefined variables, but NOT on errors (we want to continue cleanup)
-set -euo pipefail
+set -u
 
 # Check Bash version for virtualenv deduplication (requires 4.0+)
 check_bash_version_for_venv() {
