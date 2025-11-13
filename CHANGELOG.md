@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dry-run mode for preview
   - Example: `examples/docker-volume-backup-example.sh`
 
+- **dyndns-update.sh** - Dynamic DNS updates for homelabs
+  - Cloudflare DNS API integration
+  - Public IP detection with fallback sources (ifconfig.me, icanhazip.com, ipinfo.io, ipify.org)
+  - IP caching to avoid unnecessary API calls
+  - Rate limiting (max 1 update per 5 minutes)
+  - Configurable TTL (default: 300s, range: 60-86400s)
+  - Secure token handling via environment variables
+  - Automatic DNS record creation if not exists
+  - Support for apex (@) and subdomain records
+  - Detailed logging in `./logs/dyndns/` (mode 700)
+  - JSON summary output
+  - Dry-run mode for preview
+  - Example: `examples/dyndns-update-example.sh`
+
 ## [1.1.1] - 2025-11-13
 
 ### Security

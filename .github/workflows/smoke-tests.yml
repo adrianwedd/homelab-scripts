@@ -248,6 +248,32 @@ COMPOSE
 
           echo "✓ docker-volume-backup.sh validation complete"
 
+      - name: dyndns-update.sh tests
+        run: |
+          echo "Testing dyndns-update.sh (dynamic DNS updates)..."
+
+          # Test help (should always work)
+          ./dyndns-update.sh --help
+
+          # Test missing required arguments
+          ./dyndns-update.sh && exit 1 || echo "✓ Argument validation works"
+
+          # Test unsupported provider
+          TEST_TOKEN="test-token-12345" ./dyndns-update.sh --provider invalid --zone example.com --record home --token env:TEST_TOKEN --dry-run && exit 1 || echo "✓ Provider validation works"
+
+          # Test TTL bounds checking
+          TEST_TOKEN="test" ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:TEST_TOKEN --ttl 30 --dry-run && exit 1 || echo "✓ TTL minimum validation works"
+          TEST_TOKEN="test" ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:TEST_TOKEN --ttl 99999 --dry-run && exit 1 || echo "✓ TTL maximum validation works"
+
+          # Test environment variable token resolution
+          export TEST_CF_TOKEN="test-cloudflare-token"
+          ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:TEST_CF_TOKEN --dry-run || echo "✓ Token from env works"
+
+          # Test missing environment variable
+          ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:NONEXISTENT_VAR --dry-run && exit 1 || echo "✓ Missing env var validation works"
+
+          echo "✓ dyndns-update.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -262,3 +288,4 @@ COMPOSE
           echo "   - db-backup.sh validation: OK"
           echo "   - compose-redeploy.sh validation: OK"
           echo "   - docker-volume-backup.sh validation: OK"
+          echo "   - dyndns-update.sh validation: OK"

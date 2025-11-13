@@ -846,6 +846,124 @@ $ ./docker-volume-backup.sh --volume postgres_data --stop
 
 ---
 
+### 9. `dyndns-update.sh`
+
+Dynamic DNS updates for homelabs with changing public IPs. Keeps your DNS records synchronized with your current IP address.
+
+#### What it does:
+
+- **Public IP detection** - Detects current public IP from multiple sources
+- **DNS updates** - Updates DNS records via Cloudflare API
+- **IP caching** - Avoids unnecessary updates when IP unchanged
+- **Rate limiting** - Prevents excessive API calls (max 1 per 5 minutes)
+- **JSON output** - Machine-readable update status
+
+#### Usage:
+
+```bash
+# Basic Cloudflare update
+export CF_TOKEN="your-cloudflare-api-token"
+./dyndns-update.sh --provider cloudflare --zone example.com \
+    --record home --token env:CF_TOKEN
+
+# Update with custom TTL
+./dyndns-update.sh --provider cloudflare --zone example.com \
+    --record home --token env:CF_TOKEN --ttl 600
+
+# Force update (bypass cache/rate limit)
+./dyndns-update.sh --provider cloudflare --zone example.com \
+    --record home --token env:CF_TOKEN --force
+
+# Dry run to preview
+./dyndns-update.sh --provider cloudflare --zone example.com \
+    --record home --token env:CF_TOKEN --dry-run
+
+# Show help
+./dyndns-update.sh --help
+```
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--provider <name>` | DNS provider (currently: cloudflare) |
+| `--zone <domain>` | DNS zone (e.g., example.com) |
+| `--record <name>` | Record name (e.g., home or @) |
+| `--ttl <seconds>` | DNS TTL (default: 300, range: 60-86400) |
+| `--token <val>` | API token or env:VAR_NAME |
+| `--force` | Force update even if IP unchanged |
+| `--dry-run` | Show update plan without executing |
+| `--json` | JSON summary output |
+| `--help` | Show help message |
+
+#### Features:
+
+- **Multi-source IP detection** - Tries multiple services (ifconfig.me, icanhazip.com, etc.)
+- **Smart caching** - Only updates when IP actually changes
+- **Rate limiting** - Prevents API abuse (5-minute minimum between updates)
+- **Secure token handling** - Supports environment variables, never logged
+- **TTL configuration** - Customizable DNS TTL (60s - 24h)
+- **Detailed logging** - All operations logged with timestamps
+- **JSON output** - Integration-friendly output format
+
+#### Dependencies:
+
+- **curl** - HTTP client (usually pre-installed)
+- **jq** - JSON processor (`brew install jq` / `apt install jq`)
+
+#### Example Output:
+
+```bash
+$ export CF_TOKEN="your-token"
+$ ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:CF_TOKEN
+
+━━━ Dynamic DNS Update ━━━
+
+ℹ Provider: cloudflare
+ℹ Zone: example.com
+ℹ Record: home
+ℹ TTL: 300s
+ℹ Log file: ./logs/dyndns/dyndns_20251113_120000.log
+ℹ Token loaded from environment variable
+
+━━━ Pre-flight Checks ━━━
+
+✓ curl installed
+✓ jq installed
+✓ Pre-flight checks passed
+
+━━━ Detecting Public IP ━━━
+
+ℹ Trying: https://ifconfig.me/ip
+✓ Detected IP: 203.45.67.89
+
+━━━ Updating DNS Record ━━━
+
+ℹ Looking up zone ID for: example.com
+✓ Zone ID: abc123def456
+ℹ Looking up DNS record: home.example.com
+ℹ Updating existing record: xyz789abc123
+✓ DNS record updated: home.example.com -> 203.45.67.89
+
+━━━ Update Complete ━━━
+
+✓ DNS record updated successfully
+ℹ Record: home.example.com
+ℹ IP: 203.45.67.89
+ℹ TTL: 300s
+```
+
+#### Cron Setup:
+
+For automatic updates every 15 minutes:
+
+```bash
+# Add to crontab (crontab -e)
+*/15 * * * * export CF_TOKEN="your-token" && /path/to/dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:CF_TOKEN >> /var/log/dyndns.log 2>&1
+```
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites
