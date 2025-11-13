@@ -497,6 +497,152 @@ MySQL:       mysql://username:password@host:port/database
 
 ---
 
+### 6. `service-health-check.sh`
+
+Config-driven service uptime monitoring with support for HTTP, TCP, process, and container checks.
+
+#### What it monitors:
+
+- **HTTP endpoints** - Status code and optional body content validation
+- **TCP ports** - Connection checks for network services
+- **Processes** - Check if system processes are running
+- **Docker containers** - Verify container status
+
+#### Usage:
+
+```bash
+# Run once with JSON output
+./service-health-check.sh --config services.conf --once --json
+
+# Watch mode with continuous monitoring
+./service-health-check.sh --config services.conf --watch --interval 60
+
+# Watch mode with webhook notifications
+./service-health-check.sh --config services.conf --watch \
+    --notify webhook:http://alerts.local/webhook
+
+# Dry run to validate config
+./service-health-check.sh --config services.conf --dry-run
+
+# Show help
+./service-health-check.sh --help
+```
+
+#### Configuration Format:
+
+INI-style configuration file with service definitions:
+
+```ini
+# HTTP health check
+[api-server]
+type=http
+url=https://api.example.com/health
+expect_status=200
+expect_body=OK
+timeout=5
+
+# TCP port check
+[database]
+type=tcp
+host=db.local
+port=5432
+timeout=3
+
+# Process check
+[nginx]
+type=process
+name=nginx
+
+# Docker container check
+[redis]
+type=container
+name=redis
+```
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--config <file>` | Config file with service definitions (required) |
+| `--once` | Run checks once and exit (default) |
+| `--watch` | Continuous monitoring mode |
+| `--interval <secs>` | Check interval in watch mode (default: 60) |
+| `--notify <method>` | Notification method: `webhook:URL` |
+| `--json` | JSON output format |
+| `--dry-run` | Show what would be checked without running |
+| `--help` | Show help message |
+
+#### Check Types:
+
+| Type | Parameters | Description |
+|------|------------|-------------|
+| `http` | `url`, `expect_status`, `expect_body`, `timeout` | HTTP/HTTPS endpoint checks |
+| `tcp` | `host`, `port`, `timeout` | TCP port connectivity checks |
+| `process` | `name` | Process running status via `pgrep` |
+| `container` | `name` | Docker container status |
+
+#### Features:
+
+- **Multiple check types** - HTTP, TCP, process, and container monitoring
+- **Watch mode** - Continuous monitoring with configurable intervals
+- **State tracking** - Detect and notify only on state changes
+- **Webhook notifications** - Send JSON alerts on status changes
+- **JSON output** - Machine-readable format for integration
+- **Dry run mode** - Validate configuration without running checks
+- **Graceful degradation** - Skip unavailable check types (e.g., Docker)
+- **Secure logging** - All logs under `./logs/` with permissions 700
+
+#### Example Output:
+
+```bash
+$ ./service-health-check.sh --config examples/services.conf --once
+
+=== Service Health Check ===
+
+✓ google (http): HTTP 200
+✓ github (http): HTTP 200
+✓ ssh-local (tcp): TCP port 22 open
+✓ sshd-process (process): Process running (1 instances)
+⊘ nginx-container (container): Docker not installed
+```
+
+#### JSON Output Format:
+
+```json
+{
+  "version": "1.0",
+  "timestamp": "2025-11-13T10:30:00Z",
+  "checks": [
+    {"name": "api-server", "type": "http", "status": "pass", "message": "HTTP 200"},
+    {"name": "database", "type": "tcp", "status": "pass", "message": "TCP port 5432 open"},
+    {"name": "nginx", "type": "process", "status": "fail", "message": "Process not found"}
+  ]
+}
+```
+
+#### Notification Format:
+
+Webhook notifications send JSON payloads on state changes:
+
+```json
+{
+  "service": "api-server",
+  "type": "http",
+  "status": "fail",
+  "message": "HTTP status 500 (expected 200)",
+  "timestamp": "2025-11-13T10:30:15Z"
+}
+```
+
+#### Dependencies:
+
+- **curl** (HTTP checks) - Usually pre-installed
+- **timeout** command (TCP checks) - Usually pre-installed
+- **pgrep** (process checks) - Usually pre-installed
+- **docker** (container checks, optional) - `brew install docker` or `apt install docker.io`
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites

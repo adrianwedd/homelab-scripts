@@ -32,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Secure logging in `./logs/db-backup/` (mode 700)
   - Example usage: `examples/db-backup-example.sh`
 
+- **service-health-check.sh** - Config-driven uptime monitoring
+  - HTTP endpoint checks with status code and body validation
+  - TCP port connectivity checks
+  - Process monitoring via pgrep
+  - Docker container status checks
+  - Watch mode with continuous monitoring (configurable interval)
+  - State tracking with change detection
+  - Webhook notifications on state changes
+  - INI-style configuration format
+  - Table and JSON output formats
+  - Dry-run mode for config validation
+  - Graceful degradation for unavailable check types
+  - Cross-platform (macOS/Linux)
+  - Secure logging in `./logs/` (mode 700)
+  - Example config: `examples/services.conf`
+
 ### Fixed - v1.1.0 (In Progress)
 - **disk-cleanup.sh**: Fixed unbound variable error in manifest check for `--scan-venvs`
   - Added default value check: `${#MANIFEST_OPERATIONS[@]:-0}`
