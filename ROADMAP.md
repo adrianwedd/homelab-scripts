@@ -155,11 +155,11 @@ export DB_DSN="postgres://user:pass@localhost/mydb"
 
 ---
 
-## Phase 2: Operations (Weeks 3-4)
+## Phase 2: Operations ✅ COMPLETE (v1.2.0 - Released 2025-11-13)
 
 Scripts that automate deployment and infrastructure management.
 
-### 2.1 compose-redeploy.sh
+### 2.1 compose-redeploy.sh ✅ COMPLETE
 **Purpose**: Safe Docker Compose updates with volume backup and rollback
 **Effort**: 1 day
 **Dependencies**: `docker`, `docker-compose` (or compose v2)
@@ -196,7 +196,7 @@ Scripts that automate deployment and infrastructure management.
 
 ---
 
-### 2.2 docker-volume-backup.sh
+### 2.2 docker-volume-backup.sh ✅ COMPLETE
 **Purpose**: Consistent Docker volume snapshots
 **Effort**: 1 day
 **Dependencies**: `docker`
@@ -234,7 +234,7 @@ docker run --rm \
 
 ---
 
-### 2.3 dyndns-update.sh
+### 2.3 dyndns-update.sh ✅ COMPLETE
 **Purpose**: Dynamic DNS updates for homelabs with changing IPs
 **Effort**: 1 day
 **Dependencies**: `curl`, `jq`

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-11-13
+
 ### Added
 - **compose-redeploy.sh** - Safe Docker Compose updates with rollback
   - Pre-flight compose file validation
@@ -46,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - JSON summary output
   - Dry-run mode for preview
   - Example: `examples/dyndns-update-example.sh`
+
+### Fixed
+- **Policy compliance** - All Phase 2 scripts updated to use `set -u` only (removed `set -e` per CLAUDE.md)
+- **Dependency management** - compose-redeploy now checks for jq before using `--json`
+- **Image availability** - compose-redeploy and docker-volume-backup pre-check/pull alpine:latest
+- **Path security** - docker-volume-backup now validates output paths (blocks system dirs, requires $HOME)
+- **Documentation** - Removed duplicate CHANGELOG [1.1.1] section; added jq dependency note to README
 
 ## [1.1.1] - 2025-11-13
 
