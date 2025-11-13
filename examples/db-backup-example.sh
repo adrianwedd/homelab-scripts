@@ -11,7 +11,7 @@ export DB_DSN="postgres://username:password@localhost:5432/mydatabase"
 
 # MySQL backup with custom retention (14 daily, 8 weekly, 24 monthly)
 export DB_DSN="mysql://root:password@localhost:3306/appdb"
-./db-backup.sh --db mysql --out /var/backups/mysql --retention 14:8:24
+./db-backup.sh --db mysql --out "$HOME/backups/mysql" --retention 14:8:24
 
 # Backup with cloud sync to rclone remote
 export DB_DSN="postgres://user:pass@db.local:5432/production"

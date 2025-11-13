@@ -170,6 +170,21 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             IFS=':' read -r DAILY_KEEP WEEKLY_KEEP MONTHLY_KEEP <<< "$RETENTION"
+
+            # Validate retention bounds
+            if [ "$DAILY_KEEP" -lt 1 ] || [ "$DAILY_KEEP" -gt 3650 ]; then
+                echo "Error: Daily retention must be between 1 and 3650 days"
+                exit 1
+            fi
+            if [ "$WEEKLY_KEEP" -lt 1 ] || [ "$WEEKLY_KEEP" -gt 520 ]; then
+                echo "Error: Weekly retention must be between 1 and 520 weeks (~10 years)"
+                exit 1
+            fi
+            if [ "$MONTHLY_KEEP" -lt 1 ] || [ "$MONTHLY_KEEP" -gt 360 ]; then
+                echo "Error: Monthly retention must be between 1 and 360 months (30 years)"
+                exit 1
+            fi
+
             shift 2
             ;;
         --rclone)
@@ -216,6 +231,65 @@ if [ -z "$DB_DSN" ]; then
     exit 1
 fi
 
+# Validate output directory path (security)
+validate_output_dir() {
+    local dir="$1"
+
+    # Attempt to get canonical path (multiple fallbacks for cross-platform)
+    local canonical=""
+    if command -v realpath >/dev/null 2>&1; then
+        canonical=$(realpath -m "$dir" 2>/dev/null) || canonical=""
+    elif command -v readlink >/dev/null 2>&1; then
+        canonical=$(readlink -f "$dir" 2>/dev/null) || canonical=""
+    elif command -v python3 >/dev/null 2>&1; then
+        canonical=$(python3 -c "import os; print(os.path.realpath('$dir'))" 2>/dev/null) || canonical=""
+    fi
+
+    # If no canonicalization available, check for traversal sequences
+    if [ -z "$canonical" ]; then
+        if [[ "$dir" == *"/../"* ]] || [[ "$dir" == *"/.."* ]] || [[ "$dir" == *"../"* ]]; then
+            echo "Error: Path contains traversal sequences and cannot be validated"
+            echo "       Rejecting for safety: $dir"
+            exit 1
+        fi
+        canonical="$dir"
+    fi
+
+    # Block system directories
+    local blocked_prefixes=("/usr" "/etc" "/var" "/bin" "/sbin" "/boot" "/sys" "/proc" "/dev")
+    for prefix in "${blocked_prefixes[@]}"; do
+        if [[ "$canonical" == "$prefix"* ]]; then
+            echo "Error: Output directory cannot be in system directory: $prefix"
+            echo "       Use a directory under \$HOME instead"
+            echo "       Example: $HOME/backups/db"
+            exit 1
+        fi
+    done
+
+    # Require path to be under $HOME
+    if [[ "$canonical" != "$HOME"* ]] && [[ "$canonical" != "."* ]] && [[ "$canonical" != "./"* ]]; then
+        echo "Error: Output directory must be under \$HOME for safety"
+        echo "       Provided: $canonical"
+        echo "       Required: Under $HOME"
+        echo "       Example: $HOME/backups/db"
+        exit 1
+    fi
+}
+
+# Validate output directory
+validate_output_dir "$OUTPUT_DIR"
+
+# URL decode helper
+url_decode() {
+    local encoded="$1"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import sys, urllib.parse as u; print(u.unquote(sys.argv[1]))" "$encoded" 2>/dev/null || echo "$encoded"
+    else
+        # Fallback: no decoding if python3 unavailable
+        echo "$encoded"
+    fi
+}
+
 # Parse DSN to extract database name and connection details
 parse_dsn() {
     local dsn="$1"
@@ -230,25 +304,42 @@ parse_dsn() {
         exit 1
     fi
 
-    # Extract components: protocol://user:pass@host:port/database
-    if [[ "$dsn" =~ ://([^:]+):([^@]+)@([^:/]+):?([0-9]+)?/(.+)$ ]]; then
-        DB_USER="${BASH_REMATCH[1]}"
-        DB_PASS="${BASH_REMATCH[2]}"
+    # Extract components with support for IPv6 ([::1]) and URL-encoded credentials
+    # Pattern handles: protocol://user:pass@host:port/database or protocol://user:pass@[::1]:port/database
+    if [[ "$dsn" =~ ://([^:]+):([^@]+)@\[([^\]]+)\]:?([0-9]+)?/(.+)$ ]]; then
+        # IPv6 format with brackets
+        DB_USER=$(url_decode "${BASH_REMATCH[1]}")
+        DB_PASS=$(url_decode "${BASH_REMATCH[2]}")
         DB_HOST="${BASH_REMATCH[3]}"
         DB_PORT="${BASH_REMATCH[4]:-}"
-        DB_NAME="${BASH_REMATCH[5]}"
-
-        # Set default ports
-        if [ -z "$DB_PORT" ]; then
-            if [ "$DB_PROTOCOL" = "postgresql" ]; then
-                DB_PORT="5432"
-            else
-                DB_PORT="3306"
-            fi
-        fi
+        DB_NAME="${BASH_REMATCH[5]%%\?*}"  # Strip query params
+    elif [[ "$dsn" =~ ://([^:]+):([^@]+)@([^:/]+):?([0-9]+)?/(.+)$ ]]; then
+        # Standard format (IPv4 or hostname)
+        DB_USER=$(url_decode "${BASH_REMATCH[1]}")
+        DB_PASS=$(url_decode "${BASH_REMATCH[2]}")
+        DB_HOST="${BASH_REMATCH[3]}"
+        DB_PORT="${BASH_REMATCH[4]:-}"
+        DB_NAME="${BASH_REMATCH[5]%%\?*}"  # Strip query params
     else
-        print_error "Failed to parse DSN. Expected format: protocol://user:pass@host:port/database"
+        print_error "Failed to parse DSN"
+        echo ""
+        echo "Supported formats:"
+        echo "  postgres://user:pass@host:port/database"
+        echo "  postgres://user:pass@[::1]:port/database  (IPv6)"
+        echo "  mysql://user:pass@host:port/database"
+        echo ""
+        echo "Note: Credentials with special characters should be URL-encoded"
+        echo "      Query parameters (?sslmode=require) are stripped and ignored"
         exit 1
+    fi
+
+    # Set default ports
+    if [ -z "$DB_PORT" ]; then
+        if [ "$DB_PROTOCOL" = "postgresql" ]; then
+            DB_PORT="5432"
+        else
+            DB_PORT="3306"
+        fi
     fi
 }
 
@@ -306,11 +397,28 @@ perform_backup() {
     elif [ "$DB_TYPE" = "mysql" ]; then
         print_info "Running mysqldump for database: $DB_NAME"
 
-        # Use --password option (mysqldump will read from it)
-        if mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --password="$DB_PASS" \
+        # Create secure credentials file to avoid password in process list
+        local creds_file
+        creds_file=$(mktemp) || { print_error "Failed to create temp file"; return 1; }
+        chmod 600 "$creds_file"
+
+        # Write credentials to temp file
+        cat > "$creds_file" << EOF
+[client]
+user=$DB_USER
+password=$DB_PASS
+host=$DB_HOST
+port=$DB_PORT
+EOF
+
+        # Use --defaults-extra-file for secure credential passing
+        if mysqldump --defaults-extra-file="$creds_file" \
             --single-transaction --routines --triggers "$DB_NAME" 2>>"$LOG_FILE" | gzip > "$output_file"; then
             success=true
         fi
+
+        # Clean up credentials file
+        rm -f "$creds_file"
     fi
 
     if [ "$success" = true ]; then
