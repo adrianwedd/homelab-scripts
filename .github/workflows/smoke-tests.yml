@@ -151,6 +151,10 @@ jobs:
           export DB_DSN="mysql://root:password@localhost:3306/appdb"
           ./db-backup.sh --db mysql --dry-run
 
+          # Output path validation (should reject system directories)
+          export DB_DSN="mysql://root:password@localhost:3306/appdb"
+          ./db-backup.sh --db mysql --out /var/backups/mysql --dry-run && exit 1 || echo "✓ Output path validation works"
+
           # Test custom retention format
           export DB_DSN="postgres://user:pass@localhost/db"
           ./db-backup.sh --db pg --retention 14:8:24 --dry-run
@@ -177,6 +181,40 @@ jobs:
 
           echo "✓ db-backup.sh validation complete"
 
+      - name: compose-redeploy.sh tests
+        run: |
+          echo "Testing compose-redeploy.sh (graceful config handling)..."
+
+          # Test help (should always work)
+          ./compose-redeploy.sh --help
+
+          # Create minimal test compose file
+          cat > test-compose.yml << 'COMPOSE'
+version: '3.8'
+services:
+  test:
+    image: alpine:latest
+    command: sleep 3600
+COMPOSE
+
+          # Test dry-run with test compose file
+          ./compose-redeploy.sh --file test-compose.yml --dry-run
+
+          # Test invalid compose file (should fail gracefully)
+          echo "invalid yaml" > bad-compose.yml
+          ./compose-redeploy.sh --file bad-compose.yml --dry-run && exit 1 || echo "✓ Config validation works"
+
+          # Test missing file (should fail gracefully)
+          ./compose-redeploy.sh --file nonexistent.yml --dry-run && exit 1 || echo "✓ File existence check works"
+
+          # Test health timeout bounds
+          ./compose-redeploy.sh --file test-compose.yml --health-timeout 9999 --dry-run && exit 1 || echo "✓ Timeout bounds work"
+
+          # Cleanup
+          rm -f test-compose.yml bad-compose.yml
+
+          echo "✓ compose-redeploy.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -189,3 +227,4 @@ jobs:
           echo "   - service-health-check.sh validation: OK"
           echo "   - cert-renewal-check.sh validation: OK"
           echo "   - db-backup.sh validation: OK"
+          echo "   - compose-redeploy.sh validation: OK"

@@ -454,6 +454,7 @@ export DB_DSN="mysql://root:pass@localhost:3306/appdb"
 - **Password masking** - DSN passwords never appear in logs
 - **JSON output** - Machine-readable backup metadata
 - **Dry-run mode** - Preview without executing
+- **Output path policy** - Output directory must be under `$HOME` (system dirs blocked)
 
 #### Command Line Options:
 
@@ -640,6 +641,110 @@ Webhook notifications send JSON payloads on state changes:
 - **timeout** command (TCP checks) - Usually pre-installed
 - **pgrep** (process checks) - Usually pre-installed
 - **docker** (container checks, optional) - `brew install docker` or `apt install docker.io`
+
+---
+
+### 7. `compose-redeploy.sh`
+
+Safe Docker Compose updates with volume backup and automatic rollback.
+
+#### What it does:
+
+- **Pre-flight validation** - Validates compose file syntax
+- **Volume backup** - Optional backup before deployment
+- **Image updates** - Pulls latest images
+- **Health checks** - Validates service health after deployment
+- **Automatic rollback** - Rolls back on failure
+
+#### Usage:
+
+```bash
+# Basic redeploy
+./compose-redeploy.sh
+
+# Redeploy with volume backup
+./compose-redeploy.sh --backup-volumes
+
+# Custom compose file with extended health timeout
+./compose-redeploy.sh --file production.yml --health-timeout 120
+
+# Dry run to preview
+./compose-redeploy.sh --dry-run
+
+# Show help
+./compose-redeploy.sh --help
+```
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--file <yaml>` | Docker Compose file (default: docker-compose.yml) |
+| `--backup-volumes` | Backup volumes before update |
+| `--health-timeout <s>` | Health check timeout in seconds (default: 60, range: 1-3600) |
+| `--no-pull` | Skip image pull (use existing images) |
+| `--dry-run` | Show deployment plan without executing |
+| `--json` | JSON summary output |
+| `--help` | Show help message |
+
+#### Features:
+
+- **Safe updates** - Pre-flight validation prevents invalid deployments
+- **Volume protection** - Optional backup before changes
+- **Health validation** - Waits for services to become healthy
+- **Rollback capability** - Automatic rollback on failure
+- **Progress tracking** - Real-time status updates
+- **Secure logging** - All logs under `./logs/` with permissions 700
+- **Compose v1 & v2 support** - Works with both `docker-compose` and `docker compose`
+
+#### Dependencies:
+
+- **docker** - Docker Engine (`docker --version`)
+- **docker-compose** or **docker compose** - Compose v1 or v2
+
+#### Example Output:
+
+```bash
+$ ./compose-redeploy.sh --backup-volumes
+
+━━━ Docker Compose Redeploy ━━━
+
+ℹ Compose file: docker-compose.yml
+ℹ Health timeout: 60s
+ℹ Volume backup: enabled
+ℹ Log file: ./logs/compose-redeploy/redeploy_20251113_120000.log
+
+━━━ Pre-flight Checks ━━━
+
+✓ Docker installed
+✓ Docker Compose found (v2)
+✓ Compose file valid
+ℹ Project name: myapp
+ℹ Services: 2 (web, api)
+✓ Pre-flight checks passed
+
+━━━ Backing Up Volumes ━━━
+
+ℹ Backing up volume: web_data
+✓ Volume backed up: ./backups/compose-volumes/myapp_web_data_20251113_120000.tar.gz
+
+━━━ Pulling Images ━━━
+
+✓ Images pulled successfully
+
+━━━ Deploying Services ━━━
+
+✓ Services deployed
+
+━━━ Health Check Validation ━━━
+
+ℹ Waiting up to 60s for services to become healthy...
+✓ All services healthy
+
+━━━ Deployment Complete ━━━
+
+✓ All services deployed and healthy
+```
 
 ---
 
