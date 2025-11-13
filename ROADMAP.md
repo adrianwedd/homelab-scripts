@@ -12,11 +12,11 @@ All new scripts follow these established patterns:
 - **Quality**: ShellCheck clean, `shfmt` formatted, smoke-tested in CI
 - **Consistency**: 4-space indentation, kebab-case files, snake_case functions, UPPER_SNAKE constants
 
-## Phase 1: Foundation (Weeks 1-2)
+## Phase 1: Foundation ✅ COMPLETE (v1.1.0 - Released 2025-11-13)
 
 High-impact, low-complexity scripts that establish core monitoring and backup capabilities.
 
-### 1.1 service-health-check.sh ⭐ PRIORITY
+### 1.1 service-health-check.sh ✅ COMPLETE
 **Purpose**: Config-driven uptime monitoring for HTTP/TCP/processes/containers
 **Effort**: 1-2 days
 **Dependencies**: `curl`, `jq` (optional), `docker` (optional)
@@ -73,7 +73,7 @@ expect_running=true
 
 ---
 
-### 1.2 cert-renewal-check.sh
+### 1.2 cert-renewal-check.sh ✅ COMPLETE
 **Purpose**: SSL certificate expiry monitoring and renewal
 **Effort**: 1 day
 **Dependencies**: `openssl`, `certbot` (optional)
@@ -108,7 +108,7 @@ expect_running=true
 
 ---
 
-### 1.3 db-backup.sh
+### 1.3 db-backup.sh ✅ COMPLETE
 **Purpose**: Automated PostgreSQL/MySQL backups with retention and cloud sync
 **Effort**: 1-2 days
 **Dependencies**: `pg_dump`, `mysqldump`, `rclone` (optional)
@@ -379,12 +379,12 @@ Lower priority scripts for specific use cases.
 
 ## Release Planning
 
-### v1.1.0 - Foundation Release
-**Target**: 2 weeks
+### v1.1.0 - Foundation Release ✅ RELEASED (2025-11-13)
+**Status**: Complete
 **Contents**:
-- service-health-check.sh
-- cert-renewal-check.sh
-- db-backup.sh
+- ✅ service-health-check.sh
+- ✅ cert-renewal-check.sh
+- ✅ db-backup.sh
 
 ### v1.2.0 - Operations Release
 **Target**: 4 weeks
