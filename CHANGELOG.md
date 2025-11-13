@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - v1.1.0 (In Progress)
+## [1.1.0] - 2025-11-13
+
+### Added
 - **cert-renewal-check.sh** - SSL certificate expiry monitoring and renewal
   - Check domain certificates via HTTPS connection
   - Inspect local certificate files
@@ -48,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Secure logging in `./logs/` (mode 700)
   - Example config: `examples/services.conf`
 
-### Fixed - v1.1.0 (In Progress)
+### Fixed
 - **disk-cleanup.sh**: Fixed unbound variable error in manifest check for `--scan-venvs`
   - Added default value check: `${#MANIFEST_OPERATIONS[@]:-0}`
 

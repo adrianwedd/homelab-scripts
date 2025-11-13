@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # service-health-check.sh - Config-driven uptime monitoring
-# Version: 1.0.0
+# Version: 1.1.0
 # Usage: ./service-health-check.sh [options]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -92,7 +92,7 @@ EXAMPLES:
     # Dry run to validate config
     ./service-health-check.sh --config services.conf --dry-run
 
-VERSION: 1.0.0
+VERSION: 1.1.0
 EOF
 }
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # db-backup.sh - Automated database backups with retention and cloud sync
+# Version: 1.1.0
 # Supports PostgreSQL and MySQL with configurable retention policies
 
 set -u

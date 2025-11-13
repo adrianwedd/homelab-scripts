@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # cert-renewal-check.sh - SSL certificate expiry monitoring
+# Version: 1.1.0
 # Checks domain certificates and local files for expiration
 
 set -u
