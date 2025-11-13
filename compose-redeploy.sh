@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
 # compose-redeploy.sh - Safe Docker Compose updates with volume backup and rollback
 # Version: 1.2.0
@@ -204,6 +204,15 @@ else
 fi
 print_success "Docker Compose found ($COMPOSE_VERSION)"
 
+# Check jq if JSON output requested
+if [ "$OUTPUT_JSON" = true ]; then
+	if ! command -v jq >/dev/null 2>&1; then
+		print_error "jq not found. Install jq for --json output (brew install jq / apt install jq)"
+		exit 1
+	fi
+	print_success "jq installed"
+fi
+
 # Validate compose file syntax
 print_info "Validating compose file..."
 if ! $COMPOSE_CMD -f "$COMPOSE_FILE" config >/dev/null 2>&1; then
@@ -239,6 +248,16 @@ print_success "Pre-flight checks passed"
 # Backup volumes if requested
 if [ "$BACKUP_VOLUMES" = true ]; then
 	print_section "Backing Up Volumes"
+
+	# Ensure alpine image is available for backups
+	if ! docker image inspect alpine:latest >/dev/null 2>&1; then
+		print_info "Pulling alpine:latest for backup operations..."
+		if ! docker pull alpine:latest >>"$LOG_FILE" 2>&1; then
+			print_error "Failed to pull alpine:latest image (required for backups)"
+			exit 1
+		fi
+		print_success "alpine:latest pulled"
+	fi
 
 	# Get list of volumes
 	VOLUMES=$($COMPOSE_CMD -f "$COMPOSE_FILE" config --volumes 2>/dev/null || echo "")

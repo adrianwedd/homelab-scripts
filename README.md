@@ -701,6 +701,7 @@ Safe Docker Compose updates with volume backup and automatic rollback.
 
 - **docker** - Docker Engine (`docker --version`)
 - **docker-compose** or **docker compose** - Compose v1 or v2
+- **jq** (optional) - JSON processor for `--json` output (`brew install jq` / `apt install jq`)
 
 #### Example Output:
 

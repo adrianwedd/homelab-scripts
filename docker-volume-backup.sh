@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
 # docker-volume-backup.sh - Consistent Docker volume snapshots with compression
 # Version: 1.2.0
@@ -57,6 +57,51 @@ print_section() {
 	echo -e "${BLUE}━━━ $1 ━━━${NC}"
 	echo ""
 	echo "[$(date -Iseconds)] SECTION: $1" >>"$LOG_FILE"
+}
+
+# Validate output directory path
+validate_output_dir() {
+	local dir="$1"
+
+	# Attempt to get canonical path (multiple fallbacks for cross-platform)
+	local canonical=""
+	if command -v realpath >/dev/null 2>&1; then
+		canonical=$(realpath -m "$dir" 2>/dev/null) || canonical=""
+	elif command -v readlink >/dev/null 2>&1; then
+		canonical=$(readlink -f "$dir" 2>/dev/null) || canonical=""
+	elif command -v python3 >/dev/null 2>&1; then
+		canonical=$(python3 -c "import os; print(os.path.realpath('$dir'))" 2>/dev/null) || canonical=""
+	fi
+
+	# If no canonicalization available, check for traversal sequences
+	if [ -z "$canonical" ]; then
+		if [[ "$dir" == *"/../"* ]] || [[ "$dir" == *"/.."* ]] || [[ "$dir" == *"../"* ]]; then
+			echo "Error: Path contains traversal sequences and cannot be validated"
+			echo "       Rejecting for safety: $dir"
+			exit 1
+		fi
+		canonical="$dir"
+	fi
+
+	# Block system directories
+	local blocked_prefixes=("/usr" "/etc" "/var" "/bin" "/sbin" "/boot" "/sys" "/proc" "/dev")
+	for prefix in "${blocked_prefixes[@]}"; do
+		if [[ "$canonical" == "$prefix"* ]]; then
+			echo "Error: Output directory cannot be in system directory: $prefix"
+			echo "       Use a directory under \$HOME instead"
+			echo "       Example: $HOME/backups/volumes"
+			exit 1
+		fi
+	done
+
+	# Require path to be under $HOME or relative
+	if [[ "$canonical" != "$HOME"* ]] && [[ "$canonical" != "."* ]] && [[ "$canonical" != "./"* ]]; then
+		echo "Error: Output directory must be under \$HOME for safety"
+		echo "       Provided: $canonical"
+		echo "       Required: Under $HOME"
+		echo "       Example: $HOME/backups/volumes"
+		exit 1
+	fi
 }
 
 # Show usage
@@ -163,6 +208,9 @@ if [ "$BACKUP_ALL" = true ] && [ -n "$VOLUME_NAME" ]; then
 	exit 1
 fi
 
+# Validate output directory
+validate_output_dir "$BACKUP_DIR"
+
 # Setup logging
 mkdir -p "$LOG_DIR" && chmod 700 "$LOG_DIR" || true
 mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR" || true
@@ -239,6 +287,16 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 print_success "Pre-flight checks passed"
+
+# Ensure alpine image is available for backups
+if ! docker image inspect alpine:latest >/dev/null 2>&1; then
+	print_info "Pulling alpine:latest for backup operations..."
+	if ! docker pull alpine:latest >>"$LOG_FILE" 2>&1; then
+		print_error "Failed to pull alpine:latest image (required for backups)"
+		exit 1
+	fi
+	print_success "alpine:latest pulled"
+fi
 
 # Function to get containers using a volume
 get_volume_containers() {

@@ -50,25 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.1] - 2025-11-13
 
 ### Security
-- MySQL password exposure fix (CVSS 7.5)
-  - Switched from CLI password arg to secure temp defaults file (`--defaults-extra-file`)
-  - Prevents process list password leakage
-- Output path validation (CVSS 7.5)
-  - Blocked system directories (`/usr`, `/etc`, `/var`, `/bin`, `/sbin`, etc.)
-  - Require output paths under `$HOME` with traversal protection and canonicalization
-- Retention bounds checking (CVSS 5.3)
-  - Enforce ranges: daily 1–3650, weekly 1–520, monthly 1–360
-  - Prevents DoS via extreme retention values
-- Enhanced DSN parsing
-  - IPv6 `[::1]` support
-  - URL-encoded credentials decoding
-  - Query parameter stripping (e.g., `?sslmode=require`)
-- Example fix
-  - Updated MySQL example output path to `$HOME/backups/mysql`
-
-## [1.1.1] - 2025-11-13
-
-### Security
 
 **Critical Fixes:**
 - **db-backup.sh: MySQL password exposure** (CVSS 7.5)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
 # dyndns-update.sh - Dynamic DNS updates for homelabs with changing IPs
 # Version: 1.2.0
