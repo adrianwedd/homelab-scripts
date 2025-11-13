@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2025-11-13
+
+### Security
+
+**Critical Fixes:**
+- **db-backup.sh: MySQL password exposure** (CVSS 7.5)
+  - Changed from `--password=` CLI arg to secure `--defaults-extra-file` with mktemp
+  - Credentials file created with chmod 600 and cleaned up after use
+  - Impact: Prevents password leakage via process listing (ps aux)
+
+- **db-backup.sh: Output path validation** (CVSS 7.5)
+  - Added `validate_output_dir()` function with path canonicalization
+  - Blocks system directories: /usr, /etc, /var, /bin, /sbin, /boot, /sys, /proc, /dev
+  - Requires paths under $HOME or relative (./)
+  - Detects and rejects path traversal sequences (/../)
+  - Impact: Prevents unauthorized writes to system directories
+
+**Medium Fixes:**
+- **db-backup.sh: Retention bounds validation** (CVSS 5.3)
+  - Daily retention: 1-3650 days
+  - Weekly retention: 1-520 weeks
+  - Monthly retention: 1-360 months
+  - Impact: Prevents DoS through extreme retention values
+
+### Changed
+- **db-backup.sh**: Enhanced DSN parsing
+  - Support IPv6 addresses with brackets: `postgres://user:pass@[::1]:5432/db`
+  - URL decode percent-encoded credentials (%20, %40, etc.)
+  - Strip query parameters (?sslmode=require) automatically
+  - Better error messages showing supported formats
+
+### Fixed
+- **examples/db-backup-example.sh**: Changed `/var/backups/mysql` to `$HOME/backups/mysql` to comply with security policy
+
 ## [1.1.0] - 2025-11-13
 
 ### Added
