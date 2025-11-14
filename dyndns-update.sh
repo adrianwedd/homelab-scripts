@@ -2,10 +2,12 @@
 set -u
 
 # dyndns-update.sh - Dynamic DNS updates for homelabs with changing IPs
-# Version: 1.2.0
+# Version: 1.2.1
 # Usage: ./dyndns-update.sh [options]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 LOG_DIR="${SCRIPT_DIR}/logs/dyndns"
 CACHE_DIR="${HOME}/.cache/dyndns"
 
@@ -34,29 +36,29 @@ NC='\033[0m'
 # Print functions
 print_error() {
 	echo -e "${RED}✗ Error:${NC} $1" >&2
-	echo "[$(date -Iseconds)] ERROR: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
 }
 
 print_success() {
 	echo -e "${GREEN}✓${NC} $1"
-	echo "[$(date -Iseconds)] SUCCESS: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
 }
 
 print_warning() {
 	echo -e "${YELLOW}⚠${NC} $1"
-	echo "[$(date -Iseconds)] WARNING: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
 }
 
 print_info() {
 	echo -e "${BLUE}ℹ${NC} $1"
-	echo "[$(date -Iseconds)] INFO: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
 }
 
 print_section() {
 	echo ""
 	echo -e "${BLUE}━━━ $1 ━━━${NC}"
 	echo ""
-	echo "[$(date -Iseconds)] SECTION: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
 }
 
 # Show usage
@@ -110,7 +112,7 @@ SAFETY:
     - Rate limiting prevents API abuse
     - Token never appears in logs
 
-VERSION: 1.2.0
+VERSION: 1.2.1
 HELP
 }
 
@@ -188,7 +190,7 @@ umask 077
 # Start logging
 {
 	echo "================================================"
-	echo "Dynamic DNS Update - $(date -Iseconds)"
+	echo "Dynamic DNS Update - $(get_iso8601_timestamp)"
 	echo "================================================"
 	echo "Provider: $PROVIDER"
 	echo "Zone: $ZONE"
@@ -395,7 +397,7 @@ cat >"$CACHE_FILE" <<EOF
   "ip": "$CURRENT_IP",
   "record": "${ZONE}:${RECORD}",
   "timestamp": $CURRENT_TIME,
-  "updated_at": "$(date -Iseconds)"
+  "updated_at": "$(get_iso8601_timestamp)"
 }
 EOF
 chmod 600 "$CACHE_FILE"
@@ -410,7 +412,7 @@ print_info "TTL: ${TTL}s"
 if [ "$OUTPUT_JSON" = true ]; then
 	cat >"$JSON_FILE" <<EOF
 {
-  "timestamp": "$(date -Iseconds)",
+  "timestamp": "$(get_iso8601_timestamp)",
   "provider": "$PROVIDER",
   "zone": "$ZONE",
   "record": "$RECORD",

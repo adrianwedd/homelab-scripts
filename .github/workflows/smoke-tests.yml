@@ -210,6 +210,10 @@ COMPOSE
           # Test health timeout bounds
           ./compose-redeploy.sh --file test-compose.yml --health-timeout 9999 --dry-run && exit 1 || echo "✓ Timeout bounds work"
 
+          # Test --backup-image flag
+          ./compose-redeploy.sh --file test-compose.yml --backup-volumes --backup-image busybox:latest --dry-run
+          echo "✓ --backup-image flag works"
+
           # Cleanup
           rm -f test-compose.yml bad-compose.yml
 
@@ -240,6 +244,10 @@ COMPOSE
 
             # Test dry-run with --all
             ./docker-volume-backup.sh --all --dry-run
+
+            # Test --backup-image flag
+            ./docker-volume-backup.sh --all --backup-image busybox:latest --dry-run
+            echo "✓ --backup-image flag works"
           else
             echo "✓ Docker not available (expected in CI)"
             # Test that script fails gracefully when Docker not available

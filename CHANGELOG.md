@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2025-11-14
+
+### Added
+- **Shared Functions Library** (`lib/common.sh`)
+  - `get_iso8601_timestamp()` - BSD/GNU compatible timestamp function (solves macOS date portability)
+  - `require_jq_if_json()` - Unified JSON dependency checking
+  - `print_status()` - Reusable colored output functions
+  - `validate_output_dir()` - Shared path validation with security checks
+  - `ensure_docker_image()` - Docker image availability helper
+
+- **Air-Gapped Environment Support**
+  - compose-redeploy.sh: `--backup-image <img>` flag (default: alpine:latest)
+  - docker-volume-backup.sh: `--backup-image <img>` flag (default: alpine:latest)
+  - Allows custom helper images for offline/restricted environments
+
+### Changed
+- **Policy Compliance - `set -u` Only**
+  - Updated all Phase 0/1 scripts to use `set -u` (removed `set -euo pipefail`):
+    - rclone-sync.sh, update-all.sh, service-health-check.sh, disk-cleanup.sh
+  - Aligns with repository policy to allow cleanup continuation on non-critical errors
+
+- **Portability Improvements**
+  - All Phase 1/2 scripts now use `get_iso8601_timestamp()` instead of `date -Iseconds`
+  - Fixes timestamp failures on macOS BSD date (falls back gracefully)
+
+- **Code Reuse and Consistency**
+  - All Phase 1/2 scripts now source `lib/common.sh`
+  - Replaced ad-hoc jq checks with unified `require_jq_if_json()`
+  - Replaced manual Docker image pulls with `ensure_docker_image()`
+  - Removed duplicate `validate_output_dir()` from docker-volume-backup.sh
+
+### Fixed
+- Timestamp portability on macOS (BSD date doesn't support `-Iseconds`)
+- Code duplication across Phase 2 scripts
+
 ## [1.2.0] - 2025-11-13
 
 ### Added

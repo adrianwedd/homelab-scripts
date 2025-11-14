@@ -16,6 +16,8 @@ NC='\033[0m'
 
 # Logging
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 LOGS_DIR="$SCRIPT_DIR/logs/db-backup"
 umask 077
 
@@ -644,7 +646,7 @@ fi
 if [ "$OUTPUT_JSON" = true ]; then
     cat > "$JSON_FILE" <<EOF
 {
-  "timestamp": "$(date -Iseconds)",
+  "timestamp": "$(get_iso8601_timestamp)",
   "database": {
     "type": "$DB_TYPE",
     "name": "$DB_NAME",

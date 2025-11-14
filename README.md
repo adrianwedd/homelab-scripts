@@ -681,6 +681,7 @@ Safe Docker Compose updates with volume backup and automatic rollback.
 |--------|-------------|
 | `--file <yaml>` | Docker Compose file (default: docker-compose.yml) |
 | `--backup-volumes` | Backup volumes before update |
+| `--backup-image <img>` | Image for volume backups (default: alpine:latest) |
 | `--health-timeout <s>` | Health check timeout in seconds (default: 60, range: 1-3600) |
 | `--no-pull` | Skip image pull (use existing images) |
 | `--dry-run` | Show deployment plan without executing |
@@ -790,6 +791,7 @@ Consistent Docker volume snapshots with compression and optional container manag
 | `--volume <name>` | Backup specific volume |
 | `--all` | Backup all Docker volumes |
 | `--out <dir>` | Output directory (default: ./backups/volumes) |
+| `--backup-image <img>` | Image for volume backups (default: alpine:latest) |
 | `--stop` | Stop dependent containers during backup |
 | `--no-stop` | Backup while containers running (default) |
 | `--dry-run` | Show backup plan without executing |

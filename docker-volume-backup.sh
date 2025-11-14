@@ -2,10 +2,12 @@
 set -u
 
 # docker-volume-backup.sh - Consistent Docker volume snapshots with compression
-# Version: 1.2.0
+# Version: 1.2.1
 # Usage: ./docker-volume-backup.sh [options]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 LOG_DIR="${SCRIPT_DIR}/logs/volume-backup"
 BACKUP_DIR="${SCRIPT_DIR}/backups/volumes"
 
@@ -35,74 +37,29 @@ NC='\033[0m'
 # Print functions
 print_error() {
 	echo -e "${RED}✗ Error:${NC} $1" >&2
-	echo "[$(date -Iseconds)] ERROR: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
 }
 
 print_success() {
 	echo -e "${GREEN}✓${NC} $1"
-	echo "[$(date -Iseconds)] SUCCESS: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
 }
 
 print_warning() {
 	echo -e "${YELLOW}⚠${NC} $1"
-	echo "[$(date -Iseconds)] WARNING: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
 }
 
 print_info() {
 	echo -e "${BLUE}ℹ${NC} $1"
-	echo "[$(date -Iseconds)] INFO: $1" >>"$LOG_FILE"
+	echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
 }
 
 print_section() {
 	echo ""
 	echo -e "${BLUE}━━━ $1 ━━━${NC}"
 	echo ""
-	echo "[$(date -Iseconds)] SECTION: $1" >>"$LOG_FILE"
-}
-
-# Validate output directory path
-validate_output_dir() {
-	local dir="$1"
-
-	# Attempt to get canonical path (multiple fallbacks for cross-platform)
-	local canonical=""
-	if command -v realpath >/dev/null 2>&1; then
-		canonical=$(realpath -m "$dir" 2>/dev/null) || canonical=""
-	elif command -v readlink >/dev/null 2>&1; then
-		canonical=$(readlink -f "$dir" 2>/dev/null) || canonical=""
-	elif command -v python3 >/dev/null 2>&1; then
-		canonical=$(python3 -c "import os; print(os.path.realpath('$dir'))" 2>/dev/null) || canonical=""
-	fi
-
-	# If no canonicalization available, check for traversal sequences
-	if [ -z "$canonical" ]; then
-		if [[ "$dir" == *"/../"* ]] || [[ "$dir" == *"/.."* ]] || [[ "$dir" == *"../"* ]]; then
-			echo "Error: Path contains traversal sequences and cannot be validated"
-			echo "       Rejecting for safety: $dir"
-			exit 1
-		fi
-		canonical="$dir"
-	fi
-
-	# Block system directories
-	local blocked_prefixes=("/usr" "/etc" "/var" "/bin" "/sbin" "/boot" "/sys" "/proc" "/dev")
-	for prefix in "${blocked_prefixes[@]}"; do
-		if [[ "$canonical" == "$prefix"* ]]; then
-			echo "Error: Output directory cannot be in system directory: $prefix"
-			echo "       Use a directory under \$HOME instead"
-			echo "       Example: $HOME/backups/volumes"
-			exit 1
-		fi
-	done
-
-	# Require path to be under $HOME or relative
-	if [[ "$canonical" != "$HOME"* ]] && [[ "$canonical" != "."* ]] && [[ "$canonical" != "./"* ]]; then
-		echo "Error: Output directory must be under \$HOME for safety"
-		echo "       Provided: $canonical"
-		echo "       Required: Under $HOME"
-		echo "       Example: $HOME/backups/volumes"
-		exit 1
-	fi
+	echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
 }
 
 # Show usage
@@ -150,7 +107,7 @@ SAFETY:
     - Container restart after backup if stopped
     - Dry-run mode for preview
 
-VERSION: 1.2.0
+VERSION: 1.2.1
 HELP
 }
 
@@ -225,7 +182,7 @@ umask 077
 # Start logging
 {
 	echo "================================================"
-	echo "Docker Volume Backup - $(date -Iseconds)"
+	echo "Docker Volume Backup - $(get_iso8601_timestamp)"
 	echo "================================================"
 	echo "Volume: ${VOLUME_NAME:-all volumes}"
 	echo "Backup all: $BACKUP_ALL"
@@ -295,13 +252,9 @@ fi
 print_success "Pre-flight checks passed"
 
 # Ensure backup image is available for backups
-if ! docker image inspect "$BACKUP_IMAGE" >/dev/null 2>&1; then
-	print_info "Pulling $BACKUP_IMAGE for backup operations..."
-	if ! docker pull "$BACKUP_IMAGE" >>"$LOG_FILE" 2>&1; then
-		print_error "Failed to pull $BACKUP_IMAGE image (required for backups)"
-		exit 1
-	fi
-	print_success "$BACKUP_IMAGE pulled"
+if ! ensure_docker_image "$BACKUP_IMAGE" "$LOG_FILE"; then
+	print_error "Failed to ensure $BACKUP_IMAGE is available"
+	exit 1
 fi
 
 # Function to get containers using a volume
@@ -410,7 +363,7 @@ print_info "Total backup size: ${TOTAL_SIZE_MB}MB"
 if [ "$OUTPUT_JSON" = true ]; then
 	cat >"$JSON_FILE" <<EOF
 {
-  "timestamp": "$(date -Iseconds)",
+  "timestamp": "$(get_iso8601_timestamp)",
   "backup_dir": "$BACKUP_DIR",
   "stop_containers": $STOP_CONTAINERS,
   "volumes_backed_up": $SUCCESSFUL_COUNT,
