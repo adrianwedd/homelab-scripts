@@ -20,6 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Graceful handling when smartctl not available
   - Example: `examples/smart-disk-check-example.sh`
 
+- **new-vm-setup.sh** - VM bootstrapping and initial configuration
+  - OS detection via `/etc/os-release` (Ubuntu, Debian, RHEL, CentOS, Fedora, Rocky, AlmaLinux)
+  - Package manager auto-detection (apt-get, dnf, yum)
+  - RFC-1123 hostname validation and configuration via `hostnamectl`
+  - POSIX-compliant user creation with sudo/wheel group mapping
+  - SSH public key setup with proper permissions (700/.ssh, 600/authorized_keys)
+  - Package installation with idempotent checks (skip if already installed)
+  - Optional dotfiles cloning from Git (https://, ssh://, git@ URLs)
+  - Configurable login shell (default: /bin/bash)
+  - Optional passwordless sudo with explicit security warning
+  - Comprehensive input validation (hostname, username, SSH key, dotfiles URL)
+  - Sudo transparency with interactive confirmation prompts
+  - Idempotent operations (safe to re-run)
+  - JSON output with installation summary
+  - Dry-run mode for preview
+  - Exit codes: 0 (success), 1 (warnings)
+  - Secure logging in `./logs/new-vm-setup/` (mode 700)
+  - Example: `examples/new-vm-setup-example.sh`
+
 ## [1.2.1] - 2025-11-14
 
 ### Added

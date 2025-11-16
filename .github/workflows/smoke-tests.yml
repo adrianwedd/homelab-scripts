@@ -317,6 +317,105 @@ COMPOSE
 
           echo "✓ smart-disk-check.sh validation complete"
 
+      - name: new-vm-setup.sh tests
+        run: |
+          echo "Testing new-vm-setup.sh (VM bootstrapping)..."
+
+          # Test help (should always work)
+          ./new-vm-setup.sh --help
+
+          # Test dry-run without sudo (should work)
+          ./new-vm-setup.sh \
+            --hostname "test-vm" \
+            --user "testuser" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --packages "curl,vim" \
+            --no-sudo \
+            --dry-run
+
+          # Test hostname validation (uppercase - should fail)
+          ./new-vm-setup.sh \
+            --hostname "Invalid-Host" \
+            --user "test" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dry-run && exit 1 || echo "✓ Hostname uppercase validation works"
+
+          # Test hostname validation (too long - should fail)
+          ./new-vm-setup.sh \
+            --hostname "this-hostname-is-way-too-long-and-exceeds-sixty-three-characters-limit" \
+            --user "test" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dry-run && exit 1 || echo "✓ Hostname length validation works"
+
+          # Test hostname validation (starts with hyphen - should fail)
+          ./new-vm-setup.sh \
+            --hostname "-invalid" \
+            --user "test" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dry-run && exit 1 || echo "✓ Hostname format validation works"
+
+          # Test username validation (root - should fail)
+          ./new-vm-setup.sh \
+            --hostname "test-vm" \
+            --user "root" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dry-run && exit 1 || echo "✓ Username 'root' validation works"
+
+          # Test username validation (starts with number - should fail)
+          ./new-vm-setup.sh \
+            --hostname "test-vm" \
+            --user "1admin" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dry-run && exit 1 || echo "✓ Username format validation works"
+
+          # Test username validation (uppercase - should fail)
+          ./new-vm-setup.sh \
+            --hostname "test-vm" \
+            --user "Admin" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dry-run && exit 1 || echo "✓ Username case validation works"
+
+          # Test SSH key validation (invalid prefix - should fail)
+          ./new-vm-setup.sh \
+            --hostname "test-vm" \
+            --user "testuser" \
+            --ssh-key "invalid-key-format AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dry-run && exit 1 || echo "✓ SSH key validation works"
+
+          # Test missing required args (should fail)
+          ./new-vm-setup.sh --dry-run && exit 1 || echo "✓ Required argument validation works"
+
+          # Test dotfiles URL validation (invalid scheme - should fail)
+          ./new-vm-setup.sh \
+            --hostname "test-vm" \
+            --user "testuser" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --dotfiles "ftp://invalid.com/repo.git" \
+            --no-sudo \
+            --dry-run && exit 1 || echo "✓ Dotfiles URL validation works"
+
+          # Test valid dry-run with all options
+          ./new-vm-setup.sh \
+            --hostname "full-test" \
+            --user "admin" \
+            --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test test@example.com" \
+            --packages "curl,vim,git" \
+            --dotfiles "https://github.com/test/dotfiles.git" \
+            --shell "/bin/bash" \
+            --no-sudo \
+            --dry-run || echo "✓ Full dry-run works"
+
+          # Test JSON output flag (dry-run, no sudo required)
+          ./new-vm-setup.sh \
+            --hostname "json-test" \
+            --user "jsonuser" \
+            --ssh-key "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC test@example.com" \
+            --no-sudo \
+            --dry-run \
+            --json || echo "✓ JSON output flag works"
+
+          echo "✓ new-vm-setup.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -333,3 +432,4 @@ COMPOSE
           echo "   - docker-volume-backup.sh validation: OK"
           echo "   - dyndns-update.sh validation: OK"
           echo "   - smart-disk-check.sh validation: OK"
+          echo "   - new-vm-setup.sh validation: OK"

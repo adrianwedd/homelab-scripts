@@ -1068,6 +1068,152 @@ For daily disk health monitoring:
 
 ---
 
+### 11. `new-vm-setup.sh`
+
+Bootstrap fresh VMs with standard configuration (hostname, user creation, SSH keys, packages, dotfiles).
+
+**Features:**
+- OS detection (Ubuntu/Debian/RHEL/CentOS/Fedora) via `/etc/os-release`
+- RFC-1123 hostname validation and configuration
+- POSIX-compliant user creation with sudo access
+- SSH public key setup with proper permissions
+- Package installation (apt/dnf/yum)
+- Optional dotfiles cloning from Git
+- Idempotent operations (safe to re-run)
+- Sudo transparency with explicit warnings
+- JSON output for automation
+- Comprehensive dry-run mode
+
+**Options:**
+
+| Flag | Description | Required |
+|------|-------------|----------|
+| `--hostname <name>` | Set hostname (RFC-1123: lowercase, max 63 chars) | Yes |
+| `--user <name>` | Create user (POSIX format, no 'root') | Yes |
+| `--ssh-key <key>` | SSH public key (inline) | * |
+| `--ssh-key-path <file>` | SSH public key file path | * |
+| `--packages "<list>"` | Comma-separated packages to install | No |
+| `--dotfiles <url>` | Git URL for dotfiles (https://, ssh://, git@) | No |
+| `--shell <path>` | Login shell (default: /bin/bash) | No |
+| `--sudo-nopass` | Enable passwordless sudo (security warning) | No |
+| `--no-dotfiles` | Skip dotfiles cloning | No |
+| `--no-sudo` | Skip sudo operations (dry-run only) | No |
+| `-y, --yes` | Skip interactive confirmations | No |
+| `--dry-run` | Preview without changes | No |
+| `--json` | JSON output to logs/new-vm-setup/ | No |
+| `--help` | Show help | No |
+
+\* Either `--ssh-key` or `--ssh-key-path` is required
+
+**Examples:**
+
+```bash
+# Dry-run to preview configuration
+./new-vm-setup.sh \
+  --hostname "web-server-01" \
+  --user "deploy" \
+  --ssh-key-path "$HOME/.ssh/id_ed25519.pub" \
+  --packages "curl,git,vim,htop" \
+  --dry-run
+
+# Full web server setup (interactive)
+./new-vm-setup.sh \
+  --hostname "nginx-server" \
+  --user "webadmin" \
+  --ssh-key-path "$HOME/.ssh/id_ed25519.pub" \
+  --packages "nginx,certbot,ufw,fail2ban" \
+  --dotfiles "https://github.com/yourusername/dotfiles.git"
+
+# CI/CD runner with passwordless sudo (non-interactive)
+./new-vm-setup.sh \
+  --hostname "gitlab-runner" \
+  --user "ci" \
+  --ssh-key-path "$HOME/.ssh/ci_key.pub" \
+  --packages "docker.io,git,curl" \
+  --sudo-nopass \
+  --yes \
+  --json
+
+# Development VM with custom shell
+./new-vm-setup.sh \
+  --hostname "dev-box" \
+  --user "developer" \
+  --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host" \
+  --packages "build-essential,git,vim,tmux,python3,nodejs" \
+  --dotfiles "https://github.com/yourusername/dotfiles.git" \
+  --shell "/bin/zsh" \
+  --yes
+```
+
+**Output:**
+
+```
+━━━ VM Bootstrap Configuration ━━━
+
+Hostname: web-server-01
+User: deploy
+SSH key: ssh-ed25519 AAAAC3Nz... (truncated)
+Packages: nginx,certbot,ufw
+Dotfiles: https://github.com/user/dotfiles.git
+Shell: /bin/bash
+
+━━━ OS Detection ━━━
+
+✓ Detected OS: ubuntu 22.04 (Ubuntu 22.04.3 LTS)
+✓ Package manager: apt-get
+
+━━━ Hostname Configuration ━━━
+
+ℹ Setting hostname to: web-server-01
+✓ Hostname updated successfully
+
+━━━ User Configuration ━━━
+
+ℹ Creating user: deploy
+✓ User created: deploy
+✓ User added to sudo group
+
+━━━ SSH Key Setup ━━━
+
+ℹ Setting up SSH directory: /home/deploy/.ssh
+✓ SSH key added to authorized_keys
+
+━━━ Package Installation ━━━
+
+ℹ Updating package lists...
+✓ Package lists updated
+ℹ Installing package: nginx
+✓ Installed: nginx
+ℹ Installing package: certbot
+✓ Installed: certbot
+
+━━━ Summary ━━━
+
+Hostname: localhost → web-server-01
+User created: deploy
+SSH key configured: Yes
+Packages installed: 4
+Dotfiles cloned: Yes
+```
+
+**Security Notes:**
+- Never use `--sudo-nopass` in production without understanding the risks
+- Always use SSH keys (no password authentication)
+- Review dry-run output before applying changes
+- Validate hostname and username formats
+- Logs stored securely in `./logs/new-vm-setup/` (mode 700)
+
+**Dependencies:**
+- Linux with `/etc/os-release` (Ubuntu, Debian, RHEL, CentOS, Fedora, Rocky, AlmaLinux)
+- Package manager: `apt-get`, `dnf`, or `yum`
+- `sudo` for privilege escalation
+- `git` (if using `--dotfiles`)
+- `hostnamectl` or `/etc/hostname` (fallback)
+
+**See also:** `examples/new-vm-setup-example.sh` for comprehensive usage patterns
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites
