@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - N/A
 
+## [1.4.2] - 2025-11-16
+
+### Fixed
+- **ssh-key-audit.sh**: Incomplete certificate regex - Added `@openssh.com` suffix to FIDO certificate patterns (sk-ssh-ed25519@openssh.com-cert-v01@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com-cert-v01@openssh.com) and added ssh-ed448-cert-v01@openssh.com support
+- **ssh-key-audit.sh**: Early return JSON inconsistency - Targets with permission warnings but no authorized_keys file now properly appear in JSON output with `targets_with_issues` count matching actual issues
+- **ssh-key-audit.sh**: Version string updated from 1.4.0 to 1.4.2
+
+### Added
+- **Test fixtures**: Enhanced tests/fixtures/ssh/charlie with FIDO certificate keys (sk-ssh-ed25519@openssh.com-cert-v01@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com-cert-v01@openssh.com) and Ed448 certificate (ssh-ed448-cert-v01@openssh.com)
+- **Test fixtures**: Added tests/fixtures/ssh/david for early-return edge case testing (user with .ssh permission issues but no authorized_keys file)
+
 ## [1.4.1] - 2025-11-16
 
 ### Fixed

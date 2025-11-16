@@ -2,7 +2,7 @@
 set -u
 
 # ssh-key-audit.sh - Audit SSH authorized_keys for hygiene and risk
-# Version: 1.4.0
+# Version: 1.4.2
 # Usage: ./ssh-key-audit.sh [options]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,7 +68,7 @@ NOTES:
   - Permissions checked: ~/.ssh (700), authorized_keys (600)
   - Duplicate detection compares base64 key blobs (type+blob)
 
-VERSION: 1.4.0
+VERSION: 1.4.2
 HELP
 }
 
@@ -222,7 +222,16 @@ audit_auth_keys() {
     fi
   fi
 
+  # Early exit if no authorized_keys, but still create JSON entry below
   if [ ! -f "$path" ]; then
+    # Aggregate per-user JSON (even with no keys)
+    local esc_user=$(json_escape "$target_user")
+    local esc_path=$(json_escape "$path")
+    local is_system_json="false"
+    [ "$is_system" = "true" ] && is_system_json="true"
+    json_buf_users+=("{ \"user\": \"$esc_user\", \"path\": \"$esc_path\", \"is_system\": $is_system_json, \"keys\": [ ] }")
+
+    if [ $user_issues -gt 0 ]; then USERS_WITH_ISSUES=$((USERS_WITH_ISSUES+1)); fi
     return 0
   fi
 
@@ -244,8 +253,8 @@ audit_auth_keys() {
     echo "$line" | grep -qE '^\s*$|^\s*#' && continue
 
     # Comprehensive OpenSSH key type regex (RFC 4253, RFC 5656, RFC 8709, OpenSSH extensions)
-    # Covers: ssh-rsa, ssh-dss, ssh-ed25519, ecdsa-sha2-*, sk-* (FIDO), *-cert-v01@openssh.com
-    local key_type_pattern='(ssh-(rsa|dss|ed25519|ed448)|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)(@openssh\.com)?|(ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519|sk-ecdsa-sha2-nistp256)-cert-v01@openssh\.com)'
+    # Covers: ssh-rsa, ssh-dss, ssh-ed25519, ssh-ed448, ecdsa-sha2-*, sk-* (FIDO), *-cert-v01@openssh.com
+    local key_type_pattern='(ssh-(rsa|dss|ed25519|ed448)|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)(@openssh\.com)?|(ssh-rsa|ssh-dss|ssh-ed25519|ssh-ed448|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)-cert-v01@openssh\.com)'
 
     # Detect key type position (first field or after options)
     key_type=$(echo "$line" | awk '{print $1}' | grep -E "^${key_type_pattern}$")
