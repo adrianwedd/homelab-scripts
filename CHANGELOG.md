@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - N/A
 
+## [1.4.1] - 2025-11-16
+
+### Fixed
+- **ssh-key-audit.sh**: Parser coverage - Added support for modern OpenSSH key types (FIDO sk-*, certificates *-cert-v01@openssh.com, ssh-dss, ssh-ed448)
+- **ssh-key-audit.sh**: Options parsing bug - Fixed greedy sed collision when comment repeats key type (e.g., "command='/bin/sync' ssh-ed25519 AAAA... ssh-ed25519 backup")
+- **ssh-key-audit.sh**: JSON schema mismatch - Updated output to match documented schema (`targets` not `users`, added `home_root`, `system_targets_scanned`, `total_targets`, `targets_with_issues`, `is_system` per target)
+- **ssh-key-audit.sh**: JSON string escaping - Escaped all string fields (target_user, path, log_file) not just comments, preventing parse errors on paths with spaces/quotes
+- **ssh-key-audit.sh**: Whitespace handling - Added trim() to all comma/colon list parsing (--users, --forbid-types, --fail-on, --system-paths) to handle realistic inputs like "alice, bob"
+
+### Added
+- **Test fixtures**: tests/fixtures/ssh/charlie with FIDO, certificate, DSA keys and options collision test case
+
 ## [1.4.0] - 2025-11-16
 
 ### Added

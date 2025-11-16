@@ -101,11 +101,44 @@ if [ "$MAX_AGE_DAYS" -gt 3650 ]; then
   print_error "--max-age must be <= 3650"; exit 1
 fi
 
-# Normalize lists
-IFS=',' read -r -a FORBID_ARRAY <<< "$FORBID_TYPES"
-FAIL_ON_LC=$(printf '%s' "$FAIL_ON" | tr '[:upper:]' '[:lower:]')
-IFS=',' read -r -a FAIL_ON_ARRAY <<< "$FAIL_ON_LC"
-IFS=':' read -r -a SYSTEM_PATH_ARRAY <<< "$SYSTEM_PATHS"
+# Helper: trim leading/trailing whitespace from a string
+trim() {
+  local var="$1"
+  # Remove leading whitespace
+  var="${var#"${var%%[![:space:]]*}"}"
+  # Remove trailing whitespace
+  var="${var%"${var##*[![:space:]]}"}"
+  echo "$var"
+}
+
+# Normalize lists (trim whitespace from each element)
+declare -a FORBID_ARRAY=()
+if [ -n "$FORBID_TYPES" ]; then
+  IFS=',' read -r -a raw_forbid <<< "$FORBID_TYPES"
+  for item in "${raw_forbid[@]}"; do
+    item=$(trim "$item")
+    [ -n "$item" ] && FORBID_ARRAY+=("$item")
+  done
+fi
+
+declare -a FAIL_ON_ARRAY=()
+if [ -n "$FAIL_ON" ]; then
+  FAIL_ON_LC=$(printf '%s' "$FAIL_ON" | tr '[:upper:]' '[:lower:]')
+  IFS=',' read -r -a raw_failon <<< "$FAIL_ON_LC"
+  for item in "${raw_failon[@]}"; do
+    item=$(trim "$item")
+    [ -n "$item" ] && FAIL_ON_ARRAY+=("$item")
+  done
+fi
+
+declare -a SYSTEM_PATH_ARRAY=()
+if [ -n "$SYSTEM_PATHS" ]; then
+  IFS=':' read -r -a raw_syspaths <<< "$SYSTEM_PATHS"
+  for item in "${raw_syspaths[@]}"; do
+    item=$(trim "$item")
+    [ -n "$item" ] && SYSTEM_PATH_ARRAY+=("$item")
+  done
+fi
 
 contains_rule(){ local x=$(echo "$1" | tr '[:upper:]' '[:lower:]'); shift; [ $# -eq 0 ] && return 1; for r in "$@"; do [ "$x" = "$r" ] && return 0; done; return 1; }
 
@@ -139,7 +172,12 @@ fi
 # Discover user list
 declare -a USER_LIST=()
 if [ -n "$USERS" ]; then
-  IFS=',' read -r -a USER_LIST <<< "$USERS"
+  # Parse comma-separated list and trim whitespace
+  IFS=',' read -r -a raw_users <<< "$USERS"
+  for item in "${raw_users[@]}"; do
+    item=$(trim "$item")
+    [ -n "$item" ] && USER_LIST+=("$item")
+  done
 elif [ "$ALL_USERS" = true ]; then
   # List directories under HOME_ROOT matching typical user homes
   while IFS= read -r d; do
@@ -204,18 +242,53 @@ audit_auth_keys() {
   while IFS= read -r line || [ -n "$line" ]; do
     # Skip blanks/comments
     echo "$line" | grep -qE '^\s*$|^\s*#' && continue
-    # Detect key type position
-    key_type=$(echo "$line" | awk '{print $1}' | grep -E '^(ssh-(rsa|ed25519)$|ecdsa-sha2-nistp(256|384|521)$)')
+
+    # Comprehensive OpenSSH key type regex (RFC 4253, RFC 5656, RFC 8709, OpenSSH extensions)
+    # Covers: ssh-rsa, ssh-dss, ssh-ed25519, ecdsa-sha2-*, sk-* (FIDO), *-cert-v01@openssh.com
+    local key_type_pattern='(ssh-(rsa|dss|ed25519|ed448)|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)(@openssh\.com)?|(ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519|sk-ecdsa-sha2-nistp256)-cert-v01@openssh\.com)'
+
+    # Detect key type position (first field or after options)
+    key_type=$(echo "$line" | awk '{print $1}' | grep -E "^${key_type_pattern}$")
     options_part=""
     rest="$line"
+
     if [ -z "$key_type" ]; then
-      # Options precede key; find type by regex
-      key_type=$(echo "$line" | grep -Eo '(ssh-(rsa|ed25519))|ecdsa-sha2-nistp(256|384|521)' | head -1)
+      # Options precede key; extract type and parse options
+      # Use awk to find the first key type token (more reliable than sed for this case)
+      key_type=$(echo "$line" | awk -v pattern="$key_type_pattern" '{
+        for (i=1; i<=NF; i++) {
+          if ($i ~ "^" pattern "$") {
+            print $i
+            exit
+          }
+        }
+      }')
+
       if [ -n "$key_type" ]; then
-        options_part=$(echo "$line" | sed -n "s/\(.*\) $key_type .*/\1/p")
-        rest=$(echo "$line" | sed -n "s/.*\($key_type .*$\)/\1/p")
+        # Extract options (everything before key type)
+        # Extract rest (key type + blob + comment)
+        # Use word boundary matching to avoid greedy sed issues
+        options_part=$(echo "$line" | awk -v kt="$key_type" '{
+          for (i=1; i<=NF; i++) {
+            if ($i == kt) {
+              for (j=1; j<i; j++) printf "%s ", $j
+              exit
+            }
+          }
+        }' | sed 's/ $//')
+
+        rest=$(echo "$line" | awk -v kt="$key_type" '{
+          found=0
+          for (i=1; i<=NF; i++) {
+            if (found || $i == kt) {
+              found=1
+              printf "%s ", $i
+            }
+          }
+        }' | sed 's/ $//')
       fi
     fi
+
     [ -z "$key_type" ] && { print_warning "$target_user: Unrecognized key line"; warn_count=$((warn_count+1)); user_issues=$((user_issues+1)); continue; }
 
     key_blob=$(echo "$rest" | awk '{print $2}')
@@ -283,12 +356,16 @@ audit_auth_keys() {
     keys_json+=("{ \"type\": \"$key_type\", \"comment\": \"$esc_comment\", \"issues\": $key_issues_json }")
   done < "$path"
 
-  # Aggregate per-user JSON
+  # Aggregate per-user JSON (escape all strings)
   keys_joined=""
   if [ ${#keys_json[@]} -gt 0 ]; then
     first=true; for j in "${keys_json[@]}"; do $first || keys_joined+=" ,"; first=false; keys_joined+="$j"; done
   fi
-  json_buf_users+=("{ \"user\": \"$target_user\", \"path\": \"$path\", \"keys\": [ $keys_joined ] }")
+  local esc_user=$(json_escape "$target_user")
+  local esc_path=$(json_escape "$path")
+  local is_system_json="false"
+  [ "$is_system" = "true" ] && is_system_json="true"
+  json_buf_users+=("{ \"user\": \"$esc_user\", \"path\": \"$esc_path\", \"is_system\": $is_system_json, \"keys\": [ $keys_joined ] }")
 
   if [ $user_issues -gt 0 ]; then USERS_WITH_ISSUES=$((USERS_WITH_ISSUES+1)); fi
 }
@@ -318,10 +395,11 @@ fi
 
 print_section "Summary"
 total_targets=$((TOTAL_USERS + TOTAL_SYSTEM_TARGETS))
+total_targets_with_issues=$USERS_WITH_ISSUES
 [ "$TOTAL_USERS" -gt 0 ] && print_info "Users scanned: $TOTAL_USERS"
 [ "$TOTAL_SYSTEM_TARGETS" -gt 0 ] && print_info "System targets scanned: $TOTAL_SYSTEM_TARGETS"
 [ "$total_targets" -gt 0 ] && print_info "Total targets: $total_targets"
-print_info "Users with issues: $USERS_WITH_ISSUES"
+print_info "Targets with issues: $total_targets_with_issues"
 print_info "Total keys: $TOTAL_KEYS"
 print_info "Warnings: $warn_count, Critical: $crit_count"
 
@@ -330,16 +408,21 @@ if [ "$OUTPUT_JSON" = true ]; then
   if [ ${#json_buf_users[@]} -gt 0 ]; then
     first=true; for j in "${json_buf_users[@]}"; do $first || users_joined+=" ,"; first=false; users_joined+="$j"; done
   fi
+  esc_home_root=$(json_escape "$HOME_ROOT")
+  esc_log_file=$(json_escape "$LOG_FILE")
   cat > "$JSON_FILE" <<EOF
 {
   "timestamp": "$(get_iso8601_timestamp)",
+  "home_root": "$esc_home_root",
   "users_scanned": $TOTAL_USERS,
-  "users_with_issues": $USERS_WITH_ISSUES,
+  "system_targets_scanned": $TOTAL_SYSTEM_TARGETS,
+  "total_targets": $total_targets,
+  "targets_with_issues": $total_targets_with_issues,
   "total_keys": $TOTAL_KEYS,
   "warnings": $warn_count,
-  "criticals": $crit_count,
-  "users": [ $users_joined ],
-  "log_file": "$LOG_FILE"
+  "critical": $crit_count,
+  "targets": [ $users_joined ],
+  "log_file": "$esc_log_file"
 }
 EOF
   chmod 600 "$JSON_FILE" 2>/dev/null || true
