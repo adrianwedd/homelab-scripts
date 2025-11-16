@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **smart-disk-check.sh** - S.M.A.R.T. monitoring and disk health alerts
+  - Auto-discovery via `smartctl --scan`
+  - Health attribute monitoring (pre-fail attributes: 5, 187, 188, 197, 198)
+  - Temperature monitoring with configurable thresholds (default: warn 50°C, crit 60°C)
+  - Optional short/long/conveyance test scheduling
+  - Reallocated and pending sector detection
+  - JSON output with per-device health status
+  - Dry-run mode for preview
+  - Exit codes: 0 (healthy), 1 (warnings), 2 (critical)
+  - Graceful handling when smartctl not available
+  - Example: `examples/smart-disk-check-example.sh`
+
 ## [1.2.1] - 2025-11-14
 
 ### Added

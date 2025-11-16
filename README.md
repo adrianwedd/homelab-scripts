@@ -967,6 +967,107 @@ For automatic updates every 15 minutes:
 
 ---
 
+### 10. `smart-disk-check.sh`
+
+S.M.A.R.T. monitoring and disk health alerts for proactive disk failure detection.
+
+#### What it does:
+
+- **Auto-discovery** - Automatically finds all drives via `smartctl --scan`
+- **Health checks** - Monitors overall health status and critical attributes
+- **Temperature monitoring** - Configurable warn/critical thresholds
+- **Test scheduling** - Schedule short/long/conveyance S.M.A.R.T. tests
+- **JSON output** - Machine-readable health status
+
+#### Usage:
+
+```bash
+# Auto-discover and check all drives
+./smart-disk-check.sh
+
+# Check specific drives
+./smart-disk-check.sh --devices /dev/sda,/dev/sdb
+
+# Custom temperature thresholds
+./smart-disk-check.sh --warn-temp 45 --crit-temp 55
+
+# Schedule short test on all drives
+./smart-disk-check.sh --test short
+
+# JSON output for monitoring integration
+./smart-disk-check.sh --json
+
+# Dry run to preview
+./smart-disk-check.sh --dry-run
+
+# Show help
+./smart-disk-check.sh --help
+```
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--devices <list>` | Comma-separated device list (e.g., /dev/sda,/dev/sdb) |
+| `--test <type>` | Run S.M.A.R.T. test: short, long, conveyance |
+| `--warn-temp <C>` | Warning temperature threshold (default: 50, range: 30-80) |
+| `--crit-temp <C>` | Critical temperature threshold (default: 60, range: 40-90) |
+| `--dry-run` | Show what would be checked without executing |
+| `--json` | JSON summary output |
+| `--help` | Show help message |
+
+#### Features:
+
+- **Pre-fail attribute monitoring** - Tracks critical attributes (5, 187, 188, 197, 198)
+- **Reallocated sectors** - Detects bad sectors that have been remapped
+- **Pending sectors** - Identifies sectors waiting to be remapped
+- **Temperature alerts** - Warns on high drive temperatures
+- **Exit codes** - 0 (healthy), 1 (warnings), 2 (critical)
+
+#### Critical Attributes Monitored:
+
+| ID | Name | Description |
+|----|------|-------------|
+| 5 | Reallocated_Sector_Ct | Bad sectors remapped (pre-fail indicator) |
+| 187 | Reported_Uncorrect | Uncorrectable errors (pre-fail) |
+| 188 | Command_Timeout | Commands that timed out (pre-fail) |
+| 197 | Current_Pending_Sector | Sectors waiting to be remapped (pre-fail) |
+| 198 | Offline_Uncorrectable | Uncorrectable errors found offline (pre-fail) |
+
+#### Example Output:
+
+```
+━━━ Device Discovery ━━━
+
+✓ Found devices: /dev/sda /dev/nvme0n1
+
+━━━ Health Checks ━━━
+
+ℹ Checking device: /dev/sda
+✓ /dev/sda: HEALTHY (health: PASSED, temp: 38°C)
+
+ℹ Checking device: /dev/nvme0n1
+✓ /dev/nvme0n1: HEALTHY (health: PASSED, temp: 42°C)
+
+━━━ Summary ━━━
+
+Devices checked: 2
+  Healthy: 2
+  Warning: 0
+  Critical: 0
+```
+
+#### Cron Setup:
+
+For daily disk health monitoring:
+
+```bash
+# Add to crontab (crontab -e)
+0 6 * * * /path/to/smart-disk-check.sh --json || mail -s 'Disk Health Alert' admin@example.com
+```
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites

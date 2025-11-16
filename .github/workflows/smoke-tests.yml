@@ -282,6 +282,41 @@ COMPOSE
 
           echo "✓ dyndns-update.sh validation complete"
 
+      - name: smart-disk-check.sh tests
+        run: |
+          echo "Testing smart-disk-check.sh (S.M.A.R.T. monitoring)..."
+
+          # Test help (should always work)
+          ./smart-disk-check.sh --help
+
+          # Test dry-run (should work even without smartctl)
+          ./smart-disk-check.sh --dry-run
+
+          # Test temperature bounds
+          ./smart-disk-check.sh --warn-temp 29 --dry-run && exit 1 || echo "✓ Warn temp lower bound works"
+          ./smart-disk-check.sh --warn-temp 81 --dry-run && exit 1 || echo "✓ Warn temp upper bound works"
+          ./smart-disk-check.sh --crit-temp 39 --dry-run && exit 1 || echo "✓ Crit temp lower bound works"
+          ./smart-disk-check.sh --crit-temp 91 --dry-run && exit 1 || echo "✓ Crit temp upper bound works"
+
+          # Test that crit-temp > warn-temp
+          ./smart-disk-check.sh --warn-temp 50 --crit-temp 45 --dry-run && exit 1 || echo "✓ Temp threshold validation works"
+
+          # Test invalid test type
+          ./smart-disk-check.sh --test invalid --dry-run && exit 1 || echo "✓ Test type validation works"
+
+          # Check smartctl availability (expected to be missing in CI)
+          if ! command -v smartctl >/dev/null 2>&1; then
+            echo "✓ smartctl not available (expected in CI)"
+            # Test graceful failure when smartctl missing
+            ./smart-disk-check.sh && exit 1 || echo "✓ Graceful failure when smartctl missing"
+          else
+            echo "✓ smartctl available, testing device discovery"
+            # If smartctl is present, test with dry-run
+            ./smart-disk-check.sh --dry-run
+          fi
+
+          echo "✓ smart-disk-check.sh validation complete"
+
       - name: Smoke tests summary
         if: success()
         run: |
@@ -297,3 +332,4 @@ COMPOSE
           echo "   - compose-redeploy.sh validation: OK"
           echo "   - docker-volume-backup.sh validation: OK"
           echo "   - dyndns-update.sh validation: OK"
+          echo "   - smart-disk-check.sh validation: OK"
