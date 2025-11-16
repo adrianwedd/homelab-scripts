@@ -317,6 +317,37 @@ COMPOSE
 
           echo "✓ smart-disk-check.sh validation complete"
 
+      - name: ssh-key-audit.sh tests
+        run: |
+          echo "Testing ssh-key-audit.sh (SSH key hygiene)..."
+
+          # Help should work
+          ./ssh-key-audit.sh --help
+
+          # Dry-run (no filesystem read)
+          ./ssh-key-audit.sh --dry-run
+
+          # Create fixture users under ./tests/fixtures/ssh
+          mkdir -p tests/fixtures/ssh/alice/.ssh tests/fixtures/ssh/bob/.ssh
+          chmod 700 tests/fixtures/ssh/alice/.ssh tests/fixtures/ssh/bob/.ssh
+          echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey alice@host' > tests/fixtures/ssh/alice/.ssh/authorized_keys
+          echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCExampleKey bob@host' > tests/fixtures/ssh/bob/.ssh/authorized_keys
+          chmod 600 tests/fixtures/ssh/alice/.ssh/authorized_keys tests/fixtures/ssh/bob/.ssh/authorized_keys
+
+          # Audit specific users from fixtures with custom home root
+          ./ssh-key-audit.sh --users "alice,bob" --home-root tests/fixtures/ssh --json
+
+          # Forbid RSA, fail on weak type should produce exit 2
+          ./ssh-key-audit.sh --users "bob" --home-root tests/fixtures/ssh --forbid-types ssh-rsa --fail-on weak-type && exit 1 || echo "✓ fail-on weak-type triggers critical"
+
+          # Mutual exclusion validation
+          ./ssh-key-audit.sh --users alice --all-users && exit 1 || echo "✓ users/all-users mutual exclusion works"
+
+          # Max-age bounds
+          ./ssh-key-audit.sh --users alice --home-root tests/fixtures/ssh --max-age 99999 && exit 1 || echo "✓ max-age upper bound works"
+
+          echo "✓ ssh-key-audit.sh validation complete"
+
       - name: new-vm-setup.sh tests
         run: |
           echo "Testing new-vm-setup.sh (VM bootstrapping)..."
@@ -432,4 +463,5 @@ COMPOSE
           echo "   - docker-volume-backup.sh validation: OK"
           echo "   - dyndns-update.sh validation: OK"
           echo "   - smart-disk-check.sh validation: OK"
+          echo "   - ssh-key-audit.sh validation: OK"
           echo "   - new-vm-setup.sh validation: OK"

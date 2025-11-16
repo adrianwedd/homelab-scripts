@@ -1214,6 +1214,67 @@ Dotfiles cloned: Yes
 
 ---
 
+### 12. `ssh-key-audit.sh`
+
+Audits SSH authorized_keys for security hygiene across users and optional system paths.
+
+#### What it does:
+
+- Key type checks (flags forbidden types like `ssh-rsa` by default)
+- Options checks (flags presence of key options by default)
+- Duplicate detection (normalized by base64 blob)
+- Age checks via comment date or file mtime
+- Permissions audit (`~/.ssh` 700, `authorized_keys` 600)
+- JSON summary and exit codes: 0 (OK), 1 (warnings), 2 (critical)
+
+#### Usage:
+
+```bash
+# Audit specific users
+./ssh-key-audit.sh --users "alice,bob"
+
+# Audit all users under /home and include system paths
+./ssh-key-audit.sh --all-users --system
+
+# Forbid RSA and fail on weak-type
+./ssh-key-audit.sh --users deploy --forbid-types ssh-rsa --fail-on weak-type
+
+# Flag keys older than a year
+./ssh-key-audit.sh --users admin --max-age 365
+
+# JSON output
+./ssh-key-audit.sh --all-users --json
+
+# Dry run (no filesystem read)
+./ssh-key-audit.sh --dry-run
+
+# Help
+./ssh-key-audit.sh --help
+```
+
+#### Command Line Options:
+
+| Option | Description |
+|--------|-------------|
+| `--users <list>` | Comma-separated usernames to audit |
+| `--all-users` | Audit all users under `--home-root` (default: `/home`) |
+| `--home-root <path>` | Root for home directories (default: `/home`) |
+| `--system` | Include system-level paths |
+| `--system-paths <list>` | Colon-separated paths (default: `/etc/ssh/authorized_keys:/etc/ssh/authorized_keys.d`) |
+| `--forbid-types <list>` | Comma-separated forbidden key types (default: `ssh-rsa`) |
+| `--max-age <days>` | Flag keys older than N days (0 disables) |
+| `--fail-on <rules>` | Comma list: `weak-type,perms,stale,duplicate,unsafe-options` |
+| `--json` | JSON summary output |
+| `--dry-run` | Preview without reading filesystem |
+| `--help` | Show help |
+
+#### Notes:
+
+- Duplicate detection compares base64 key blobs; comments/options are ignored.
+- Key age prefers comment date in `YYYY-MM-DD`; falls back to file mtime.
+- System paths default can be overridden with `--system-paths`.
+
+
 ## Setup Instructions
 
 ### Prerequisites

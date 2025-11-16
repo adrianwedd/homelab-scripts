@@ -8,13 +8,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- No new features yet
+- N/A
 
 ### Changed
-- No changes yet
+- N/A
 
 ### Fixed
-- No fixes yet
+- N/A
+
+## [1.4.0] - 2025-11-16
+
+### Added
+- **ssh-key-audit.sh** - SSH key hygiene auditing and compliance validation
+  - User-scoped audits with `--users` or `--all-users` under configurable `--home-root`
+  - System-wide coverage with `--system` (includes `/etc/ssh/authorized_keys`, `/etc/ssh/authorized_keys.d`, `/root/.ssh/authorized_keys`)
+  - Custom system paths via `--system-paths` (colon-separated)
+  - Weak key detection with configurable `--forbid-types` (default: `ssh-rsa`)
+  - Permission validation for `~/.ssh` (700) and `authorized_keys` (600)
+  - Stale key detection with `--max-age` threshold (0 disables)
+  - Duplicate detection via exact match on `keytype:base64blob`
+  - Unsafe options detection (command=, from=, etc.)
+  - Fail-on rules via `--fail-on` (weak-type, perms, stale, duplicate, unsafe-options)
+  - JSON output with per-user key details and age tracking
+  - Dry-run mode for preview
+  - Exit codes: 0 (healthy), 1 (warnings), 2 (critical via --fail-on)
+  - Bash 3.x compatible (macOS default bash)
+  - Cross-platform permission checks (Linux stat -c, macOS stat -f)
+  - Example: `examples/ssh-key-audit-example.sh`
+  - Documentation: README section 12
+
+### Changed
+- N/A
+
+### Fixed
+- **ssh-key-audit.sh**: Missing user-visible warnings - Added `print_warning` calls for all issue types (weak-type, unsafe-options, stale, duplicate)
+- **ssh-key-audit.sh**: Duplicate detection substring bug - Changed `grep -qF` to `grep -qFx` for exact matching
+- **ssh-key-audit.sh**: Insufficient JSON escaping - Created comprehensive `json_escape()` function handling backslash, quotes, tab, CR, LF, and control characters
+- **ssh-key-audit.sh**: System-only audit counter bug - Added `TOTAL_SYSTEM_TARGETS` tracking for accurate statistics
+- **ssh-key-audit.sh**: Bash 3.x compatibility - Replaced `${var,,}` with `tr` for lowercase conversion
+- **ssh-key-audit.sh**: Bash 3.x compatibility - Changed associative arrays to newline-separated strings
+- **ssh-key-audit.sh**: Empty array handling - Added `[ -n "$FAIL_ON" ]` guards for `set -u` compliance
 
 ## [1.3.0] - 2025-11-16
 
