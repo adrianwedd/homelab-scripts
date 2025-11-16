@@ -382,8 +382,10 @@ for idx in "${!DEVICE_PATHS[@]}"; do
 
 	# Determine status
 	STATUS="HEALTHY"
-	if [ "$HEALTH" != "PASSED" ]; then
+	if [ "$HEALTH" = "FAILED" ]; then
 		STATUS="CRITICAL"
+	elif [ "$HEALTH" = "UNKNOWN" ]; then
+		STATUS="WARNING"
 	elif [ -n "$CRITICAL_ATTRS" ]; then
 		STATUS="WARNING"
 	elif [ "$TEMP" -ge "$CRIT_TEMP" ]; then
