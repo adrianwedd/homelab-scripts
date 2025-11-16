@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- No new features yet
+
+### Changed
+- No changes yet
+
+### Fixed
+- No fixes yet
+
+## [1.3.0] - 2025-11-16
+
+### Added
 - **smart-disk-check.sh** - S.M.A.R.T. monitoring and disk health alerts
   - Auto-discovery via `smartctl --scan`
   - Health attribute monitoring (pre-fail attributes: 5, 187, 188, 197, 198)
@@ -38,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exit codes: 0 (success), 1 (warnings)
   - Secure logging in `./logs/new-vm-setup/` (mode 700)
   - Example: `examples/new-vm-setup-example.sh`
+
+- **Release documentation**
+  - Added `docs/releases/v1.3.0-release-notes.md` with comprehensive feature documentation
+  - Phase 3 completion milestone
 
 ## [1.2.1] - 2025-11-14
 

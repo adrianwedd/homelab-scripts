@@ -276,29 +276,68 @@ sources=(
 
 ---
 
-## Phase 3: Specialized Tools (Future)
+## Phase 3: Specialized Tools ✅ COMPLETE (v1.3.0 - Released 2025-11-16)
 
-Lower priority scripts for specific use cases.
+Infrastructure automation and proactive monitoring tools.
 
-### 3.1 smart-disk-check.sh
+### 3.1 smart-disk-check.sh ✅ COMPLETE
 **Purpose**: S.M.A.R.T. monitoring and disk health alerts
 **Effort**: 2 days
 **Dependencies**: `smartmontools`
 
-**Features**: Scan all drives, warn on critical attributes, schedule tests, JSON output.
+**Features**:
+- Auto-discovery via `smartctl --scan`
+- Health attribute monitoring (pre-fail attributes: 5, 187, 188, 197, 198)
+- Temperature monitoring with configurable thresholds (default: warn 50°C, crit 60°C)
+- Optional short/long/conveyance test scheduling
+- Reallocated and pending sector detection
+- JSON output with per-device health status
+- Exit codes: 0 (healthy), 1 (warnings), 2 (critical)
+
+**Example**:
+```bash
+./smart-disk-check.sh
+./smart-disk-check.sh --devices /dev/sda,/dev/nvme0n1 --warn-temp 45 --crit-temp 55
+./smart-disk-check.sh --test long --json
+```
 
 ---
 
-### 3.2 new-vm-setup.sh
-**Purpose**: Bootstrap fresh VMs with standard config
+### 3.2 new-vm-setup.sh ✅ COMPLETE
+**Purpose**: Bootstrap fresh VMs with standard configuration
 **Effort**: 1-2 days
-**Dependencies**: `apt`/`yum`, `ssh`
+**Dependencies**: `apt`/`dnf`/`yum`, `sudo`, `git` (optional)
 
-**Features**: Hostname, package install, user creation, SSH key setup, dotfiles clone.
+**Features**:
+- OS detection via `/etc/os-release` (Ubuntu, Debian, RHEL, CentOS, Fedora, Rocky, AlmaLinux)
+- Package manager auto-detection (apt-get, dnf, yum)
+- RFC-1123 hostname validation and configuration
+- POSIX-compliant user creation with sudo/wheel group mapping
+- SSH public key setup with proper permissions
+- Package installation with idempotent checks
+- Optional dotfiles cloning from Git
+- Configurable login shell
+- Optional passwordless sudo with security warnings
+- Sudo transparency with interactive confirmations
+- Idempotent operations (safe to re-run)
+
+**Example**:
+```bash
+./new-vm-setup.sh \
+  --hostname "web-server-01" \
+  --user "deploy" \
+  --ssh-key-path "$HOME/.ssh/id_ed25519.pub" \
+  --packages "nginx,certbot,ufw" \
+  --dotfiles "https://github.com/user/dotfiles.git"
+```
 
 ---
 
-### 3.3 zfs-snapshot-manager.sh
+## Phase 4: Advanced Infrastructure (Future)
+
+Future expansion of automation and security capabilities.
+
+### 4.1 zfs-snapshot-manager.sh
 **Purpose**: Automated ZFS snapshots with retention
 **Effort**: 1-2 days
 **Dependencies**: `zfs`
@@ -307,7 +346,7 @@ Lower priority scripts for specific use cases.
 
 ---
 
-### 3.4 ssh-key-audit.sh
+### 4.2 ssh-key-audit.sh
 **Purpose**: SSH key hygiene and rotation
 **Effort**: 1 day
 **Dependencies**: `ssh`
@@ -316,7 +355,7 @@ Lower priority scripts for specific use cases.
 
 ---
 
-### 3.5 fail2ban-report.sh
+### 4.3 fail2ban-report.sh
 **Purpose**: Ban summaries and top offenders
 **Effort**: 1 day
 **Dependencies**: `fail2ban-client`
