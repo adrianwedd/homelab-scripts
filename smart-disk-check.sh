@@ -245,34 +245,73 @@ fi
 # Device discovery
 print_section "Device Discovery"
 
+# Arrays to store device paths and their type options
+declare -a DEVICE_PATHS=()
+declare -a DEVICE_TYPES=()
+
 if [ "$AUTO_DISCOVER" = true ]; then
 	print_info "Auto-discovering devices..."
-	DEVICE_LIST=$(smartctl --scan 2>/dev/null | awk '{print $1}' || echo "")
 
-	if [ -z "$DEVICE_LIST" ]; then
+	# Parse smartctl --scan output to preserve -d type options
+	while IFS= read -r line; do
+		if [ -z "$line" ]; then
+			continue
+		fi
+
+		# Extract device path (first field)
+		dev_path=$(echo "$line" | awk '{print $1}')
+
+		# Check if line contains -d option
+		if echo "$line" | grep -q -- " -d "; then
+			# Extract device type after -d
+			dev_type=$(echo "$line" | sed -n 's/.* -d \([^ ]*\).*/\1/p')
+			DEVICE_TYPES+=("$dev_type")
+		else
+			DEVICE_TYPES+=("")
+		fi
+
+		DEVICE_PATHS+=("$dev_path")
+	done < <(smartctl --scan 2>/dev/null || echo "")
+
+	if [ ${#DEVICE_PATHS[@]} -eq 0 ]; then
 		print_error "No devices found via smartctl --scan"
 		echo "Try specifying devices explicitly with --devices"
 		exit 1
 	fi
 
-	DEVICES="$DEVICE_LIST"
-	print_success "Found devices: $(echo "$DEVICE_LIST" | tr '\n' ' ')"
+	print_success "Found ${#DEVICE_PATHS[@]} device(s)"
 else
-	# Convert comma-separated to space-separated
-	DEVICE_LIST=$(echo "$DEVICES" | tr ',' ' ')
-	print_info "Using specified devices: $DEVICE_LIST"
+	# Convert comma-separated to array
+	IFS=',' read -ra DEV_ARRAY <<< "$DEVICES"
+	for dev in "${DEV_ARRAY[@]}"; do
+		DEVICE_PATHS+=("$dev")
+		DEVICE_TYPES+=("")
+	done
+	print_info "Using ${#DEVICE_PATHS[@]} specified device(s)"
 fi
 
 # Check each device
 print_section "Health Checks"
 
-for device in $DEVICE_LIST; do
+for idx in "${!DEVICE_PATHS[@]}"; do
+	device="${DEVICE_PATHS[$idx]}"
+	dev_type="${DEVICE_TYPES[$idx]}"
+
+	# Build smartctl command with optional -d type
+	if [ -n "$dev_type" ]; then
+		SMARTCTL_CMD="smartctl -d $dev_type"
+		DEVICE_DISPLAY="$device (type: $dev_type)"
+	else
+		SMARTCTL_CMD="smartctl"
+		DEVICE_DISPLAY="$device"
+	fi
+
 	echo ""
-	print_info "Checking device: $device"
+	print_info "Checking device: $DEVICE_DISPLAY"
 	DEVICES_CHECKED=$((DEVICES_CHECKED + 1))
 
-	# Check if device exists
-	if [ ! -e "$device" ]; then
+	# Check if device exists (skip for special device types like megaraid)
+	if [[ ! "$device" =~ ^/dev/(bus|sg) ]] && [ ! -e "$device" ]; then
 		print_error "Device not found: $device"
 		DEVICES_CRITICAL=$((DEVICES_CRITICAL + 1))
 		DEVICE_RESULTS+=("$device:CRITICAL:Device not found")
@@ -280,24 +319,51 @@ for device in $DEVICE_LIST; do
 	fi
 
 	# Get S.M.A.R.T. info
-	SMART_INFO=$(smartctl -i "$device" 2>&1)
+	SMART_INFO=$($SMARTCTL_CMD -i "$device" 2>&1)
 	if [ $? -ne 0 ]; then
-		print_warning "Unable to read S.M.A.R.T. info from $device"
+		print_warning "Unable to read S.M.A.R.T. info from $DEVICE_DISPLAY"
 		DEVICES_WARNING=$((DEVICES_WARNING + 1))
 		DEVICE_RESULTS+=("$device:WARNING:S.M.A.R.T. not available")
 		continue
 	fi
 
-	# Get overall health
-	HEALTH=$(smartctl -H "$device" 2>&1 | grep -i "SMART overall-health" | awk '{print $NF}' || echo "UNKNOWN")
+	# Get overall health with multiple fallback patterns
+	HEALTH=$($SMARTCTL_CMD -H "$device" 2>&1 | grep -Ei "overall-health|Health Status|SMART.*PASSED|SMART.*OK" | tail -1 || echo "")
+
+	# Extract status from various formats
+	if echo "$HEALTH" | grep -iq "PASSED"; then
+		HEALTH="PASSED"
+	elif echo "$HEALTH" | grep -iq "OK"; then
+		HEALTH="PASSED"
+	elif echo "$HEALTH" | grep -iq "FAILED"; then
+		HEALTH="FAILED"
+	else
+		HEALTH="UNKNOWN"
+	fi
 
 	# Get attributes
-	ATTRIBUTES=$(smartctl -A "$device" 2>/dev/null || echo "")
+	ATTRIBUTES=$($SMARTCTL_CMD -A "$device" 2>/dev/null || echo "")
 
-	# Check temperature
-	TEMP=$(echo "$ATTRIBUTES" | grep -i "Temperature" | awk '{print $10}' | head -1 || echo "0")
-	if ! [[ "$TEMP" =~ ^[0-9]+$ ]]; then
-		TEMP=0
+	# Check temperature with multiple extraction methods
+	# Try various formats: SATA (field 10), NVMe (different layouts), generic fallback
+	TEMP=0
+
+	# Method 1: Standard SATA format (field 10)
+	TEMP_SATA=$(echo "$ATTRIBUTES" | grep -i "Temperature" | awk '{print $10}' | head -1 || echo "")
+	if [[ "$TEMP_SATA" =~ ^[0-9]+$ ]]; then
+		TEMP=$TEMP_SATA
+	else
+		# Method 2: Try field 194 (Airflow_Temperature_Cel) or 190 (Temperature_Celsius)
+		TEMP_ALT=$(echo "$ATTRIBUTES" | grep -E "^\s*(190|194)" | awk '{print $10}' | head -1 || echo "")
+		if [[ "$TEMP_ALT" =~ ^[0-9]+$ ]]; then
+			TEMP=$TEMP_ALT
+		else
+			# Method 3: NVMe format - extract first number after "Temperature:"
+			TEMP_NVME=$(echo "$ATTRIBUTES" | grep -i "Temperature:" | grep -oE '[0-9]+' | head -1 || echo "")
+			if [[ "$TEMP_NVME" =~ ^[0-9]+$ ]]; then
+				TEMP=$TEMP_NVME
+			fi
+		fi
 	fi
 
 	# Check critical attributes
@@ -351,16 +417,41 @@ done
 if [ -n "$RUN_TEST" ]; then
 	print_section "Test Scheduling"
 
-	for device in $DEVICE_LIST; do
-		if [ ! -e "$device" ]; then
+	print_info "Note: Tests run asynchronously in background; command returns immediately"
+	echo "      Use 'smartctl -a <device>' to check test progress/results later"
+	echo ""
+
+	for idx in "${!DEVICE_PATHS[@]}"; do
+		device="${DEVICE_PATHS[$idx]}"
+		dev_type="${DEVICE_TYPES[$idx]}"
+
+		# Build smartctl command with optional -d type
+		if [ -n "$dev_type" ]; then
+			SMARTCTL_CMD="smartctl -d $dev_type"
+		else
+			SMARTCTL_CMD="smartctl"
+		fi
+
+		# Skip if device doesn't exist (for non-special devices)
+		if [[ ! "$device" =~ ^/dev/(bus|sg) ]] && [ ! -e "$device" ]; then
 			continue
 		fi
 
 		print_info "Scheduling $TEST_TYPE test on $device..."
-		if smartctl -t "$TEST_TYPE" "$device" >>"$LOG_FILE" 2>&1; then
-			print_success "Test scheduled on $device"
+		# Capture ETA from smartctl output
+		TEST_OUTPUT=$($SMARTCTL_CMD -t "$TEST_TYPE" "$device" 2>&1)
+		if [ $? -eq 0 ]; then
+			# Extract ETA line if present
+			ETA=$(echo "$TEST_OUTPUT" | grep -i "Please wait" || echo "")
+			if [ -n "$ETA" ]; then
+				print_success "Test scheduled on $device ($ETA)"
+			else
+				print_success "Test scheduled on $device"
+			fi
+			echo "$TEST_OUTPUT" >>"$LOG_FILE"
 		else
 			print_error "Failed to schedule test on $device"
+			echo "$TEST_OUTPUT" >>"$LOG_FILE"
 		fi
 	done
 fi
