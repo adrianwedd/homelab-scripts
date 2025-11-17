@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - N/A
 
+## [1.5.1] - 2025-11-17
+
+### Fixed
+- **ssh-key-audit.sh**: Critical risk scoring bugs that prevented high-severity issues from being scored:
+  - **Token mismatch**: Risk engine expected `unsafe-options:value` and `duplicate:count` but audit emitted bare `unsafe-options` and `duplicate`, causing 35pt and 20pt issues to be invisible in risk scores. Now emits `unsafe-options:<options>` and `duplicate:<count>` matching scorer expectations.
+  - **Pipe delimiter corruption**: Used single `|` as delimiter in keys_data serialization, but SSH key comments can contain `|` characters (e.g., "prod|blue"), causing record corruption and misattributed issues. Changed to `|||` (triple-pipe) delimiter to avoid conflicts.
+  - Impact: Without these fixes, duplicate keys and unsafe options (two of the highest-severity conditions) were completely missing from risk_score/risk_level/risk_factors output, defeating core v1.5.0 functionality.
+
 ## [1.5.0] - 2025-11-17
 
 ### Added

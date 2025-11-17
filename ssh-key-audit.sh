@@ -2,7 +2,7 @@
 set -u
 
 # ssh-key-audit.sh - Audit SSH authorized_keys for hygiene and risk
-# Version: 1.5.0
+# Version: 1.5.1
 # Usage: ./ssh-key-audit.sh [options]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,7 +84,7 @@ NOTES:
   - Permissions checked: ~/.ssh (700), authorized_keys (600)
   - Duplicate detection compares base64 key blobs (type+blob)
 
-VERSION: 1.5.0
+VERSION: 1.5.1
 HELP
 }
 
@@ -380,7 +380,8 @@ calculate_risk_score() {
   # Process key-level issues
   local key_index=0
   for key_data in "${keys_data[@]}"; do
-    IFS='|' read -r key_type key_comment issues_str <<< "$key_data"
+    # Use ||| delimiter to avoid conflicts with pipe in comments
+    IFS='|||' read -r key_type key_comment issues_str <<< "$key_data"
     IFS=',' read -r -a key_issues <<< "$issues_str"
 
     local key_score=0
@@ -676,7 +677,7 @@ audit_auth_keys() {
     done
     # Unsafe options (any options present => flag)
     if [ -n "$options_part" ]; then
-      issues+=("unsafe-options")
+      issues+=("unsafe-options:${options_part}")
       print_warning "$target_user: unsafe options ($options_part) in $key_comment"
       if [ -n "$FAIL_ON" ] && contains_rule "unsafe-options" "${FAIL_ON_ARRAY[@]}"; then crit_count=$((crit_count+1)); else warn_count=$((warn_count+1)); fi
     fi
@@ -701,7 +702,10 @@ audit_auth_keys() {
     # Duplicate detection by key type + blob
     norm_key="$key_type:$key_blob"
     if echo "$duplicate_map" | grep -qFx "$norm_key"; then
-      issues+=("duplicate")
+      # Count occurrences (simplified: report as 2+ targets)
+      local dup_count=$(echo "$duplicate_map" | grep -Fc "$norm_key")
+      dup_count=$((dup_count + 1))
+      issues+=("duplicate:${dup_count}")
       print_warning "$target_user: duplicate key blob $key_type in $key_comment"
       if [ -n "$FAIL_ON" ] && contains_rule "duplicate" "${FAIL_ON_ARRAY[@]}"; then crit_count=$((crit_count+1)); else warn_count=$((warn_count+1)); fi
     else
@@ -726,7 +730,8 @@ audit_auth_keys() {
     # Build keys_data for risk scoring (if enabled) - v1.5.0+
     if [ "$ENABLE_RISK" = true ]; then
       local issues_str=$(IFS=','; echo "${issues[*]}")
-      keys_data+=("$key_type|$key_comment|$issues_str")
+      # Use ||| as delimiter to avoid conflicts with pipe in comments
+      keys_data+=("$key_type|||$key_comment|||$issues_str")
     fi
   done < "$path"
 
