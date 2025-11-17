@@ -16,6 +16,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - N/A
 
+## [1.5.0] - 2025-11-17
+
+### Added
+- **ssh-key-audit.sh**: Comprehensive risk scoring system for prioritizing SSH key hygiene issues
+  - Pure bash risk calculation engine (no jq dependency)
+  - Configurable weights via config files or environment variables
+  - Risk formula: `final_score = min(target_score + max_key_score, 100) × multiplier`
+  - System multiplier (1.25×) for critical targets (/root, /etc/ssh)
+  - Stale key buckets: 90/180/365 days (non-additive, uses >= threshold logic)
+  - Risk levels: CRITICAL (85+), HIGH (50-84), MEDIUM (20-49), LOW (1-19), CLEAN (0)
+  - Color-coded console summary showing risk distribution and top N risky targets
+  - Detailed risk breakdown with `--risk-detail` flag
+  - Config discovery priority: `--risk-config` → `./.ssh-audit.conf` → `~/.ssh-audit.conf` → `/etc/ssh-audit/config.conf`
+  - New CLI flags: `--risk`, `--risk-detail`, `--risk-config PATH`
+  - JSON output includes `risk_score`, `risk_level`, `risk_factors` fields when `--risk` enabled
+  - Example config file: `examples/ssh-audit.conf`
+
+### Changed
+- **ssh-key-audit.sh**: Version bumped from 1.4.3 to 1.5.0
+- **ssh-key-audit.sh**: Default risk weights:
+  - ssh-rsa/ssh-dss weak crypto: 50 pts (critical)
+  - Unsafe options: 35 pts
+  - Bad .ssh permissions: 40 pts
+  - Bad authorized_keys permissions: 35 pts
+  - Stale 365+ days: 25 pts
+  - Stale 180+ days: 15 pts
+  - Stale 90+ days: 8 pts
+  - Duplicate keys: 20 pts
+  - Missing authorized_keys: 5 pts (informational)
+  - NIST ECDSA curves: 0 pts (opt-in via config)
+
+### Fixed
+- N/A
+
+### Breaking Changes
+- None (risk scoring is opt-in via `--risk` flag)
+
 ## [1.4.3] - 2025-11-17
 
 ### Fixed
