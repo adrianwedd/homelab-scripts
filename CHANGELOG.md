@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - N/A
 
+## [1.4.3] - 2025-11-17
+
+### Fixed
+- **ssh-key-audit.sh**: Incomplete JSON traceability - Added `target_issues` array field to JSON output containing structured target-level warnings (ssh-dir-perms:XXX, auth-keys-perms:XXX, auth-keys-missing). This completes the v1.4.2 fix by making permission issues machine-readable for SIEM/CI automation.
+
+### Added
+- **ssh-key-audit.sh**: Console summary now shows "Targets with missing authorized_keys: N (informational)" when N > 0, ensuring operators are aware of missing key files even without --json flag
+
+### Changed
+- **ssh-key-audit.sh**: JSON schema now includes `target_issues` field in every target object (breaking change for JSON consumers)
+- **ssh-key-audit.sh**: Missing authorized_keys files are tracked in JSON but do NOT increment warning counts or affect exit codes (informational only)
+
 ## [1.4.2] - 2025-11-16
 
 ### Fixed

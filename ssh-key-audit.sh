@@ -2,7 +2,7 @@
 set -u
 
 # ssh-key-audit.sh - Audit SSH authorized_keys for hygiene and risk
-# Version: 1.4.2
+# Version: 1.4.3
 # Usage: ./ssh-key-audit.sh [options]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,6 +35,7 @@ TOTAL_KEYS=0
 TOTAL_USERS=0
 TOTAL_SYSTEM_TARGETS=0
 USERS_WITH_ISSUES=0
+TARGETS_MISSING_KEYS=0  # Informational: targets with missing authorized_keys
 
 # Colors and print helpers
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -68,7 +69,7 @@ NOTES:
   - Permissions checked: ~/.ssh (700), authorized_keys (600)
   - Duplicate detection compares base64 key blobs (type+blob)
 
-VERSION: 1.4.2
+VERSION: 1.4.3
 HELP
 }
 
@@ -212,6 +213,7 @@ audit_auth_keys() {
   local ssh_mode="" auth_mode=""
   local keys_json=()
   local duplicate_map=""  # newline-separated list of seen keys
+  declare -a target_issues=()  # Track target-level issues for JSON
 
   if [ -d "$ssh_dir" ]; then
     ssh_mode=$(get_mode "$ssh_dir")
@@ -219,18 +221,33 @@ audit_auth_keys() {
       msg="$target_user: ~/.ssh permissions $ssh_mode (expected 700)"
       if [ -n "$FAIL_ON" ] && contains_rule "perms" "${FAIL_ON_ARRAY[@]}"; then crit_count=$((crit_count+1)); else warn_count=$((warn_count+1)); fi
       print_warning "$msg"; user_issues=$((user_issues+1))
+      target_issues+=("ssh-dir-perms:$ssh_mode")
     fi
   fi
 
   # Early exit if no authorized_keys, but still create JSON entry below
   if [ ! -f "$path" ]; then
+    # Missing authorized_keys is informational (users may have no SSH access)
+    # BUT: It's still tracked in target_issues for SIEM visibility
+    # Increment USERS_WITH_ISSUES only if there are OTHER issues (e.g., .ssh perms)
+    target_issues+=("auth-keys-missing")
+    TARGETS_MISSING_KEYS=$((TARGETS_MISSING_KEYS+1))
     # Aggregate per-user JSON (even with no keys)
     local esc_user=$(json_escape "$target_user")
     local esc_path=$(json_escape "$path")
     local is_system_json="false"
     [ "$is_system" = "true" ] && is_system_json="true"
-    json_buf_users+=("{ \"user\": \"$esc_user\", \"path\": \"$esc_path\", \"is_system\": $is_system_json, \"keys\": [ ] }")
+    # Build target_issues JSON
+    local target_issues_json="[]"
+    if [ ${#target_issues[@]} -gt 0 ]; then
+      local first=true; target_issues_json=""; for it in "${target_issues[@]}"; do
+        $first || target_issues_json+=", "; first=false; target_issues_json+="\"$it\""; done
+      target_issues_json="[ $target_issues_json ]"
+    fi
+    json_buf_users+=("{ \"user\": \"$esc_user\", \"path\": \"$esc_path\", \"is_system\": $is_system_json, \"target_issues\": $target_issues_json, \"keys\": [ ] }")
 
+    # Count this target as having issues only if there are problems BEYOND missing file
+    # (e.g., .ssh permission issues detected earlier)
     if [ $user_issues -gt 0 ]; then USERS_WITH_ISSUES=$((USERS_WITH_ISSUES+1)); fi
     return 0
   fi
@@ -240,6 +257,7 @@ audit_auth_keys() {
     msg="$target_user: authorized_keys permissions $auth_mode (expected 600)"
     if [ -n "$FAIL_ON" ] && contains_rule "perms" "${FAIL_ON_ARRAY[@]}"; then crit_count=$((crit_count+1)); else warn_count=$((warn_count+1)); fi
     print_warning "$msg"; user_issues=$((user_issues+1))
+    target_issues+=("auth-keys-perms:$auth_mode")
   fi
 
   local file_mtime=$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || echo "0")
@@ -374,7 +392,14 @@ audit_auth_keys() {
   local esc_path=$(json_escape "$path")
   local is_system_json="false"
   [ "$is_system" = "true" ] && is_system_json="true"
-  json_buf_users+=("{ \"user\": \"$esc_user\", \"path\": \"$esc_path\", \"is_system\": $is_system_json, \"keys\": [ $keys_joined ] }")
+  # Build target_issues JSON
+  local target_issues_json="[]"
+  if [ ${#target_issues[@]} -gt 0 ]; then
+    local first=true; target_issues_json=""; for it in "${target_issues[@]}"; do
+      $first || target_issues_json+=", "; first=false; target_issues_json+="\"$it\""; done
+    target_issues_json="[ $target_issues_json ]"
+  fi
+  json_buf_users+=("{ \"user\": \"$esc_user\", \"path\": \"$esc_path\", \"is_system\": $is_system_json, \"target_issues\": $target_issues_json, \"keys\": [ $keys_joined ] }")
 
   if [ $user_issues -gt 0 ]; then USERS_WITH_ISSUES=$((USERS_WITH_ISSUES+1)); fi
 }
@@ -409,6 +434,7 @@ total_targets_with_issues=$USERS_WITH_ISSUES
 [ "$TOTAL_SYSTEM_TARGETS" -gt 0 ] && print_info "System targets scanned: $TOTAL_SYSTEM_TARGETS"
 [ "$total_targets" -gt 0 ] && print_info "Total targets: $total_targets"
 print_info "Targets with issues: $total_targets_with_issues"
+[ "$TARGETS_MISSING_KEYS" -gt 0 ] && print_info "Targets with missing authorized_keys: $TARGETS_MISSING_KEYS (informational)"
 print_info "Total keys: $TOTAL_KEYS"
 print_info "Warnings: $warn_count, Critical: $crit_count"
 
