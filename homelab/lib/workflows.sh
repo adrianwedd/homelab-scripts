@@ -447,9 +447,9 @@ execute_custom_workflow() {
       print_info "Workflow skipped: $CONDITION_SKIP_REASON"
       log_to_file "INFO: Workflow skipped - $CONDITION_SKIP_REASON"
 
-      # Send info-level notification for skip
+      # Send warning-level notification for skip with reason in skipped field
       if type -t send_notification >/dev/null 2>&1; then
-        send_notification "$workflow_name" "skipped" "0s" "0" "0" "$CONDITION_SKIP_REASON" "" "" "$is_scheduled" false
+        send_notification "$workflow_name" "warning" "0s" "0" "0" "" "Workflow: $CONDITION_SKIP_REASON" "" "$is_scheduled" false
       fi
 
       return 0  # Exit 0 for skip (not an error)
@@ -458,9 +458,9 @@ execute_custom_workflow() {
       print_error "Workflow failed condition check: $CONDITION_SKIP_REASON"
       log_to_file "ERROR: Workflow failed - $CONDITION_SKIP_REASON"
 
-      # Send failure notification
+      # Send failure notification with reason in failed field
       if type -t send_notification >/dev/null 2>&1; then
-        send_notification "$workflow_name" "failure" "0s" "0" "0" "" "$CONDITION_SKIP_REASON" "" "$is_scheduled" false
+        send_notification "$workflow_name" "failure" "0s" "0" "0" "Condition: $CONDITION_SKIP_REASON" "" "" "$is_scheduled" false
       fi
 
       return 1  # Exit 1 for failure
@@ -535,18 +535,22 @@ execute_custom_workflow() {
         # Step conditions failed with skip action
         print_info "  ℹ Step $((i+1)) skipped: $CONDITION_SKIP_REASON"
         log_to_file "INFO: Step $((i+1)) ($step_name) skipped - $CONDITION_SKIP_REASON"
-        WORKFLOW_STEP_COUNT=$((WORKFLOW_STEP_COUNT + 1))
+
+        # Track skipped step (don't increment WORKFLOW_STEP_COUNT - run_step manages that)
+        WORKFLOW_SKIPPED_STEPS+=("$step_name")
         continue  # Skip to next step
       elif [ $step_condition_result -eq 2 ]; then
         # Step conditions failed with fail action
         print_error "  ✗ Step $((i+1)) failed condition: $CONDITION_SKIP_REASON"
         log_to_file "ERROR: Step $((i+1)) ($step_name) failed - $CONDITION_SKIP_REASON"
 
+        # Track failed step
+        WORKFLOW_FAILED_STEPS+=("$step_name")
+
         if [ "$skip_on_error" != "true" ]; then
           exit_code=1
           break  # Stop workflow
         else
-          WORKFLOW_STEP_COUNT=$((WORKFLOW_STEP_COUNT + 1))
           continue  # Continue to next step
         fi
       fi
