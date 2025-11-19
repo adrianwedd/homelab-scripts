@@ -253,6 +253,76 @@ get_workflow_schedule() {
   echo "Manual"
 }
 
+# Get cron expression from workflow
+# Usage: get_workflow_cron_expression <workflow_name>
+# Returns: cron expression or empty string if not scheduled
+get_workflow_cron_expression() {
+  local workflow_name="$1"
+  local workflow_file
+
+  # Built-in workflows use config variables
+  case "$workflow_name" in
+    morning)
+      echo "${HOMELAB_SCHEDULE_MORNING:-0 8 * * *}"
+      return 0
+      ;;
+    weekly)
+      echo "${HOMELAB_SCHEDULE_WEEKLY:-0 2 * * 0}"
+      return 0
+      ;;
+    emergency|pre-deploy)
+      echo ""  # Not scheduled
+      return 0
+      ;;
+  esac
+
+  # Try to get cron expression from custom workflow
+  workflow_file=$(get_workflow_file "$workflow_name")
+  if [ -n "$workflow_file" ] && [ -f "$workflow_file" ]; then
+    local cron_expr
+    if command -v jq >/dev/null 2>&1; then
+      cron_expr=$(jq -r '.schedule.expression // empty' "$workflow_file" 2>/dev/null)
+    elif command -v python3 >/dev/null 2>&1; then
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$workflow_file")
+      cron_expr=$(python3 -c "import sys, json; data=json.load(open('$escaped_path')); print(data.get('schedule', {}).get('expression', ''))" 2>/dev/null)
+    fi
+
+    if [ -n "$cron_expr" ] && [ "$cron_expr" != "null" ]; then
+      echo "$cron_expr"
+      return 0
+    fi
+  fi
+
+  echo ""  # Not scheduled
+}
+
+# List workflows that have schedule definitions
+# Returns: workflow names (one per line) with cron expressions
+list_scheduled_workflows() {
+  local workflows=()
+
+  # Add built-in workflows that are scheduled
+  workflows+=("morning")
+  workflows+=("weekly")
+
+  # Add custom workflows with schedules
+  if type -t list_custom_workflows >/dev/null 2>&1; then
+    while IFS= read -r workflow_name; do
+      local cron_expr
+      cron_expr=$(get_workflow_cron_expression "$workflow_name")
+      if [ -n "$cron_expr" ]; then
+        workflows+=("$workflow_name")
+      fi
+    done < <(list_custom_workflows)
+  fi
+
+  # Output workflow names
+  for workflow in "${workflows[@]}"; do
+    echo "$workflow"
+  done
+}
+
 # Validate workflow definition structure and script availability
 # Usage: validate_workflow_definition <workflow_file>
 # Returns: 0 if valid, 1 if invalid (with error messages)
