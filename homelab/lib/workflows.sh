@@ -402,7 +402,6 @@ execute_custom_workflow() {
       --quiet|-q) HOMELAB_QUIET=true; shift ;;
       --notify) HOMELAB_NOTIFY_MANUAL=true; shift ;;
       --scheduled) is_scheduled=true; shift ;;
-      --skip) shift ;; # Skip steps handled below
       *) shift ;;
     esac
   done
@@ -443,27 +442,39 @@ execute_custom_workflow() {
   for ((i=0; i<step_count; i++)); do
     local step_name
     local step_script
-    local step_args
     local skip_on_error
     local timeout
 
+    # Parse step metadata
     if [ "$parser" = "jq" ]; then
       step_name=$(jq -r ".steps[$i].name" "$workflow_file")
       step_script=$(jq -r ".steps[$i].script" "$workflow_file")
-      step_args=$(jq -r ".steps[$i].args | join(\" \")" "$workflow_file" 2>/dev/null || echo "")
       skip_on_error=$(jq -r ".steps[$i].skip_on_error // false" "$workflow_file")
       timeout=$(jq -r ".steps[$i].timeout // 0" "$workflow_file")
     else
       # python3 parser
       step_name=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i]['name'])" 2>/dev/null)
       step_script=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i]['script'])" 2>/dev/null)
-      step_args=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(' '.join(data['steps'][$i].get('args', [])))" 2>/dev/null)
       skip_on_error=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(str(data['steps'][$i].get('skip_on_error', False)).lower())" 2>/dev/null)
       timeout=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i].get('timeout', 0))" 2>/dev/null)
     fi
 
-    # Execute step
-    if run_step "$step_name" "$step_script" $step_args; then
+    # Parse args as array (safely preserving spaces and special characters)
+    local step_args=()
+    if [ "$parser" = "jq" ]; then
+      # Use jq to output one arg per line, then read into array
+      while IFS= read -r arg; do
+        step_args+=("$arg")
+      done < <(jq -r ".steps[$i].args[]? // empty" "$workflow_file" 2>/dev/null)
+    else
+      # Use python3 to output one arg per line, then read into array
+      while IFS= read -r arg; do
+        step_args+=("$arg")
+      done < <(python3 -c "import json, sys; data=json.load(open('$workflow_file')); args=data['steps'][$i].get('args', []); [print(arg) for arg in args]" 2>/dev/null)
+    fi
+
+    # Execute step with properly quoted args array
+    if run_step "$step_name" "$step_script" "${step_args[@]}"; then
       :  # Step succeeded
     else
       local step_exit=$?
