@@ -596,24 +596,18 @@ show_cron_status() {
 
 # Show launchd status
 show_launchd_status() {
-  # Get list of scheduled workflows
-  local scheduled_workflows=()
-  if type -t list_scheduled_workflows >/dev/null 2>&1; then
-    while IFS= read -r workflow_name; do
-      scheduled_workflows+=("$workflow_name")
-    done < <(list_scheduled_workflows)
-  fi
+  local launch_dir="$HOME/Library/LaunchAgents"
 
-  # Check if any homelab jobs are loaded
-  local any_loaded=false
-  for workflow_name in "${scheduled_workflows[@]}"; do
-    if launchctl list | grep -q "com.homelab.${workflow_name}"; then
-      any_loaded=true
-      break
+  # Find all installed homelab plists
+  local installed_workflows=()
+  while IFS= read -r plist_file; do
+    if [ -f "$plist_file" ]; then
+      local workflow_name=$(basename "$plist_file" .plist | sed 's/^com\.homelab\.//')
+      installed_workflows+=("$workflow_name")
     fi
-  done
+  done < <(find "$launch_dir" -name "com.homelab.*.plist" 2>/dev/null || true)
 
-  if [ "$any_loaded" = false ]; then
+  if [ ${#installed_workflows[@]} -eq 0 ]; then
     print_warning "homelab schedule not installed"
     echo ""
     print_info "Install schedule: homelab schedule install"
@@ -625,11 +619,21 @@ show_launchd_status() {
 
   print_info "Active jobs:"
 
-  # Show each scheduled workflow
-  for workflow_name in "${scheduled_workflows[@]}"; do
-    if launchctl list | grep -q "com.homelab.${workflow_name}"; then
-      local schedule_desc=$(get_workflow_schedule "$workflow_name")
+  # Show each installed workflow
+  for workflow_name in "${installed_workflows[@]}"; do
+    # Check if job is actually loaded
+    local is_loaded="loaded"
+    if ! launchctl list | grep -q "com.homelab.${workflow_name}"; then
+      is_loaded="not loaded"
+    fi
+
+    # Get schedule description
+    local schedule_desc=$(get_workflow_schedule "$workflow_name" 2>/dev/null || echo "schedule unknown")
+
+    if [ "$is_loaded" = "loaded" ]; then
       echo "  • $workflow_name: $schedule_desc"
+    else
+      echo "  • $workflow_name: $schedule_desc (⚠ $is_loaded)"
     fi
   done
 
@@ -637,13 +641,19 @@ show_launchd_status() {
 
   # Show recent runs
   print_info "Recent workflow runs:"
-  for workflow_name in "${scheduled_workflows[@]}"; do
+  local any_runs=false
+  for workflow_name in "${installed_workflows[@]}"; do
     local log_file="$HOMELAB_LOG_DIR/launchd_${workflow_name}.log"
     if [ -f "$log_file" ]; then
       local last_run=$(date -r "$log_file" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'unknown')
       echo "  • $workflow_name: $last_run"
+      any_runs=true
     fi
   done
+
+  if [ "$any_runs" = false ]; then
+    echo "  (no workflow runs logged yet)"
+  fi
 }
 
 # Show schedule configuration (preview without installing)
