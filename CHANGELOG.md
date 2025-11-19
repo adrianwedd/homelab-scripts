@@ -16,6 +16,193 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - N/A
 
+## [2.2.0] - 2025-11-19
+
+### Added
+
+**Homelab Orchestration System - Phase 2.2: Multi-Channel Notification System**
+
+- **homelab/lib/notifications.sh** - Comprehensive notification delivery engine (676 lines)
+  - Multi-channel support: Slack webhooks, generic webhooks (Discord/Teams), macOS native, Linux notify-send, email
+  - Smart trigger system: success, warning, failure, start (configurable per notification type)
+  - Manual vs scheduled run differentiation (opt-in `--notify` flag for manual runs)
+  - Rich formatting with Slack attachments (color-coded, fields, footer)
+  - Plain text fallback with proper JSON escaping
+  - Rate limiting with configurable interval (default: 60s, prevents notification spam)
+  - Circuit breakers for failing channels (auto-disable after repeated failures)
+  - Path redaction for privacy (`$HOME` → `~` when enabled)
+  - Dry-run mode for testing without sending
+  - Failed steps list rendering (displays step names in notifications)
+  - Start trigger support (workflow initialization notifications)
+  - bash 3.2 compatible (macOS default bash)
+
+- **Notification CLI commands**:
+  - `homelab notify test` - Send test notification to configured channels
+  - `homelab notify test --dry-run` - Preview notification without sending
+
+- **Workflow integration**:
+  - Start notifications fired at workflow begin (optional, trigger-based)
+  - Completion notifications with status (success/warning/failure)
+  - Duration tracking and step counts
+  - Failed/skipped step names in notifications
+  - Automatic status determination (failure > warning > success)
+
+- **Configuration options** (homelab.conf):
+  - `HOMELAB_NOTIFY_ENABLED` - Global enable/disable
+  - `HOMELAB_NOTIFY_CHANNELS` - Comma-separated channel list
+  - `HOMELAB_NOTIFY_TRIGGERS` - Comma-separated trigger list
+  - `HOMELAB_NOTIFY_MANUAL` - Require `--notify` flag for manual runs
+  - `HOMELAB_NOTIFY_RICH_FORMAT` - Enable/disable color and fields
+  - `HOMELAB_NOTIFY_REDACT_PATHS` - Enable path redaction
+  - `HOMELAB_NOTIFY_MIN_INTERVAL_SECONDS` - Rate limit interval
+  - Channel-specific configs (Slack webhook URL, email addresses, etc.)
+
+- **Cross-platform compatibility**:
+  - macOS: osascript for native notifications
+  - Linux: notify-send for desktop notifications
+  - Both: Slack, generic webhooks, email
+
+- **Test coverage**:
+  - 6 comprehensive test scripts validating all fixes
+  - Edge case test for cross-workflow rate limiting
+  - JSON escaping validation
+  - Path redaction validation
+  - Failed steps rendering validation
+  - Rate limit behavior validation
+
+### Changed
+
+- **homelab/lib/logger.sh** - Added notification hooks to `complete_workflow_logging()`
+  - Determines notification status based on failed/skipped steps
+  - Passes workflow metrics to notification system
+  - Supports `is_scheduled` flag for manual vs scheduled differentiation
+
+- **homelab/lib/workflows.sh** - Added start notifications to all workflows
+  - Morning routine: fires start notification before step execution
+  - Weekly maintenance: fires start notification before step execution
+  - Emergency cleanup: fires start notification before step execution
+  - Pre-deploy checks: fires start notification before step execution
+
+- **homelab/lib/scheduler.sh** - Added `--scheduled` flag to cron/launchd entries
+  - Allows notifications to differentiate scheduled vs manual runs
+  - Prevents notification spam during interactive debugging
+
+- **homelab/homelab.sh** - Added notification commands and `--notify` flag
+  - All workflows support `--notify` flag for manual notification override
+  - New `notify` command namespace for testing
+
+- **homelab/homelab.conf** - Added 82 lines of notification configuration
+  - Comprehensive comments explaining each setting
+  - Examples for Slack, Discord, custom webhooks
+  - Edge case documentation for rate limiting
+
+- **homelab/README.md** - Added 425-line notification system documentation
+  - Channel-by-channel setup guides
+  - Trigger configuration examples
+  - Security considerations
+  - Comprehensive troubleshooting section
+  - Edge case documentation
+
+### Fixed
+
+**Round 1 (3 critical bugs identified in code review):**
+
+1. **Invalid JSON in Slack fallback payload** (HIGH severity)
+   - Problem: Plain text with newlines and quotes embedded directly in JSON without escaping
+   - Impact: Slack webhook calls failed with HTTP 400 due to malformed JSON
+   - Fix: Created `json_escape()` function escaping backslashes, quotes, newlines, CR, tabs
+   - Location: `homelab/lib/notifications.sh:16-25`
+
+2. **Path redaction flag unused** (MEDIUM severity)
+   - Problem: `HOMELAB_NOTIFY_REDACT_PATHS` flag read but never applied to output
+   - Impact: Sensitive paths like `/Users/admin/homelab-logs/` leaked in all notifications
+   - Fix: Applied redaction in both `format_notification_plain()` and `format_notification_slack()`
+   - Location: `homelab/lib/notifications.sh:122-125, 182-185`
+
+3. **Dry-run consuming rate limit** (MEDIUM severity)
+   - Problem: `is_rate_limited()` always updated `LAST_NOTIFICATION_TIME`, even for dry-run tests
+   - Impact: Running `homelab notify test --dry-run` prevented next real notification for 60s
+   - Fix: Added `dry_run` parameter, only update timestamp when `dry_run != true`
+   - Location: `homelab/lib/notifications.sh:61, 84-86`
+
+**Round 2 (2 critical bugs identified in code review):**
+
+4. **Failed step names lost in subshell** (HIGH severity)
+   - Problem: Pipeline `echo | tr | while read` ran loop in subshell, message updates lost on exit
+   - Impact: Notifications showed "Failed: 3" but never listed which steps failed
+   - Fix: Replaced pipeline with array read `IFS=',' read -ra array` to avoid subshell
+   - Location: `homelab/lib/notifications.sh:144-147`
+
+5. **Start trigger never fired** (MEDIUM severity)
+   - Problem: `start` trigger documented and handled by `should_notify()` but no workflow called it
+   - Impact: Users enabling `start` trigger saw no effect, broken feature
+   - Fix: Added start notification hook to all 4 workflows (morning, weekly, emergency, pre-deploy)
+   - Location: `homelab/lib/workflows.sh:31-33, 96-98, 167-169, 248-250`
+
+**Round 3 (1 critical bug identified in code review):**
+
+6. **Start trigger consuming rate limit blocked completion** (HIGH severity)
+   - Problem: Start notification updated `LAST_NOTIFICATION_TIME`, then completion fired seconds later and was rate-limited
+   - Impact: Workflows <60s only sent start notification, never completion (defeating Phase 2.2's primary goal)
+   - Fix: Modified `is_rate_limited()` to accept `trigger` parameter, skip timestamp update for `trigger == "start"`
+   - Location: `homelab/lib/notifications.sh:62, 84-86`
+
+### Documentation
+
+- **Edge case documentation** - Cross-workflow rate limiting behavior
+  - Start notifications don't consume rate limit but are subject to rate limit check
+  - Intra-workflow: start → completion works correctly (primary use case)
+  - Cross-workflow: completion → start may be blocked if workflows run <60s apart
+  - Documented in: `homelab/lib/notifications.sh:61-65`, `homelab.conf:112-118`, `README.md:1056-1060`
+  - Test coverage: `/tmp/test_cross_workflow_rate_limit.sh`
+  - Workarounds: Reduce `HOMELAB_NOTIFY_MIN_INTERVAL_SECONDS`, disable `start` trigger, or schedule workflows >60s apart
+
+### Testing
+
+- **Raspberry Pi validation** (ARM64 Linux/Debian Bookworm)
+  - Tested on 2× Raspberry Pi 5 systems (192.168.1.100, 192.168.1.250)
+  - All phases verified: Config (1.1), Scheduling (2.1), Notifications (2.2)
+  - Cross-platform compatibility confirmed: macOS (M1) vs Linux (ARM64)
+  - Performance validated: <100ms config load, <1s workflow, <10MB memory
+  - Linux-specific features tested: cron, systemd, notify-send, bash 5.2
+  - Detailed report: `/tmp/PI_TEST_REPORT.md`
+
+- **Comprehensive test suite**:
+  - `/tmp/test_start_rate_limit.sh` - Rate limit bypass validation
+  - `/tmp/test_start_trigger.sh` - Start trigger recognition
+  - `/tmp/test_failed_steps.sh` - Failed steps rendering
+  - `/tmp/test_json_escape.sh` - JSON escaping validation
+  - `/tmp/test_notification_flow.sh` - End-to-end flow validation
+  - `/tmp/test_cross_workflow_rate_limit.sh` - Edge case validation
+  - All tests passed on both macOS and Linux
+
+### Security
+
+- **Secure log permissions** - Maintained throughout notification system
+  - Log directory: 700 (owner-only access)
+  - Log files: 600 (owner-only read/write)
+  - Consistent with existing homelab security posture
+
+- **Path redaction** - Privacy feature for notifications
+  - Optional redaction of `$HOME` to `~` in log paths
+  - Prevents sensitive path disclosure in external channels
+  - Configurable via `HOMELAB_NOTIFY_REDACT_PATHS`
+
+- **Webhook security** - Best practices for external integrations
+  - Webhook URLs configured via environment/config (never hardcoded)
+  - HTTPS-only recommendations in documentation
+  - Circuit breakers prevent retry storms on failing endpoints
+
+### Breaking Changes
+
+- None (notifications are opt-in via `HOMELAB_NOTIFY_ENABLED=false` default)
+
+### Known Limitations
+
+- **Cross-workflow start notification edge case**: Start notifications from one workflow may be rate-limited if another workflow completed <60s prior. This is by design to prevent notification spam. See documentation for workarounds.
+- **Desktop notifications require GUI**: macOS osascript and Linux notify-send require active desktop session (not available over SSH)
+- **Email requires mail command**: Email notifications depend on system `mail` command with SMTP configuration
+
 ## [1.5.1] - 2025-11-17
 
 ### Fixed
