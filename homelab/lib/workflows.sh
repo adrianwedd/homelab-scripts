@@ -52,6 +52,14 @@ json_get_value() {
   esac
 }
 
+# Escape single quotes for safe embedding in Python strings
+# Usage: escaped=$(escape_single_quotes "$path")
+escape_single_quotes() {
+  local str="$1"
+  # Replace ' with '\'' (end quote, escaped quote, start quote)
+  echo "${str//\'/\'\\\'\'}"
+}
+
 # Validate JSON syntax
 # Returns 0 if valid, 1 if invalid
 validate_json() {
@@ -68,7 +76,9 @@ validate_json() {
       jq empty "$json_file" >/dev/null 2>&1
       ;;
     python3)
-      python3 -c "import sys, json; json.load(open('$json_file'))" >/dev/null 2>&1
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$json_file")
+      python3 -c "import sys, json; json.load(open('$escaped_path'))" >/dev/null 2>&1
       ;;
     fallback)
       # Basic check: ensure it has matching braces
@@ -185,7 +195,9 @@ get_workflow_description() {
     if command -v jq >/dev/null 2>&1; then
       description=$(jq -r '.description // empty' "$workflow_file" 2>/dev/null)
     elif command -v python3 >/dev/null 2>&1; then
-      description=$(python3 -c "import sys, json; data=json.load(open('$workflow_file')); print(data.get('description', ''))" 2>/dev/null)
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$workflow_file")
+      description=$(python3 -c "import sys, json; data=json.load(open('$escaped_path')); print(data.get('description', ''))" 2>/dev/null)
     else
       description=$(grep -o '"description"[[:space:]]*:[[:space:]]*"[^"]*"' "$workflow_file" | sed 's/.*"\([^"]*\)".*/\1/' | head -1)
     fi
@@ -227,7 +239,9 @@ get_workflow_schedule() {
     if command -v jq >/dev/null 2>&1; then
       schedule_comment=$(jq -r '.schedule.comment // empty' "$workflow_file" 2>/dev/null)
     elif command -v python3 >/dev/null 2>&1; then
-      schedule_comment=$(python3 -c "import sys, json; data=json.load(open('$workflow_file')); print(data.get('schedule', {}).get('comment', ''))" 2>/dev/null)
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$workflow_file")
+      schedule_comment=$(python3 -c "import sys, json; data=json.load(open('$escaped_path')); print(data.get('schedule', {}).get('comment', ''))" 2>/dev/null)
     fi
 
     if [ -n "$schedule_comment" ]; then
@@ -271,7 +285,9 @@ validate_workflow_definition() {
   if [ "$parser" = "jq" ]; then
     workflow_name=$(jq -r '.name // ""' "$workflow_file")
   else
-    workflow_name=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data.get('name', ''))" 2>/dev/null)
+    local escaped_path
+    escaped_path=$(escape_single_quotes "$workflow_file")
+    workflow_name=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data.get('name', ''))" 2>/dev/null)
   fi
 
   if [ -z "$workflow_name" ]; then
@@ -284,7 +300,9 @@ validate_workflow_definition() {
   if [ "$parser" = "jq" ]; then
     step_count=$(jq '.steps | length' "$workflow_file" 2>/dev/null || echo "0")
   else
-    step_count=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(len(data.get('steps', [])))" 2>/dev/null || echo "0")
+    local escaped_path
+    escaped_path=$(escape_single_quotes "$workflow_file")
+    step_count=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(len(data.get('steps', [])))" 2>/dev/null || echo "0")
   fi
 
   if [ "$step_count" -eq 0 ]; then
@@ -304,9 +322,11 @@ validate_workflow_definition() {
       step_script=$(jq -r ".steps[$i].script // \"\"" "$workflow_file")
       step_args_type=$(jq -r ".steps[$i].args | type" "$workflow_file" 2>/dev/null || echo "null")
     else
-      step_name=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i].get('name', ''))" 2>/dev/null)
-      step_script=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i].get('script', ''))" 2>/dev/null)
-      step_args_type=$(python3 -c "import json; data=json.load(open('$workflow_file')); args=data['steps'][$i].get('args'); print(type(args).__name__ if args is not None else 'null')" 2>/dev/null)
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$workflow_file")
+      step_name=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i].get('name', ''))" 2>/dev/null)
+      step_script=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i].get('script', ''))" 2>/dev/null)
+      step_args_type=$(python3 -c "import json; data=json.load(open('$escaped_path')); args=data['steps'][$i].get('args'); print(type(args).__name__ if args is not None else 'null')" 2>/dev/null)
     fi
 
     # Validate step name
@@ -426,7 +446,9 @@ execute_custom_workflow() {
   if [ "$parser" = "jq" ]; then
     step_count=$(jq '.steps | length' "$workflow_file")
   else
-    step_count=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(len(data.get('steps', [])))" 2>/dev/null || echo "0")
+    local escaped_path
+    escaped_path=$(escape_single_quotes "$workflow_file")
+    step_count=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(len(data.get('steps', [])))" 2>/dev/null || echo "0")
   fi
 
   WORKFLOW_TOTAL_STEPS=$step_count
@@ -462,10 +484,12 @@ execute_custom_workflow() {
       timeout=$(jq -r ".steps[$i].timeout // 0" "$workflow_file")
     else
       # python3 parser
-      step_name=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i]['name'])" 2>/dev/null)
-      step_script=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i]['script'])" 2>/dev/null)
-      skip_on_error=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(str(data['steps'][$i].get('skip_on_error', False)).lower())" 2>/dev/null)
-      timeout=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i].get('timeout', 0))" 2>/dev/null)
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$workflow_file")
+      step_name=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['name'])" 2>/dev/null)
+      step_script=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['script'])" 2>/dev/null)
+      skip_on_error=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(str(data['steps'][$i].get('skip_on_error', False)).lower())" 2>/dev/null)
+      timeout=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i].get('timeout', 0))" 2>/dev/null)
     fi
 
     # Parse args as array (safely preserving spaces and special characters)
@@ -477,9 +501,11 @@ execute_custom_workflow() {
       done < <(jq -r ".steps[$i].args[]? // empty" "$workflow_file" 2>/dev/null)
     else
       # Use python3 to output one arg per line, then read into array
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$workflow_file")
       while IFS= read -r arg; do
         step_args+=("$arg")
-      done < <(python3 -c "import json, sys; data=json.load(open('$workflow_file')); args=data['steps'][$i].get('args', []); [print(arg) for arg in args]" 2>/dev/null)
+      done < <(python3 -c "import json, sys; data=json.load(open('$escaped_path')); args=data['steps'][$i].get('args', []); [print(arg) for arg in args]" 2>/dev/null)
     fi
 
     # Execute step with properly quoted args array
