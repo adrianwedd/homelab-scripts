@@ -125,31 +125,75 @@ install_cron_schedule() {
   local homelab_path="$1"
   local dry_run="$2"
 
-  # Get schedule configuration
-  local morning_cron="${HOMELAB_SCHEDULE_MORNING:-0 8 * * *}"
-  local weekly_cron="${HOMELAB_SCHEDULE_WEEKLY:-0 2 * * 0}"
-
-  print_info "Schedule configuration:"
-  echo "  Morning routine: $morning_cron (daily at 8:00 AM)"
-  echo "  Weekly maintenance: $weekly_cron (Sundays at 2:00 AM)"
-  echo ""
-
   # Create log directory if needed
   mkdir -p "$HOMELAB_LOG_DIR"
 
-  # Shell-escape paths for safe cron embedding
+  # Shell-escape homelab path for safe cron embedding
   local escaped_homelab_path=$(shell_escape "$homelab_path")
-  local escaped_morning_log=$(shell_escape "$HOMELAB_LOG_DIR/cron_morning.log")
-  local escaped_weekly_log=$(shell_escape "$HOMELAB_LOG_DIR/cron_weekly.log")
 
-  # Generate crontab entries with properly escaped paths
-  local cron_entries=$(cat <<EOF
-# homelab automated workflows (installed $(date '+%Y-%m-%d %H:%M:%S'))
-$morning_cron $escaped_homelab_path morning --quiet --scheduled >> $escaped_morning_log 2>&1
-$weekly_cron $escaped_homelab_path weekly --quiet --scheduled >> $escaped_weekly_log 2>&1
-# end homelab
-EOF
-)
+  # Get list of scheduled workflows
+  local scheduled_workflows=()
+  if type -t list_scheduled_workflows >/dev/null 2>&1; then
+    while IFS= read -r workflow_name; do
+      scheduled_workflows+=("$workflow_name")
+    done < <(list_scheduled_workflows)
+  else
+    # Fallback to built-in workflows only
+    print_warning "list_scheduled_workflows not available, using built-in workflows only"
+    scheduled_workflows=("morning" "weekly")
+  fi
+
+  if [ ${#scheduled_workflows[@]} -eq 0 ]; then
+    print_warning "No scheduled workflows found"
+    return 0
+  fi
+
+  print_info "Schedule configuration:"
+
+  # Build cron entries dynamically
+  local cron_entries="# homelab automated workflows (installed $(date '+%Y-%m-%d %H:%M:%S'))"
+
+  for workflow_name in "${scheduled_workflows[@]}"; do
+    # Get cron expression
+    local cron_expr
+    if type -t get_workflow_cron_expression >/dev/null 2>&1; then
+      cron_expr=$(get_workflow_cron_expression "$workflow_name")
+    else
+      # Fallback for built-in workflows
+      case "$workflow_name" in
+        morning) cron_expr="${HOMELAB_SCHEDULE_MORNING:-0 8 * * *}" ;;
+        weekly) cron_expr="${HOMELAB_SCHEDULE_WEEKLY:-0 2 * * 0}" ;;
+        *) continue ;;
+      esac
+    fi
+
+    if [ -z "$cron_expr" ]; then
+      continue
+    fi
+
+    # Get human-readable schedule description
+    local schedule_desc
+    if type -t get_workflow_schedule >/dev/null 2>&1; then
+      schedule_desc=$(get_workflow_schedule "$workflow_name")
+    else
+      schedule_desc="$cron_expr"
+    fi
+
+    # Create log file path
+    local escaped_log=$(shell_escape "$HOMELAB_LOG_DIR/cron_${workflow_name}.log")
+
+    # Add entry
+    cron_entries+="
+$cron_expr $escaped_homelab_path workflow run $workflow_name --quiet --scheduled >> $escaped_log 2>&1"
+
+    # Show configuration
+    echo "  $workflow_name: $schedule_desc"
+  done
+
+  cron_entries+="
+# end homelab"
+
+  echo ""
 
   if [ "$dry_run" = true ]; then
     print_section "Dry-run: Would install the following crontab entries"
