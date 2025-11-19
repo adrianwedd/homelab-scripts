@@ -383,7 +383,7 @@ execute_custom_workflow() {
     return 1
   fi
 
-  # Validate JSON
+  # Validate JSON syntax
   if ! validate_json "$workflow_file"; then
     print_error "Invalid JSON in workflow file: $workflow_file"
     return 1
@@ -393,6 +393,12 @@ execute_custom_workflow() {
   if ! has_json_parser; then
     print_error "Custom workflow execution requires jq or python3"
     echo "Install with: brew install jq (macOS) or apt install jq (Linux)"
+    return 1
+  fi
+
+  # Validate workflow structure (required fields, step format, etc.)
+  if ! validate_workflow_definition "$workflow_file"; then
+    print_error "Workflow validation failed - cannot execute"
     return 1
   fi
 
