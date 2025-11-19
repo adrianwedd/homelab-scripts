@@ -435,6 +435,38 @@ execute_custom_workflow() {
     esac
   done
 
+  # Evaluate workflow-level conditions (pre-flight checks)
+  if type -t evaluate_workflow_conditions >/dev/null 2>&1; then
+    local condition_result
+    CONDITION_SKIP_REASON=""  # Global variable set by condition evaluators
+    evaluate_workflow_conditions "$workflow_file"
+    condition_result=$?
+
+    if [ $condition_result -eq 1 ]; then
+      # Conditions failed with skip action
+      print_info "Workflow skipped: $CONDITION_SKIP_REASON"
+      log_to_file "INFO: Workflow skipped - $CONDITION_SKIP_REASON"
+
+      # Send info-level notification for skip
+      if type -t send_notification >/dev/null 2>&1; then
+        send_notification "$workflow_name" "skipped" "0s" "0" "0" "$CONDITION_SKIP_REASON" "" "" "$is_scheduled" false
+      fi
+
+      return 0  # Exit 0 for skip (not an error)
+    elif [ $condition_result -eq 2 ]; then
+      # Conditions failed with fail action
+      print_error "Workflow failed condition check: $CONDITION_SKIP_REASON"
+      log_to_file "ERROR: Workflow failed - $CONDITION_SKIP_REASON"
+
+      # Send failure notification
+      if type -t send_notification >/dev/null 2>&1; then
+        send_notification "$workflow_name" "failure" "0s" "0" "0" "" "$CONDITION_SKIP_REASON" "" "$is_scheduled" false
+      fi
+
+      return 1  # Exit 1 for failure
+    fi
+  fi
+
   # Initialize workflow logging
   init_workflow_logging "$workflow_name"
 
@@ -490,6 +522,34 @@ execute_custom_workflow() {
       step_script=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['script'])" 2>/dev/null)
       skip_on_error=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(str(data['steps'][$i].get('skip_on_error', False)).lower())" 2>/dev/null)
       timeout=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i].get('timeout', 0))" 2>/dev/null)
+    fi
+
+    # Evaluate step-level conditions (when guards)
+    if type -t evaluate_step_conditions >/dev/null 2>&1; then
+      local step_condition_result
+      CONDITION_SKIP_REASON=""
+      evaluate_step_conditions "$workflow_file" "$i"
+      step_condition_result=$?
+
+      if [ $step_condition_result -eq 1 ]; then
+        # Step conditions failed with skip action
+        print_info "  ℹ Step $((i+1)) skipped: $CONDITION_SKIP_REASON"
+        log_to_file "INFO: Step $((i+1)) ($step_name) skipped - $CONDITION_SKIP_REASON"
+        WORKFLOW_STEP_COUNT=$((WORKFLOW_STEP_COUNT + 1))
+        continue  # Skip to next step
+      elif [ $step_condition_result -eq 2 ]; then
+        # Step conditions failed with fail action
+        print_error "  ✗ Step $((i+1)) failed condition: $CONDITION_SKIP_REASON"
+        log_to_file "ERROR: Step $((i+1)) ($step_name) failed - $CONDITION_SKIP_REASON"
+
+        if [ "$skip_on_error" != "true" ]; then
+          exit_code=1
+          break  # Stop workflow
+        else
+          WORKFLOW_STEP_COUNT=$((WORKFLOW_STEP_COUNT + 1))
+          continue  # Continue to next step
+        fi
+      fi
     fi
 
     # Parse args as array (safely preserving spaces and special characters)

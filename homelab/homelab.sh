@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # homelab - Unified DevOps orchestrator for system maintenance scripts
-# Version: 2.2.0
+# Version: 2.4.0-dev
 # Usage: homelab <command> [options]
 
-VERSION="2.2.0"
+VERSION="2.4.0-dev"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Global flags
@@ -19,6 +19,7 @@ source "${SCRIPT_DIR}/lib/logger.sh"
 source "${SCRIPT_DIR}/lib/config.sh"
 source "${SCRIPT_DIR}/lib/notifications.sh"
 source "${SCRIPT_DIR}/lib/workflows.sh"
+source "${SCRIPT_DIR}/lib/conditions.sh"
 source "${SCRIPT_DIR}/lib/status.sh"
 source "${SCRIPT_DIR}/lib/report.sh"
 source "${SCRIPT_DIR}/lib/scheduler.sh"
