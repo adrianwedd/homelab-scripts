@@ -328,11 +328,14 @@ validate_workflow_definition() {
       validation_errors=$((validation_errors + 1))
     fi
 
+    # Normalize tilde in script path (bash doesn't expand ~ in variables)
+    local normalized_script="${step_script/#\~/$HOME}"
+
     # Check if script exists (search in PATH and common directories)
     local script_found=false
 
-    # Check if it's an absolute path
-    if [[ "$step_script" == /* ]] && [ -f "$step_script" ]; then
+    # Check if it's an absolute path (including tilde-expanded paths)
+    if [[ "$normalized_script" == /* ]] && [ -f "$normalized_script" ]; then
       script_found=true
     # Check if it's in PATH
     elif command -v "$step_script" >/dev/null 2>&1; then

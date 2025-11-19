@@ -181,6 +181,9 @@ run_step() {
   print_info "[$step_num/$WORKFLOW_TOTAL_STEPS] $step_name..."
   log_to_file "STEP $step_num/$WORKFLOW_TOTAL_STEPS: $step_name"
 
+  # Normalize tilde in script_key (bash doesn't expand ~ in variables)
+  local normalized_script="${script_key/#\~/$HOME}"
+
   # Resolve script path (built-in registry, absolute path, or PATH)
   local script_path
 
@@ -189,9 +192,9 @@ run_step() {
 
   # If not in registry, try to resolve as-is
   if [ -z "$script_path" ]; then
-    # Check if it's an absolute path
-    if [[ "$script_key" == /* ]] && [ -f "$script_key" ] && [ -x "$script_key" ]; then
-      script_path="$script_key"
+    # Check if it's an absolute path (including tilde-expanded paths)
+    if [[ "$normalized_script" == /* ]] && [ -f "$normalized_script" ] && [ -x "$normalized_script" ]; then
+      script_path="$normalized_script"
     # Check if it's in PATH
     elif command -v "$script_key" >/dev/null 2>&1; then
       script_path=$(command -v "$script_key")
