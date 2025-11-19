@@ -337,8 +337,14 @@ validate_workflow_definition() {
     # Check if it's in PATH
     elif command -v "$step_script" >/dev/null 2>&1; then
       script_found=true
-    # Check in homelab directory
-    elif [ -f "/Users/adrian/repos/scripts/homelab/$step_script" ] || [ -f "/Users/adrian/repos/scripts/$step_script" ]; then
+    # Check if it's a built-in script (in registry)
+    elif type -t get_script_path >/dev/null 2>&1 && [ -n "$(get_script_path "$step_script" 2>/dev/null || true)" ]; then
+      script_found=true
+    # Check in homelab directory (relative to SCRIPT_DIR)
+    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/$step_script" ]; then
+      script_found=true
+    # Check in parent directory (for symlinked scripts)
+    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/../$step_script" ]; then
       script_found=true
     # Check in current directory
     elif [ -f "./$step_script" ]; then

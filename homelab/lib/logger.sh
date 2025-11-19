@@ -181,10 +181,32 @@ run_step() {
   print_info "[$step_num/$WORKFLOW_TOTAL_STEPS] $step_name..."
   log_to_file "STEP $step_num/$WORKFLOW_TOTAL_STEPS: $step_name"
 
-  # Check if script is available
-  local script_path=$(get_script_path "$script_key")
+  # Resolve script path (built-in registry, absolute path, or PATH)
+  local script_path
+
+  # First try the built-in script registry
+  script_path=$(get_script_path "$script_key" 2>/dev/null || true)
+
+  # If not in registry, try to resolve as-is
   if [ -z "$script_path" ]; then
-    print_warning "  ⊘ $step_name skipped ($script_key not installed)"
+    # Check if it's an absolute path
+    if [[ "$script_key" == /* ]] && [ -f "$script_key" ] && [ -x "$script_key" ]; then
+      script_path="$script_key"
+    # Check if it's in PATH
+    elif command -v "$script_key" >/dev/null 2>&1; then
+      script_path=$(command -v "$script_key")
+    # Check in homelab directory
+    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/$script_key" ] && [ -x "$SCRIPT_DIR/$script_key" ]; then
+      script_path="$SCRIPT_DIR/$script_key"
+    # Check in parent directory (for symlinked scripts)
+    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/../$script_key" ] && [ -x "$SCRIPT_DIR/../$script_key" ]; then
+      script_path="$SCRIPT_DIR/../$script_key"
+    fi
+  fi
+
+  # If still not found, skip this step
+  if [ -z "$script_path" ]; then
+    print_warning "  ⊘ $step_name skipped ($script_key not found in registry, PATH, or as absolute path)"
     log_to_file "SKIPPED: $script_key not found"
     WORKFLOW_SKIPPED_STEPS+=("$step_name")
     return 0
