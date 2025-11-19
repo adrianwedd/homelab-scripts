@@ -217,25 +217,37 @@ check_last_run_condition() {
   local workflow_name
   workflow_name=$(jq -r '.name' "$workflow_file" 2>/dev/null)
 
-  # Get last run timestamp from state file
-  local state_file="${HOMELAB_WORKFLOW_STATE_FILE:-$HOME/.config/homelab/workflows/state.json}"
-
-  if [ ! -f "$state_file" ]; then
-    return 0  # No previous run, allow execution
+  # Get hours since last run using state tracking
+  local hours_since
+  if type -t get_hours_since_last_run >/dev/null 2>&1; then
+    hours_since=$(get_hours_since_last_run "$workflow_name")
+  else
+    print_warning "State tracking not available (get_hours_since_last_run not found)"
+    return 0  # Fail open
   fi
 
-  local last_run_epoch
-  last_run_epoch=$(jq -r ".workflows[\"$workflow_name\"].last_run_epoch // 0" "$state_file" 2>/dev/null)
-
-  if [ -z "$last_run_epoch" ] || [ "$last_run_epoch" -eq 0 ]; then
-    return 0  # No previous run, allow execution
+  # If never run, allow execution
+  if [ -z "$hours_since" ]; then
+    return 0  # No previous run
   fi
 
-  local current_epoch
-  current_epoch=$(date +%s)
-  local hours_since=$(( (current_epoch - last_run_epoch) / 3600 ))
+  # Check if enough time has passed
+  # Use awk for floating point comparison (bash only does integers)
+  local is_too_recent
+  if command -v awk >/dev/null 2>&1; then
+    is_too_recent=$(awk -v hs="$hours_since" -v mh="$min_hours" 'BEGIN { print (hs < mh) ? 1 : 0 }')
+  else
+    # Fallback: integer comparison
+    local hours_int=${hours_since%.*}
+    local min_int=${min_hours%.*}
+    if [ "$hours_int" -lt "$min_int" ]; then
+      is_too_recent=1
+    else
+      is_too_recent=0
+    fi
+  fi
 
-  if [ "$hours_since" -lt "$min_hours" ]; then
+  if [ "$is_too_recent" -eq 1 ]; then
     CONDITION_SKIP_REASON="Too soon since last run: ${hours_since}h < ${min_hours}h"
     print_info "$CONDITION_SKIP_REASON"
     return 1  # Too recent

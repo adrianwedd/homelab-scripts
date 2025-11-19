@@ -158,6 +158,25 @@ complete_workflow_logging() {
       false  # not dry-run
   fi
 
+  # Write workflow state for tracking and last_run conditions
+  if type -t write_workflow_state >/dev/null 2>&1; then
+    local failed_list_space="${WORKFLOW_FAILED_STEPS[*]}"
+    local skipped_list_space="${WORKFLOW_SKIPPED_STEPS[*]}"
+    local completed=$((WORKFLOW_STEP_COUNT - ${#WORKFLOW_SKIPPED_STEPS[@]} - ${#WORKFLOW_FAILED_STEPS[@]}))
+
+    write_workflow_state \
+      "$workflow_name" \
+      "$notify_status" \
+      "$exit_code" \
+      "$duration_str" \
+      "$completed" \
+      "$WORKFLOW_TOTAL_STEPS" \
+      "$failed_list_space" \
+      "$skipped_list_space" || {
+        print_warning "Failed to write workflow state (state tracking may not work)"
+      }
+  fi
+
   # Clean up old logs
   cleanup_old_logs
 }
