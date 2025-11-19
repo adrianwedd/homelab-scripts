@@ -171,6 +171,13 @@ load_config() {
   # Create config directory if needed
   mkdir -p "$HOMELAB_CONFIG_DIR"
 
+  # Create workflow directories (Phase 2.3.1)
+  : "${HOMELAB_WORKFLOW_DIR:=$HOMELAB_CONFIG_DIR/workflows}"
+  : "${HOMELAB_WORKFLOW_OVERRIDE_DIR:=$HOMELAB_CONFIG_DIR/.workflow-overrides}"
+  mkdir -p "$HOMELAB_WORKFLOW_DIR"
+  mkdir -p "$HOMELAB_WORKFLOW_OVERRIDE_DIR"
+  chmod 700 "$HOMELAB_WORKFLOW_OVERRIDE_DIR"  # Overrides should be owner-only
+
   # Load user config if exists
   if [ -f "$HOMELAB_CONFIG_FILE" ]; then
     # shellcheck disable=SC1090

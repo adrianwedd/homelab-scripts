@@ -87,6 +87,39 @@ is_rate_limited() {
   return 1  # Not rate limited
 }
 
+# Check if a notification channel is available/configured
+# Returns 0 if channel is ready to use, 1 if not available
+is_channel_available() {
+  local channel="$1"
+
+  case "$channel" in
+    slack)
+      # Slack requires webhook URL
+      [ -n "${HOMELAB_NOTIFY_SLACK_WEBHOOK_URL:-}" ]
+      ;;
+    webhook)
+      # Generic webhook requires URL
+      [ -n "${HOMELAB_NOTIFY_WEBHOOK_URL:-}" ]
+      ;;
+    macos)
+      # macOS requires Darwin platform and osascript
+      [ "$(uname)" = "Darwin" ] && command -v osascript >/dev/null 2>&1
+      ;;
+    linux)
+      # Linux requires notify-send
+      command -v notify-send >/dev/null 2>&1
+      ;;
+    email)
+      # Email requires recipient and mail command
+      [ -n "${HOMELAB_NOTIFY_EMAIL_TO:-}" ] && command -v mail >/dev/null 2>&1
+      ;;
+    *)
+      # Unknown channel
+      return 1
+      ;;
+  esac
+}
+
 # Check if channel is in circuit breaker state
 is_circuit_broken() {
   local channel="$1"
@@ -595,35 +628,36 @@ send_notification() {
   local total_attempts=0
 
   # Try each enabled channel in priority order
-  if [[ ",$channels," =~ ",slack," ]]; then
+  # Only attempt if channel is available/configured
+  if [[ ",$channels," =~ ",slack," ]] && is_channel_available "slack"; then
     total_attempts=$((total_attempts + 1))
     if send_notification_slack "$workflow" "$status" "$duration" "$completed" "$total" "$failed" "$skipped" "$log_file" "$dry_run"; then
       success_count=$((success_count + 1))
     fi
   fi
 
-  if [[ ",$channels," =~ ",webhook," ]]; then
+  if [[ ",$channels," =~ ",webhook," ]] && is_channel_available "webhook"; then
     total_attempts=$((total_attempts + 1))
     if send_notification_webhook "$workflow" "$status" "$duration" "$completed" "$total" "$failed" "$skipped" "$log_file" "$dry_run"; then
       success_count=$((success_count + 1))
     fi
   fi
 
-  if [[ ",$channels," =~ ",macos," ]]; then
+  if [[ ",$channels," =~ ",macos," ]] && is_channel_available "macos"; then
     total_attempts=$((total_attempts + 1))
     if send_notification_macos "$workflow" "$status" "$duration" "$completed" "$total" "$failed" "$skipped" "$log_file" "$dry_run"; then
       success_count=$((success_count + 1))
     fi
   fi
 
-  if [[ ",$channels," =~ ",linux," ]]; then
+  if [[ ",$channels," =~ ",linux," ]] && is_channel_available "linux"; then
     total_attempts=$((total_attempts + 1))
     if send_notification_linux "$workflow" "$status" "$duration" "$completed" "$total" "$failed" "$skipped" "$log_file" "$dry_run"; then
       success_count=$((success_count + 1))
     fi
   fi
 
-  if [[ ",$channels," =~ ",email," ]]; then
+  if [[ ",$channels," =~ ",email," ]] && is_channel_available "email"; then
     total_attempts=$((total_attempts + 1))
     if send_notification_email "$workflow" "$status" "$duration" "$completed" "$total" "$failed" "$skipped" "$log_file" "$dry_run"; then
       success_count=$((success_count + 1))

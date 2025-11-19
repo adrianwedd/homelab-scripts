@@ -8,10 +8,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- N/A
+
+**Homelab Orchestration System - Phase 2.3.1: Custom Workflow System**
+
+- **homelab/lib/workflows.sh** - Custom workflow management infrastructure (480 lines)
+  - JSON-based workflow definitions in `~/.config/homelab/workflows/`
+  - Built-in workflow override support via `~/.config/homelab/.workflow-overrides/`
+  - Workflow discovery and listing (`list_custom_workflows`, `list_all_workflows`)
+  - Workflow metadata extraction (`get_workflow_description`, `get_workflow_schedule`)
+  - JSON parser auto-detection (jq → python3 → grep/sed fallback)
+  - Comprehensive workflow validation (`validate_workflow_definition`)
+    - Required field validation (name, steps)
+    - Step structure validation (name, script, args as arrays)
+    - Script path existence checks (PATH, absolute paths, common directories)
+    - Detailed error reporting with step numbers
+  - Workflow execution engine (`execute_custom_workflow`)
+    - Step-by-step execution with logging
+    - `skip_on_error` support (continue on failure)
+    - Timeout support per step (future implementation)
+    - Notification integration (start/success/warning/failure triggers)
+    - Dry-run mode support
+  - bash 3.2 compatible (macOS default bash)
+
+- **Workflow CLI commands** (homelab.sh):
+  - `homelab workflow list` - List all workflows (built-in + custom with descriptions/schedules)
+  - `homelab workflow show <name>` - Display workflow definition details
+  - `homelab workflow validate <name>` - Validate workflow JSON and structure
+  - `homelab workflow run <name>` - Execute custom workflow with notification support
+
+- **Example workflows** (`~/.config/homelab/workflows/`):
+  - `test-backup.json` - Backup verification workflow (rclone status + integrity check)
+  - `dev-sync.json` - Development sync workflow (git pull + disk check + network scan)
+
+- **Workflow definition format**:
+  ```json
+  {
+    "name": "workflow-name",
+    "description": "Human-readable description",
+    "schedule": {
+      "type": "cron",
+      "expression": "0 3 * * *",
+      "comment": "Daily at 3:00 AM"
+    },
+    "steps": [
+      {
+        "name": "Step Name",
+        "script": "script-name.sh",
+        "args": ["--flag", "value"],
+        "skip_on_error": false,
+        "timeout": 60
+      }
+    ],
+    "notifications": {
+      "triggers": ["warning", "failure"],
+      "channels": ["slack"]
+    }
+  }
+  ```
 
 ### Changed
-- N/A
+- **homelab/homelab.sh**: Added "Workflow Management" section to help text
+- **homelab/lib/config.sh**: Automatic creation of workflow directories on init
 
 ### Fixed
 - N/A

@@ -1,6 +1,488 @@
 #!/usr/bin/env bash
-# homelab/lib/workflows.sh - Workflow definitions
+# homelab/lib/workflows.sh - Workflow definitions and custom workflow management
 # Part of homelab v1.0.0
+
+# ============================================================================
+# CUSTOM WORKFLOW MANAGEMENT (Phase 2.3.1)
+# ============================================================================
+
+# JSON parser detection and fallback strategy
+# Returns 0 if a suitable parser is available, 1 if only fallback available
+detect_json_parser() {
+  if command -v jq >/dev/null 2>&1; then
+    echo "jq"
+    return 0
+  elif command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+    return 0
+  else
+    # Fallback parser is fragile - warn users
+    echo "fallback"
+    return 1  # Signal that only fallback is available
+  fi
+}
+
+# Check if a proper JSON parser is available
+# Returns 0 if jq or python3 available, 1 if only fallback
+has_json_parser() {
+  command -v jq >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1
+}
+
+# Parse JSON value using available parser
+# Usage: json_get_value <json_string> <key_path>
+# Example: json_get_value "$json" ".name"
+json_get_value() {
+  local json="$1"
+  local key_path="$2"
+  local parser
+  parser=$(detect_json_parser)
+
+  case "$parser" in
+    jq)
+      echo "$json" | jq -r "$key_path" 2>/dev/null || echo ""
+      ;;
+    python3)
+      echo "$json" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data$key_path)" 2>/dev/null || echo ""
+      ;;
+    fallback)
+      # Basic grep/sed parsing (limited functionality)
+      local key="${key_path#.}"
+      echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | sed 's/.*"\([^"]*\)".*/\1/' | head -1
+      ;;
+  esac
+}
+
+# Validate JSON syntax
+# Returns 0 if valid, 1 if invalid
+validate_json() {
+  local json_file="$1"
+  local parser
+  parser=$(detect_json_parser)
+
+  if [ ! -f "$json_file" ]; then
+    return 1
+  fi
+
+  case "$parser" in
+    jq)
+      jq empty "$json_file" >/dev/null 2>&1
+      ;;
+    python3)
+      python3 -c "import sys, json; json.load(open('$json_file'))" >/dev/null 2>&1
+      ;;
+    fallback)
+      # Basic check: ensure it has matching braces
+      local open_braces
+      local close_braces
+      open_braces=$(grep -o '{' "$json_file" | wc -l)
+      close_braces=$(grep -o '}' "$json_file" | wc -l)
+      [ "$open_braces" -eq "$close_braces" ]
+      ;;
+  esac
+}
+
+# Load custom workflow definitions from config directory
+# Returns list of custom workflow names (one per line)
+list_custom_workflows() {
+  local workflow_dir="${HOMELAB_WORKFLOW_DIR:-$HOME/.config/homelab/workflows}"
+
+  if [ ! -d "$workflow_dir" ]; then
+    return 0
+  fi
+
+  find "$workflow_dir" -maxdepth 1 -name "*.json" -type f 2>/dev/null | while read -r workflow_file; do
+    local workflow_name
+    workflow_name=$(basename "$workflow_file" .json)
+    echo "$workflow_name"
+  done
+}
+
+# Check if a workflow name is a built-in workflow
+is_builtin_workflow() {
+  local workflow_name="$1"
+  case "$workflow_name" in
+    morning|weekly|emergency|pre-deploy)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# Check if a built-in workflow has a custom override
+has_workflow_override() {
+  local workflow_name="$1"
+  local override_dir="${HOMELAB_WORKFLOW_OVERRIDE_DIR:-$HOME/.config/homelab/.workflow-overrides}"
+  local override_file="$override_dir/${workflow_name}.json"
+
+  [ -f "$override_file" ]
+}
+
+# Get workflow definition file path
+# Returns path if found, empty string otherwise
+get_workflow_file() {
+  local workflow_name="$1"
+  local override_dir="${HOMELAB_WORKFLOW_OVERRIDE_DIR:-$HOME/.config/homelab/.workflow-overrides}"
+  local workflow_dir="${HOMELAB_WORKFLOW_DIR:-$HOME/.config/homelab/workflows}"
+
+  # Check for override first
+  if [ -f "$override_dir/${workflow_name}.json" ]; then
+    echo "$override_dir/${workflow_name}.json"
+    return 0
+  fi
+
+  # Check custom workflows directory
+  if [ -f "$workflow_dir/${workflow_name}.json" ]; then
+    echo "$workflow_dir/${workflow_name}.json"
+    return 0
+  fi
+
+  return 1
+}
+
+# List all available workflows (built-in + custom)
+list_all_workflows() {
+  # Built-in workflows
+  echo "morning"
+  echo "weekly"
+  echo "emergency"
+  echo "pre-deploy"
+
+  # Custom workflows
+  list_custom_workflows
+}
+
+# Get workflow description
+get_workflow_description() {
+  local workflow_name="$1"
+  local workflow_file
+
+  # Check if it's a built-in workflow
+  case "$workflow_name" in
+    morning)
+      echo "Daily maintenance (ssh-audit, nmap, sync check, updates preview)"
+      return 0
+      ;;
+    weekly)
+      echo "Weekly deep clean (cleanup, updates, full scans)"
+      return 0
+      ;;
+    emergency)
+      echo "Emergency disk cleanup (aggressive mode)"
+      return 0
+      ;;
+    pre-deploy)
+      echo "Pre-deployment checks (ssh, disk, network, git)"
+      return 0
+      ;;
+  esac
+
+  # Try to get description from custom workflow
+  workflow_file=$(get_workflow_file "$workflow_name")
+  if [ -n "$workflow_file" ] && [ -f "$workflow_file" ]; then
+    local description
+    if command -v jq >/dev/null 2>&1; then
+      description=$(jq -r '.description // empty' "$workflow_file" 2>/dev/null)
+    elif command -v python3 >/dev/null 2>&1; then
+      description=$(python3 -c "import sys, json; data=json.load(open('$workflow_file')); print(data.get('description', ''))" 2>/dev/null)
+    else
+      description=$(grep -o '"description"[[:space:]]*:[[:space:]]*"[^"]*"' "$workflow_file" | sed 's/.*"\([^"]*\)".*/\1/' | head -1)
+    fi
+
+    if [ -n "$description" ]; then
+      echo "$description"
+      return 0
+    fi
+  fi
+
+  echo "Custom workflow"
+}
+
+# Get workflow schedule information
+get_workflow_schedule() {
+  local workflow_name="$1"
+  local workflow_file
+
+  # Check if it's a built-in workflow with default schedule
+  case "$workflow_name" in
+    morning)
+      echo "Daily at ${HOMELAB_SCHEDULE_MORNING_HOUR:-8}:${HOMELAB_SCHEDULE_MORNING_MINUTE:-00}"
+      return 0
+      ;;
+    weekly)
+      echo "Weekday ${HOMELAB_SCHEDULE_WEEKLY_WEEKDAY:-0} at ${HOMELAB_SCHEDULE_WEEKLY_HOUR:-2}:${HOMELAB_SCHEDULE_WEEKLY_MINUTE:-00}"
+      return 0
+      ;;
+    emergency|pre-deploy)
+      echo "Manual"
+      return 0
+      ;;
+  esac
+
+  # Try to get schedule from custom workflow
+  workflow_file=$(get_workflow_file "$workflow_name")
+  if [ -n "$workflow_file" ] && [ -f "$workflow_file" ]; then
+    local schedule_comment
+    if command -v jq >/dev/null 2>&1; then
+      schedule_comment=$(jq -r '.schedule.comment // empty' "$workflow_file" 2>/dev/null)
+    elif command -v python3 >/dev/null 2>&1; then
+      schedule_comment=$(python3 -c "import sys, json; data=json.load(open('$workflow_file')); print(data.get('schedule', {}).get('comment', ''))" 2>/dev/null)
+    fi
+
+    if [ -n "$schedule_comment" ]; then
+      echo "$schedule_comment"
+      return 0
+    fi
+  fi
+
+  echo "Manual"
+}
+
+# Validate workflow definition structure and script availability
+# Usage: validate_workflow_definition <workflow_file>
+# Returns: 0 if valid, 1 if invalid (with error messages)
+validate_workflow_definition() {
+  local workflow_file="$1"
+  local validation_errors=0
+
+  if [ ! -f "$workflow_file" ]; then
+    print_error "Workflow file not found: $workflow_file"
+    return 1
+  fi
+
+  # Validate JSON syntax first
+  if ! validate_json "$workflow_file"; then
+    print_error "Invalid JSON syntax in workflow file"
+    return 1
+  fi
+
+  # Require jq or python3 for detailed validation
+  if ! has_json_parser; then
+    print_warning "Detailed validation requires jq or python3 (only basic JSON syntax checked)"
+    return 0
+  fi
+
+  local parser
+  parser=$(detect_json_parser)
+
+  # Validate required fields
+  local workflow_name
+  if [ "$parser" = "jq" ]; then
+    workflow_name=$(jq -r '.name // ""' "$workflow_file")
+  else
+    workflow_name=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data.get('name', ''))" 2>/dev/null)
+  fi
+
+  if [ -z "$workflow_name" ]; then
+    print_error "Workflow missing required 'name' field"
+    validation_errors=$((validation_errors + 1))
+  fi
+
+  # Get step count
+  local step_count
+  if [ "$parser" = "jq" ]; then
+    step_count=$(jq '.steps | length' "$workflow_file" 2>/dev/null || echo "0")
+  else
+    step_count=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(len(data.get('steps', [])))" 2>/dev/null || echo "0")
+  fi
+
+  if [ "$step_count" -eq 0 ]; then
+    print_error "Workflow has no steps defined"
+    validation_errors=$((validation_errors + 1))
+    return 1
+  fi
+
+  # Validate each step
+  for ((i=0; i<step_count; i++)); do
+    local step_name
+    local step_script
+    local step_args_type
+
+    if [ "$parser" = "jq" ]; then
+      step_name=$(jq -r ".steps[$i].name // \"\"" "$workflow_file")
+      step_script=$(jq -r ".steps[$i].script // \"\"" "$workflow_file")
+      step_args_type=$(jq -r ".steps[$i].args | type" "$workflow_file" 2>/dev/null || echo "null")
+    else
+      step_name=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i].get('name', ''))" 2>/dev/null)
+      step_script=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i].get('script', ''))" 2>/dev/null)
+      step_args_type=$(python3 -c "import json; data=json.load(open('$workflow_file')); args=data['steps'][$i].get('args'); print(type(args).__name__ if args is not None else 'null')" 2>/dev/null)
+    fi
+
+    # Validate step name
+    if [ -z "$step_name" ]; then
+      print_error "Step $((i+1)): Missing 'name' field"
+      validation_errors=$((validation_errors + 1))
+    fi
+
+    # Validate step script
+    if [ -z "$step_script" ]; then
+      print_error "Step $((i+1)) ($step_name): Missing 'script' field"
+      validation_errors=$((validation_errors + 1))
+      continue
+    fi
+
+    # Validate args is an array (if present)
+    if [ "$step_args_type" != "null" ] && [ "$step_args_type" != "array" ] && [ "$step_args_type" != "list" ]; then
+      print_error "Step $((i+1)) ($step_name): 'args' must be an array, got $step_args_type"
+      validation_errors=$((validation_errors + 1))
+    fi
+
+    # Check if script exists (search in PATH and common directories)
+    local script_found=false
+
+    # Check if it's an absolute path
+    if [[ "$step_script" == /* ]] && [ -f "$step_script" ]; then
+      script_found=true
+    # Check if it's in PATH
+    elif command -v "$step_script" >/dev/null 2>&1; then
+      script_found=true
+    # Check in homelab directory
+    elif [ -f "/Users/adrian/repos/scripts/homelab/$step_script" ] || [ -f "/Users/adrian/repos/scripts/$step_script" ]; then
+      script_found=true
+    # Check in current directory
+    elif [ -f "./$step_script" ]; then
+      script_found=true
+    fi
+
+    if [ "$script_found" = false ]; then
+      print_warning "Step $((i+1)) ($step_name): Script '$step_script' not found in PATH or common locations"
+      print_warning "  Script will be resolved at execution time"
+    fi
+  done
+
+  if [ $validation_errors -gt 0 ]; then
+    print_error "Workflow validation failed with $validation_errors error(s)"
+    return 1
+  fi
+
+  return 0
+}
+
+# Execute a custom workflow from JSON definition
+# Usage: execute_custom_workflow <workflow_name> [options]
+execute_custom_workflow() {
+  local workflow_name="$1"
+  shift
+
+  # Get workflow file
+  local workflow_file
+  workflow_file=$(get_workflow_file "$workflow_name")
+
+  if [ -z "$workflow_file" ]; then
+    print_error "Workflow not found: $workflow_name"
+    return 1
+  fi
+
+  # Validate JSON
+  if ! validate_json "$workflow_file"; then
+    print_error "Invalid JSON in workflow file: $workflow_file"
+    return 1
+  fi
+
+  # Require jq or python3 for execution
+  if ! has_json_parser; then
+    print_error "Custom workflow execution requires jq or python3"
+    echo "Install with: brew install jq (macOS) or apt install jq (Linux)"
+    return 1
+  fi
+
+  # Parse workflow options
+  local is_scheduled=false
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --dry-run) DRY_RUN=true; shift ;;
+      --verbose|-v) HOMELAB_VERBOSE=true; shift ;;
+      --quiet|-q) HOMELAB_QUIET=true; shift ;;
+      --notify) HOMELAB_NOTIFY_MANUAL=true; shift ;;
+      --scheduled) is_scheduled=true; shift ;;
+      --skip) shift ;; # Skip steps handled below
+      *) shift ;;
+    esac
+  done
+
+  # Initialize workflow logging
+  init_workflow_logging "$workflow_name"
+
+  # Get workflow metadata
+  local parser
+  parser=$(detect_json_parser)
+
+  local step_count
+  if [ "$parser" = "jq" ]; then
+    step_count=$(jq '.steps | length' "$workflow_file")
+  else
+    step_count=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(len(data.get('steps', [])))" 2>/dev/null || echo "0")
+  fi
+
+  WORKFLOW_TOTAL_STEPS=$step_count
+
+  local description
+  description=$(get_workflow_description "$workflow_name")
+
+  print_section "Custom Workflow: $workflow_name"
+  if [ "${HOMELAB_VERBOSE:-false}" = true ]; then
+    echo "Description: $description"
+    echo "Steps: $step_count"
+    echo ""
+  fi
+
+  # Send start notification if enabled
+  if type -t send_notification >/dev/null 2>&1; then
+    send_notification "$workflow_name" "start" "0s" "0" "$WORKFLOW_TOTAL_STEPS" "" "" "$WORKFLOW_LOG" "$is_scheduled" false
+  fi
+
+  # Execute each step
+  local exit_code=0
+  for ((i=0; i<step_count; i++)); do
+    local step_name
+    local step_script
+    local step_args
+    local skip_on_error
+    local timeout
+
+    if [ "$parser" = "jq" ]; then
+      step_name=$(jq -r ".steps[$i].name" "$workflow_file")
+      step_script=$(jq -r ".steps[$i].script" "$workflow_file")
+      step_args=$(jq -r ".steps[$i].args | join(\" \")" "$workflow_file" 2>/dev/null || echo "")
+      skip_on_error=$(jq -r ".steps[$i].skip_on_error // false" "$workflow_file")
+      timeout=$(jq -r ".steps[$i].timeout // 0" "$workflow_file")
+    else
+      # python3 parser
+      step_name=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i]['name'])" 2>/dev/null)
+      step_script=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i]['script'])" 2>/dev/null)
+      step_args=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(' '.join(data['steps'][$i].get('args', [])))" 2>/dev/null)
+      skip_on_error=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(str(data['steps'][$i].get('skip_on_error', False)).lower())" 2>/dev/null)
+      timeout=$(python3 -c "import json; data=json.load(open('$workflow_file')); print(data['steps'][$i].get('timeout', 0))" 2>/dev/null)
+    fi
+
+    # Execute step
+    if run_step "$step_name" "$step_script" $step_args; then
+      :  # Step succeeded
+    else
+      local step_exit=$?
+      if [ "$skip_on_error" = "true" ]; then
+        print_warning "  ⚠ Step failed but continuing (skip_on_error=true)"
+        log_to_file "WARNING: Step $((i+1)) failed but continuing"
+      else
+        print_error "  ✗ Step failed, stopping workflow"
+        log_to_file "ERROR: Step $((i+1)) failed, stopping workflow"
+        exit_code=$step_exit
+        break
+      fi
+    fi
+  done
+
+  # Print summary and complete logging
+  print_workflow_summary
+  complete_workflow_logging "$workflow_name" "$exit_code" "$is_scheduled"
+
+  return $exit_code
+}
+
+# ============================================================================
+# BUILT-IN WORKFLOW DEFINITIONS
+# ============================================================================
 
 # Morning routine workflow
 run_morning_routine() {

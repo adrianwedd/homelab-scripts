@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # homelab - Unified DevOps orchestrator for system maintenance scripts
-# Version: 1.0.0
+# Version: 2.2.0
 # Usage: homelab <command> [options]
 
-VERSION="1.0.0"
+VERSION="2.2.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Global flags
@@ -56,6 +56,12 @@ COMMANDS:
   Notifications:
     notify test          Test notification delivery (sends test notification)
     notify test --dry-run    Preview notification configuration without sending
+
+  Workflow Management:
+    workflow list        List all workflows (built-in + custom)
+    workflow show <name> Display workflow definition
+    workflow validate <name>  Validate workflow configuration
+    workflow run <name>  Execute custom workflow
 
   Configuration:
     config show          Show current configuration
@@ -134,7 +140,7 @@ EXAMPLES:
   # Run workflow with notifications enabled
   homelab morning --notify
 
-VERSION: 1.0.0
+VERSION: 2.2.0
 HELP
 }
 
@@ -151,6 +157,320 @@ show_version() {
       echo "  ✗ $script (not found)"
     fi
   done
+}
+
+# Manage custom workflows (Phase 2.3.1)
+manage_workflows() {
+  local subcommand="${1:-list}"
+  shift || true
+
+  case "$subcommand" in
+    list)
+      cmd_workflow_list
+      ;;
+    show)
+      local workflow_name="${1:-}"
+      if [ -z "$workflow_name" ]; then
+        print_error "Workflow name required"
+        echo "Usage: homelab workflow show <name>"
+        return 1
+      fi
+      cmd_workflow_show "$workflow_name"
+      ;;
+    validate)
+      local workflow_name="${1:-}"
+      if [ -z "$workflow_name" ]; then
+        print_error "Workflow name required"
+        echo "Usage: homelab workflow validate <name>"
+        return 1
+      fi
+      cmd_workflow_validate "$workflow_name"
+      ;;
+    run)
+      local workflow_name="${1:-}"
+      if [ -z "$workflow_name" ]; then
+        print_error "Workflow name required"
+        echo "Usage: homelab workflow run <name> [options]"
+        return 1
+      fi
+      shift
+      cmd_workflow_run "$workflow_name" "$@"
+      ;;
+    *)
+      print_error "Unknown workflow command: $subcommand"
+      echo ""
+      echo "Usage: homelab workflow <command> [options]"
+      echo ""
+      echo "Commands:"
+      echo "  list                List all workflows (built-in + custom)"
+      echo "  show <name>         Display workflow definition"
+      echo "  validate <name>     Validate workflow configuration"
+      echo "  run <name>          Execute custom workflow"
+      return 1
+      ;;
+  esac
+}
+
+# Workflow command: list
+cmd_workflow_list() {
+  print_section "Available Workflows"
+  echo ""
+
+  # Built-in workflows
+  echo "Built-in:"
+  for workflow in morning weekly emergency pre-deploy; do
+    local desc
+    desc=$(get_workflow_description "$workflow")
+    local schedule
+    schedule=$(get_workflow_schedule "$workflow")
+
+    local override_mark=""
+    if has_workflow_override "$workflow"; then
+      override_mark="*"
+    fi
+
+    printf "  %-20s %s (%s)%s\n" "$workflow$override_mark" "$desc" "$schedule" ""
+  done
+
+  echo ""
+
+  # Custom workflows
+  local custom_workflows
+  custom_workflows=$(list_custom_workflows)
+
+  if [ -n "$custom_workflows" ]; then
+    echo "Custom:"
+    echo "$custom_workflows" | while read -r workflow; do
+      local desc
+      desc=$(get_workflow_description "$workflow")
+      local schedule
+      schedule=$(get_workflow_schedule "$workflow")
+      printf "  %-20s %s (%s)\n" "$workflow" "$desc" "$schedule"
+    done
+    echo ""
+  fi
+
+  # Overrides note
+  if list_all_workflows | while read -r wf; do has_workflow_override "$wf" && exit 0; done; then
+    echo "* Custom override active"
+    echo ""
+  fi
+
+  print_info "Run 'homelab workflow show <name>' for details"
+}
+
+# Workflow command: show
+cmd_workflow_show() {
+  local workflow_name="$1"
+
+  print_section "Workflow: $workflow_name"
+  echo ""
+
+  # Check if it's a built-in workflow
+  if is_builtin_workflow "$workflow_name"; then
+    local desc
+    desc=$(get_workflow_description "$workflow_name")
+    echo "Description: $desc"
+    echo "Type: Built-in"
+
+    if has_workflow_override "$workflow_name"; then
+      echo "Override: Active"
+      local override_file
+      override_file=$(get_workflow_file "$workflow_name")
+      echo "Config: $override_file"
+    else
+      echo "Override: None"
+    fi
+
+    echo ""
+    local schedule
+    schedule=$(get_workflow_schedule "$workflow_name")
+    echo "Schedule: $schedule"
+    echo ""
+
+    # Show default options for built-in workflows
+    case "$workflow_name" in
+      morning)
+        echo "Default Steps:"
+        echo "  1. SSH Key Audit ($MORNING_SSH_AUDIT_OPTS)"
+        echo "  2. Network Scan ($MORNING_NMAP_OPTS)"
+        echo "  3. Backup Status (--status)"
+        echo "  4. Package Updates ($MORNING_UPDATE_OPTS)"
+        ;;
+      weekly)
+        echo "Default Steps:"
+        echo "  1. Disk Cleanup ($WEEKLY_CLEANUP_OPTS)"
+        echo "  2. System Updates ($WEEKLY_UPDATE_OPTS)"
+        echo "  3. SSH Key Audit ($WEEKLY_SSH_AUDIT_OPTS)"
+        echo "  4. Network Scan ($WEEKLY_NMAP_OPTS)"
+        echo "  5. Backup Verification (--check)"
+        ;;
+      emergency)
+        echo "Default Steps:"
+        echo "  1. Check disk space (threshold: ${EMERGENCY_DISK_THRESHOLD_GB}GB)"
+        echo "  2. Aggressive cleanup if needed ($EMERGENCY_CLEANUP_OPTS)"
+        echo "  3. Re-check disk space"
+        ;;
+      pre-deploy)
+        echo "Default Steps:"
+        echo "  1. SSH key audit with risk thresholds"
+        echo "  2. Disk space check (minimum: ${PREDEPLOY_MIN_DISK_GB}GB)"
+        echo "  3. Network scan"
+        echo "  4. Git status check"
+        ;;
+    esac
+
+    return 0
+  fi
+
+  # Try to get custom workflow definition
+  local workflow_file
+  workflow_file=$(get_workflow_file "$workflow_name")
+
+  if [ -z "$workflow_file" ]; then
+    print_error "Workflow not found: $workflow_name"
+    echo "Run 'homelab workflow list' to see available workflows"
+    return 1
+  fi
+
+  # Validate JSON first
+  if ! validate_json "$workflow_file"; then
+    print_error "Invalid JSON in workflow file: $workflow_file"
+    return 1
+  fi
+
+  # Display custom workflow details
+  local desc
+  desc=$(get_workflow_description "$workflow_name")
+  echo "Description: $desc"
+  echo "Type: Custom"
+  echo ""
+
+  local schedule
+  schedule=$(get_workflow_schedule "$workflow_name")
+  echo "Schedule: $schedule"
+  echo ""
+
+  # Parse and display steps
+  echo "Steps:"
+
+  # Warn if using fallback parser
+  if ! has_json_parser; then
+    print_warning "⚠ jq or python3 required for full workflow details"
+    echo "  Install with: brew install jq (macOS) or apt install jq (Linux)"
+    echo ""
+    echo "  (Limited parsing available)"
+    echo ""
+  fi
+
+  local parser
+  parser=$(detect_json_parser)
+
+  case "$parser" in
+    jq)
+      local step_count
+      step_count=$(jq '.steps | length' "$workflow_file")
+      for ((i=0; i<step_count; i++)); do
+        local step_name
+        local step_script
+        local step_args
+        step_name=$(jq -r ".steps[$i].name" "$workflow_file")
+        step_script=$(jq -r ".steps[$i].script" "$workflow_file")
+        step_args=$(jq -r ".steps[$i].args | join(\" \")" "$workflow_file" 2>/dev/null || echo "")
+
+        echo "  $((i+1)). $step_name"
+        echo "     Script: $step_script $step_args"
+      done
+      ;;
+    python3)
+      python3 <<EOF
+import json
+with open('$workflow_file') as f:
+    data = json.load(f)
+    for i, step in enumerate(data.get('steps', []), 1):
+        print(f"  {i}. {step['name']}")
+        args = ' '.join(step.get('args', []))
+        print(f"     Script: {step['script']} {args}")
+EOF
+      ;;
+    *)
+      # Fallback: just show file path
+      echo "  See full definition in config file"
+      ;;
+  esac
+
+  echo ""
+  echo "Config: $workflow_file"
+}
+
+# Workflow command: validate
+cmd_workflow_validate() {
+  local workflow_name="$1"
+
+  # Check if workflow exists
+  local workflow_file
+  workflow_file=$(get_workflow_file "$workflow_name")
+
+  if [ -z "$workflow_file" ] && ! is_builtin_workflow "$workflow_name"; then
+    print_error "Workflow not found: $workflow_name"
+    return 1
+  fi
+
+  # Built-in workflows are always valid
+  if is_builtin_workflow "$workflow_name" && [ -z "$workflow_file" ]; then
+    print_success "✓ Built-in workflow (always valid)"
+    return 0
+  fi
+
+  # Validate custom workflow JSON and structure
+  if [ -n "$workflow_file" ]; then
+    if validate_workflow_definition "$workflow_file"; then
+      print_success "✓ Workflow definition valid"
+      print_info "Config: $workflow_file"
+    else
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+# Workflow command: run
+cmd_workflow_run() {
+  local workflow_name="$1"
+  shift
+
+  # Check if workflow exists
+  local workflow_file
+  workflow_file=$(get_workflow_file "$workflow_name")
+
+  if [ -z "$workflow_file" ] && ! is_builtin_workflow "$workflow_name"; then
+    print_error "Workflow not found: $workflow_name"
+    echo "Run 'homelab workflow list' to see available workflows"
+    return 1
+  fi
+
+  # If it's a built-in workflow, run the built-in function
+  if is_builtin_workflow "$workflow_name" && [ -z "$workflow_file" ]; then
+    case "$workflow_name" in
+      morning)
+        run_morning_routine "$@"
+        ;;
+      weekly)
+        run_weekly_maintenance "$@"
+        ;;
+      emergency)
+        run_emergency_cleanup "$@"
+        ;;
+      pre-deploy)
+        run_predeploy_checks "$@"
+        ;;
+    esac
+    return $?
+  fi
+
+  # Otherwise, execute as custom workflow
+  execute_custom_workflow "$workflow_name" "$@"
 }
 
 # Manage configuration
@@ -331,6 +651,11 @@ main() {
           exit 1
           ;;
       esac
+      ;;
+
+    # Custom Workflows (Phase 2.3.1)
+    workflow)
+      manage_workflows "$@"
       ;;
 
     # Unknown command

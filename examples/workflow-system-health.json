@@ -1,0 +1,36 @@
+{
+  "name": "system-health",
+  "description": "Daily system health check workflow",
+  "schedule": {
+    "type": "cron",
+    "expression": "0 8 * * *",
+    "comment": "Daily at 8:00 AM"
+  },
+  "steps": [
+    {
+      "name": "Check Disk Space",
+      "script": "disk-cleanup.sh",
+      "args": ["--scan-venvs"],
+      "skip_on_error": true,
+      "timeout": 120
+    },
+    {
+      "name": "Network Scan",
+      "script": "nmap-scan.sh",
+      "args": ["--delta"],
+      "skip_on_error": true,
+      "timeout": 180
+    },
+    {
+      "name": "SSH Key Audit",
+      "script": "ssh-key-audit.sh",
+      "args": ["--all-users", "--risk"],
+      "skip_on_error": true,
+      "timeout": 300
+    }
+  ],
+  "notifications": {
+    "triggers": ["warning", "failure"],
+    "channels": ["slack", "macos"]
+  }
+}
