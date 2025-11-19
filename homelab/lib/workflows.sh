@@ -331,11 +331,11 @@ validate_workflow_definition() {
     # Normalize tilde in script path (bash doesn't expand ~ in variables)
     local normalized_script="${step_script/#\~/$HOME}"
 
-    # Check if script exists (search in PATH and common directories)
+    # Check if script exists AND is executable (mirror runtime requirements)
     local script_found=false
 
     # Check if it's an absolute path (including tilde-expanded paths)
-    if [[ "$normalized_script" == /* ]] && [ -f "$normalized_script" ]; then
+    if [[ "$normalized_script" == /* ]] && [ -f "$normalized_script" ] && [ -x "$normalized_script" ]; then
       script_found=true
     # Check if it's in PATH
     elif command -v "$step_script" >/dev/null 2>&1; then
@@ -344,13 +344,13 @@ validate_workflow_definition() {
     elif type -t get_script_path >/dev/null 2>&1 && [ -n "$(get_script_path "$step_script" 2>/dev/null || true)" ]; then
       script_found=true
     # Check in homelab directory (relative to SCRIPT_DIR)
-    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/$step_script" ]; then
+    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/$step_script" ] && [ -x "$SCRIPT_DIR/$step_script" ]; then
       script_found=true
     # Check in parent directory (for symlinked scripts)
-    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/../$step_script" ]; then
+    elif [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/../$step_script" ] && [ -x "$SCRIPT_DIR/../$step_script" ]; then
       script_found=true
     # Check in current directory
-    elif [ -f "./$step_script" ]; then
+    elif [ -f "./$step_script" ] && [ -x "./$step_script" ]; then
       script_found=true
     fi
 
