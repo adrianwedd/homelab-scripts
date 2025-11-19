@@ -1,0 +1,100 @@
+{
+  "name": "conditional-backup",
+  "description": "Conditional backup workflow demonstrating all condition types",
+  "schedule": {
+    "type": "cron",
+    "expression": "0 2 * * *",
+    "comment": "Daily at 2:00 AM"
+  },
+  "conditions": {
+    "disk": {
+      "min_free_gb": 5,
+      "path": "/",
+      "action": "skip"
+    },
+    "time_window": {
+      "start": "02:00",
+      "end": "06:00",
+      "action": "skip"
+    }
+  },
+  "steps": [
+    {
+      "name": "Check network connectivity",
+      "script": "ping",
+      "args": ["-c", "1", "8.8.8.8"],
+      "skip_on_error": false,
+      "when": {
+        "command": {
+          "script": "ping -c 1 8.8.8.8",
+          "timeout": 5,
+          "action": "fail"
+        }
+      }
+    },
+    {
+      "name": "Verify backup destination accessible",
+      "script": "test",
+      "args": ["-d", "/backup/destination"],
+      "skip_on_error": false,
+      "when": {
+        "file_exists": {
+          "path": "/backup/destination",
+          "negate": false,
+          "action": "fail"
+        }
+      }
+    },
+    {
+      "name": "Run incremental backup",
+      "script": "rsync",
+      "args": [
+        "-av",
+        "--delete",
+        "~/repos/",
+        "/backup/destination/"
+      ],
+      "skip_on_error": false,
+      "when": {
+        "disk": {
+          "min_free_gb": 10,
+          "path": "/backup",
+          "action": "skip"
+        }
+      }
+    },
+    {
+      "name": "Weekend full backup",
+      "script": "tar",
+      "args": [
+        "-czf",
+        "/backup/full-backup.tar.gz",
+        "~/repos"
+      ],
+      "skip_on_error": true,
+      "when": {
+        "weekday": {
+          "days": [0, 6],
+          "action": "skip"
+        }
+      }
+    },
+    {
+      "name": "Off-hours maintenance",
+      "script": "echo",
+      "args": ["Running maintenance during off-hours"],
+      "skip_on_error": true,
+      "when": {
+        "time_window": {
+          "start": "22:00",
+          "end": "06:00",
+          "action": "skip"
+        }
+      }
+    }
+  ],
+  "notifications": {
+    "triggers": ["warning", "failure"],
+    "channels": ["macos"]
+  }
+}

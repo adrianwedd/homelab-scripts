@@ -106,9 +106,144 @@ This checks:
   "notifications": {
     "triggers": ["warning", "failure"], // When to send notifications
     "channels": ["slack", "macos"]      // Which channels to use
+  },
+  "conditions": {                     // Pre-flight checks (workflow-level)
+    "disk": { ... },                  // Disk space requirement
+    "time_window": { ... },           // Time window restriction
+    "last_run": { ... },              // Cooldown period
+    "command": { ... },               // Custom shell condition
+    "file_exists": { ... }            // File presence check
   }
 }
 ```
+
+### Conditional Execution
+
+Workflows support both workflow-level pre-flight conditions and step-level guards to control when execution should proceed.
+
+#### Workflow-Level Conditions
+
+Pre-flight conditions are evaluated before the workflow starts. If any condition fails, the entire workflow is skipped or failed based on the `action` field.
+
+```json
+{
+  "conditions": {
+    "disk": {
+      "min_free_gb": 10,              // Minimum free disk space in GB
+      "path": "/",                    // Path to check (default: /)
+      "action": "skip"                // "skip" or "fail"
+    },
+    "time_window": {
+      "start": "02:00",               // Start time (HH:MM, 24-hour)
+      "end": "06:00",                 // End time (HH:MM, 24-hour)
+      "action": "skip"                // Only run between 2 AM and 6 AM
+    },
+    "last_run": {
+      "min_hours_since": 12,          // Minimum hours since last run
+      "action": "skip"                // Cooldown period (requires state tracking)
+    },
+    "command": {
+      "script": "ping -c 1 server",   // Shell command to run
+      "timeout": 5,                   // Timeout in seconds (optional)
+      "action": "skip"                // Skip if command fails (exit != 0)
+    },
+    "file_exists": {
+      "path": "/tmp/lock",            // File path to check
+      "negate": true,                 // true = skip if exists, false = skip if missing
+      "action": "fail"                // Fail workflow if lock file exists
+    }
+  }
+}
+```
+
+**Condition Actions:**
+- `"skip"`: Skip the workflow gracefully (exit 0, warning notification)
+- `"fail"`: Fail the workflow immediately (exit 1, failure notification)
+
+**Time Window Behavior:**
+- Supports overnight windows (e.g., `22:00` to `06:00`)
+- Uses 24-hour format (HH:MM)
+- Condition passes when current time is WITHIN the window
+- Use with `action: "skip"` for off-hours-only workflows
+
+**Example: Off-hours backup**
+```json
+{
+  "name": "night-backup",
+  "conditions": {
+    "time_window": {
+      "start": "22:00",
+      "end": "06:00",
+      "action": "skip"              // Skip if NOT between 10 PM and 6 AM
+    },
+    "disk": {
+      "min_free_gb": 50,
+      "action": "skip"              // Skip if less than 50 GB free
+    }
+  },
+  "steps": [ ... ]
+}
+```
+
+#### Step-Level Guards (when)
+
+Each step can have `when` conditions that are evaluated before the step runs. If conditions fail, only that step is skipped or failed.
+
+```json
+{
+  "steps": [
+    {
+      "name": "Weekend Full Backup",
+      "script": "backup.sh",
+      "args": ["--full"],
+      "when": {
+        "weekday": {
+          "days": [0, 6],           // 0=Sunday, 6=Saturday
+          "action": "skip"          // Only run on weekends
+        }
+      }
+    },
+    {
+      "name": "Large File Transfer",
+      "script": "transfer.sh",
+      "when": {
+        "disk": {
+          "min_free_gb": 100,       // Need 100 GB free
+          "path": "/backup",
+          "action": "skip"
+        },
+        "time_window": {
+          "start": "02:00",
+          "end": "06:00",
+          "action": "skip"          // Only during maintenance window
+        }
+      }
+    }
+  ]
+}
+```
+
+**Step-Level Condition Types:**
+- `disk`: Same as workflow-level
+- `time_window`: Same as workflow-level
+- `command`: Same as workflow-level
+- `file_exists`: Same as workflow-level
+- `weekday`: Step-only (not available at workflow level)
+
+**Weekday Values:**
+- `0` = Sunday
+- `1` = Monday
+- `2` = Tuesday
+- `3` = Wednesday
+- `4` = Thursday
+- `5` = Friday
+- `6` = Saturday
+
+**Condition Evaluation:**
+- All conditions in a block must pass for execution to proceed
+- Conditions are ANDed together (not OR)
+- If any condition fails, the action is taken
+- Errors during evaluation are treated as "pass" (fail-open design)
 
 ### Step Definition
 
@@ -239,6 +374,112 @@ This checks:
   }
 }
 ```
+
+### Conditional Backup (Advanced)
+
+This example demonstrates all condition types working together:
+
+```json
+{
+  "name": "conditional-backup",
+  "description": "Conditional backup workflow demonstrating all condition types",
+  "schedule": {
+    "type": "cron",
+    "expression": "0 2 * * *",
+    "comment": "Daily at 2:00 AM"
+  },
+  "conditions": {
+    "disk": {
+      "min_free_gb": 5,
+      "path": "/",
+      "action": "skip"
+    },
+    "time_window": {
+      "start": "02:00",
+      "end": "06:00",
+      "action": "skip"
+    }
+  },
+  "steps": [
+    {
+      "name": "Check network connectivity",
+      "script": "ping",
+      "args": ["-c", "1", "8.8.8.8"],
+      "skip_on_error": false,
+      "when": {
+        "command": {
+          "script": "ping -c 1 8.8.8.8",
+          "timeout": 5,
+          "action": "fail"
+        }
+      }
+    },
+    {
+      "name": "Verify backup destination accessible",
+      "script": "test",
+      "args": ["-d", "/backup/destination"],
+      "skip_on_error": false,
+      "when": {
+        "file_exists": {
+          "path": "/backup/destination",
+          "negate": false,
+          "action": "fail"
+        }
+      }
+    },
+    {
+      "name": "Run incremental backup",
+      "script": "rsync",
+      "args": ["-av", "--delete", "~/repos/", "/backup/destination/"],
+      "skip_on_error": false,
+      "when": {
+        "disk": {
+          "min_free_gb": 10,
+          "path": "/backup",
+          "action": "skip"
+        }
+      }
+    },
+    {
+      "name": "Weekend full backup",
+      "script": "tar",
+      "args": ["-czf", "/backup/full-backup.tar.gz", "~/repos"],
+      "skip_on_error": true,
+      "when": {
+        "weekday": {
+          "days": [0, 6],
+          "action": "skip"
+        }
+      }
+    },
+    {
+      "name": "Off-hours maintenance",
+      "script": "echo",
+      "args": ["Running maintenance during off-hours"],
+      "skip_on_error": true,
+      "when": {
+        "time_window": {
+          "start": "22:00",
+          "end": "06:00",
+          "action": "skip"
+        }
+      }
+    }
+  ],
+  "notifications": {
+    "triggers": ["warning", "failure"],
+    "channels": ["macos"]
+  }
+}
+```
+
+**Key Features:**
+- Workflow-level conditions ensure minimum disk space and time window
+- Network connectivity check with `command` condition
+- File existence check for backup destination
+- Step-level disk space guard for large transfers
+- Weekday-based full backup (weekends only)
+- Time window for off-hours maintenance tasks
 
 ## Common Patterns
 

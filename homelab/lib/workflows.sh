@@ -311,6 +311,182 @@ validate_workflow_definition() {
     return 1
   fi
 
+  # Validate workflow-level conditions block (if present)
+  local has_conditions
+  if [ "$parser" = "jq" ]; then
+    has_conditions=$(jq 'has("conditions")' "$workflow_file" 2>/dev/null || echo "false")
+  else
+    local escaped_path
+    escaped_path=$(escape_single_quotes "$workflow_file")
+    has_conditions=$(python3 -c "import json; data=json.load(open('$escaped_path')); print('true' if 'conditions' in data else 'false')" 2>/dev/null || echo "false")
+  fi
+
+  if [ "$has_conditions" = "true" ]; then
+    # Validate each condition type if present
+    local condition_types="disk time_window last_run command file_exists"
+    for cond_type in $condition_types; do
+      local has_cond
+      if [ "$parser" = "jq" ]; then
+        has_cond=$(jq "has(\"conditions\") and (.conditions | has(\"$cond_type\"))" "$workflow_file" 2>/dev/null || echo "false")
+      else
+        has_cond=$(python3 -c "import json; data=json.load(open('$escaped_path')); print('true' if 'conditions' in data and '$cond_type' in data['conditions'] else 'false')" 2>/dev/null || echo "false")
+      fi
+
+      if [ "$has_cond" = "true" ]; then
+        # Validate action field (must be "skip" or "fail")
+        local action
+        if [ "$parser" = "jq" ]; then
+          action=$(jq -r ".conditions.$cond_type.action // \"\"" "$workflow_file" 2>/dev/null)
+        else
+          action=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['$cond_type'].get('action', ''))" 2>/dev/null)
+        fi
+
+        if [ -n "$action" ] && [ "$action" != "skip" ] && [ "$action" != "fail" ]; then
+          print_error "Condition '$cond_type': action must be 'skip' or 'fail', got '$action'"
+          validation_errors=$((validation_errors + 1))
+        fi
+
+        # Type-specific validation
+        case "$cond_type" in
+          disk)
+            # Validate min_free_gb is numeric and in range
+            local min_free_gb
+            if [ "$parser" = "jq" ]; then
+              min_free_gb=$(jq -r '.conditions.disk.min_free_gb // ""' "$workflow_file" 2>/dev/null)
+            else
+              min_free_gb=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['disk'].get('min_free_gb', ''))" 2>/dev/null)
+            fi
+
+            if [ -z "$min_free_gb" ]; then
+              print_error "Condition 'disk': missing required field 'min_free_gb'"
+              validation_errors=$((validation_errors + 1))
+            elif ! [[ "$min_free_gb" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+              print_error "Condition 'disk': min_free_gb must be numeric, got '$min_free_gb'"
+              validation_errors=$((validation_errors + 1))
+            fi
+
+            # Validate path field (optional, defaults to /)
+            local disk_path
+            if [ "$parser" = "jq" ]; then
+              disk_path=$(jq -r '.conditions.disk.path // "/"' "$workflow_file" 2>/dev/null)
+            else
+              disk_path=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['disk'].get('path', '/'))" 2>/dev/null)
+            fi
+
+            # Expand tilde in path
+            disk_path="${disk_path/#\~/$HOME}"
+
+            if [ ! -d "$disk_path" ]; then
+              print_warning "Condition 'disk': path '$disk_path' does not exist (will fail at runtime)"
+            fi
+            ;;
+
+          time_window)
+            # Validate start and end fields (HH:MM format)
+            local start_time end_time
+            if [ "$parser" = "jq" ]; then
+              start_time=$(jq -r '.conditions.time_window.start // ""' "$workflow_file" 2>/dev/null)
+              end_time=$(jq -r '.conditions.time_window.end // ""' "$workflow_file" 2>/dev/null)
+            else
+              start_time=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['time_window'].get('start', ''))" 2>/dev/null)
+              end_time=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['time_window'].get('end', ''))" 2>/dev/null)
+            fi
+
+            if [ -z "$start_time" ]; then
+              print_error "Condition 'time_window': missing required field 'start'"
+              validation_errors=$((validation_errors + 1))
+            elif ! [[ "$start_time" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
+              print_error "Condition 'time_window': start must be HH:MM format, got '$start_time'"
+              validation_errors=$((validation_errors + 1))
+            fi
+
+            if [ -z "$end_time" ]; then
+              print_error "Condition 'time_window': missing required field 'end'"
+              validation_errors=$((validation_errors + 1))
+            elif ! [[ "$end_time" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
+              print_error "Condition 'time_window': end must be HH:MM format, got '$end_time'"
+              validation_errors=$((validation_errors + 1))
+            fi
+            ;;
+
+          last_run)
+            # Validate min_hours_since is numeric
+            local min_hours
+            if [ "$parser" = "jq" ]; then
+              min_hours=$(jq -r '.conditions.last_run.min_hours_since // ""' "$workflow_file" 2>/dev/null)
+            else
+              min_hours=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['last_run'].get('min_hours_since', ''))" 2>/dev/null)
+            fi
+
+            if [ -z "$min_hours" ]; then
+              print_error "Condition 'last_run': missing required field 'min_hours_since'"
+              validation_errors=$((validation_errors + 1))
+            elif ! [[ "$min_hours" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+              print_error "Condition 'last_run': min_hours_since must be numeric, got '$min_hours'"
+              validation_errors=$((validation_errors + 1))
+            fi
+            ;;
+
+          command)
+            # Validate script field is present
+            local cmd_script
+            if [ "$parser" = "jq" ]; then
+              cmd_script=$(jq -r '.conditions.command.script // ""' "$workflow_file" 2>/dev/null)
+            else
+              cmd_script=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['command'].get('script', ''))" 2>/dev/null)
+            fi
+
+            if [ -z "$cmd_script" ]; then
+              print_error "Condition 'command': missing required field 'script'"
+              validation_errors=$((validation_errors + 1))
+            fi
+
+            # Validate timeout is numeric (if present)
+            local cmd_timeout
+            if [ "$parser" = "jq" ]; then
+              cmd_timeout=$(jq -r '.conditions.command.timeout // ""' "$workflow_file" 2>/dev/null)
+            else
+              cmd_timeout=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['command'].get('timeout', ''))" 2>/dev/null)
+            fi
+
+            if [ -n "$cmd_timeout" ] && ! [[ "$cmd_timeout" =~ ^[0-9]+$ ]]; then
+              print_error "Condition 'command': timeout must be an integer, got '$cmd_timeout'"
+              validation_errors=$((validation_errors + 1))
+            fi
+            ;;
+
+          file_exists)
+            # Validate path field is present
+            local file_path
+            if [ "$parser" = "jq" ]; then
+              file_path=$(jq -r '.conditions.file_exists.path // ""' "$workflow_file" 2>/dev/null)
+            else
+              file_path=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['conditions']['file_exists'].get('path', ''))" 2>/dev/null)
+            fi
+
+            if [ -z "$file_path" ]; then
+              print_error "Condition 'file_exists': missing required field 'path'"
+              validation_errors=$((validation_errors + 1))
+            fi
+
+            # Validate negate is boolean (if present)
+            local negate_val
+            if [ "$parser" = "jq" ]; then
+              negate_val=$(jq -r '.conditions.file_exists.negate | type' "$workflow_file" 2>/dev/null)
+            else
+              negate_val=$(python3 -c "import json; data=json.load(open('$escaped_path')); val=data['conditions']['file_exists'].get('negate'); print(type(val).__name__ if val is not None else 'null')" 2>/dev/null)
+            fi
+
+            if [ -n "$negate_val" ] && [ "$negate_val" != "boolean" ] && [ "$negate_val" != "bool" ] && [ "$negate_val" != "null" ]; then
+              print_error "Condition 'file_exists': negate must be boolean, got '$negate_val'"
+              validation_errors=$((validation_errors + 1))
+            fi
+            ;;
+        esac
+      fi
+    done
+  fi
+
   # Validate each step
   for ((i=0; i<step_count; i++)); do
     local step_name
@@ -377,6 +553,183 @@ validate_workflow_definition() {
     if [ "$script_found" = false ]; then
       print_warning "Step $((i+1)) ($step_name): Script '$step_script' not found in PATH or common locations"
       print_warning "  Script will be resolved at execution time"
+    fi
+
+    # Validate step-level when block (if present)
+    local has_when
+    if [ "$parser" = "jq" ]; then
+      has_when=$(jq ".steps[$i] | has(\"when\")" "$workflow_file" 2>/dev/null || echo "false")
+    else
+      local escaped_path
+      escaped_path=$(escape_single_quotes "$workflow_file")
+      has_when=$(python3 -c "import json; data=json.load(open('$escaped_path')); print('true' if 'when' in data['steps'][$i] else 'false')" 2>/dev/null || echo "false")
+    fi
+
+    if [ "$has_when" = "true" ]; then
+      # Validate each step condition type if present
+      local step_condition_types="disk time_window command file_exists weekday"
+      for when_type in $step_condition_types; do
+        local has_when_cond
+        if [ "$parser" = "jq" ]; then
+          has_when_cond=$(jq ".steps[$i] | has(\"when\") and (.when | has(\"$when_type\"))" "$workflow_file" 2>/dev/null || echo "false")
+        else
+          has_when_cond=$(python3 -c "import json; data=json.load(open('$escaped_path')); print('true' if 'when' in data['steps'][$i] and '$when_type' in data['steps'][$i]['when'] else 'false')" 2>/dev/null || echo "false")
+        fi
+
+        if [ "$has_when_cond" = "true" ]; then
+          # Validate action field (must be "skip" or "fail")
+          local when_action
+          if [ "$parser" = "jq" ]; then
+            when_action=$(jq -r ".steps[$i].when.$when_type.action // \"\"" "$workflow_file" 2>/dev/null)
+          else
+            when_action=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['$when_type'].get('action', ''))" 2>/dev/null)
+          fi
+
+          if [ -n "$when_action" ] && [ "$when_action" != "skip" ] && [ "$when_action" != "fail" ]; then
+            print_error "Step $((i+1)) ($step_name) when '$when_type': action must be 'skip' or 'fail', got '$when_action'"
+            validation_errors=$((validation_errors + 1))
+          fi
+
+          # Type-specific validation (same as workflow-level, plus weekday)
+          case "$when_type" in
+            disk)
+              local step_min_free_gb
+              if [ "$parser" = "jq" ]; then
+                step_min_free_gb=$(jq -r ".steps[$i].when.disk.min_free_gb // \"\"" "$workflow_file" 2>/dev/null)
+              else
+                step_min_free_gb=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['disk'].get('min_free_gb', ''))" 2>/dev/null)
+              fi
+
+              if [ -z "$step_min_free_gb" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'disk': missing required field 'min_free_gb'"
+                validation_errors=$((validation_errors + 1))
+              elif ! [[ "$step_min_free_gb" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                print_error "Step $((i+1)) ($step_name) when 'disk': min_free_gb must be numeric, got '$step_min_free_gb'"
+                validation_errors=$((validation_errors + 1))
+              fi
+              ;;
+
+            time_window)
+              local step_start_time step_end_time
+              if [ "$parser" = "jq" ]; then
+                step_start_time=$(jq -r ".steps[$i].when.time_window.start // \"\"" "$workflow_file" 2>/dev/null)
+                step_end_time=$(jq -r ".steps[$i].when.time_window.end // \"\"" "$workflow_file" 2>/dev/null)
+              else
+                step_start_time=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['time_window'].get('start', ''))" 2>/dev/null)
+                step_end_time=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['time_window'].get('end', ''))" 2>/dev/null)
+              fi
+
+              if [ -z "$step_start_time" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'time_window': missing required field 'start'"
+                validation_errors=$((validation_errors + 1))
+              elif ! [[ "$step_start_time" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
+                print_error "Step $((i+1)) ($step_name) when 'time_window': start must be HH:MM format, got '$step_start_time'"
+                validation_errors=$((validation_errors + 1))
+              fi
+
+              if [ -z "$step_end_time" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'time_window': missing required field 'end'"
+                validation_errors=$((validation_errors + 1))
+              elif ! [[ "$step_end_time" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
+                print_error "Step $((i+1)) ($step_name) when 'time_window': end must be HH:MM format, got '$step_end_time'"
+                validation_errors=$((validation_errors + 1))
+              fi
+              ;;
+
+            command)
+              local step_cmd_script
+              if [ "$parser" = "jq" ]; then
+                step_cmd_script=$(jq -r ".steps[$i].when.command.script // \"\"" "$workflow_file" 2>/dev/null)
+              else
+                step_cmd_script=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['command'].get('script', ''))" 2>/dev/null)
+              fi
+
+              if [ -z "$step_cmd_script" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'command': missing required field 'script'"
+                validation_errors=$((validation_errors + 1))
+              fi
+
+              local step_cmd_timeout
+              if [ "$parser" = "jq" ]; then
+                step_cmd_timeout=$(jq -r ".steps[$i].when.command.timeout // \"\"" "$workflow_file" 2>/dev/null)
+              else
+                step_cmd_timeout=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['command'].get('timeout', ''))" 2>/dev/null)
+              fi
+
+              if [ -n "$step_cmd_timeout" ] && ! [[ "$step_cmd_timeout" =~ ^[0-9]+$ ]]; then
+                print_error "Step $((i+1)) ($step_name) when 'command': timeout must be an integer, got '$step_cmd_timeout'"
+                validation_errors=$((validation_errors + 1))
+              fi
+              ;;
+
+            file_exists)
+              local step_file_path
+              if [ "$parser" = "jq" ]; then
+                step_file_path=$(jq -r ".steps[$i].when.file_exists.path // \"\"" "$workflow_file" 2>/dev/null)
+              else
+                step_file_path=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['file_exists'].get('path', ''))" 2>/dev/null)
+              fi
+
+              if [ -z "$step_file_path" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'file_exists': missing required field 'path'"
+                validation_errors=$((validation_errors + 1))
+              fi
+
+              local step_negate_val
+              if [ "$parser" = "jq" ]; then
+                step_negate_val=$(jq -r ".steps[$i].when.file_exists.negate | type" "$workflow_file" 2>/dev/null)
+              else
+                step_negate_val=$(python3 -c "import json; data=json.load(open('$escaped_path')); val=data['steps'][$i]['when']['file_exists'].get('negate'); print(type(val).__name__ if val is not None else 'null')" 2>/dev/null)
+              fi
+
+              if [ -n "$step_negate_val" ] && [ "$step_negate_val" != "boolean" ] && [ "$step_negate_val" != "bool" ] && [ "$step_negate_val" != "null" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'file_exists': negate must be boolean, got '$step_negate_val'"
+                validation_errors=$((validation_errors + 1))
+              fi
+              ;;
+
+            weekday)
+              # Validate days is an array of integers 0-6
+              local days_type
+              if [ "$parser" = "jq" ]; then
+                days_type=$(jq -r ".steps[$i].when.weekday.days | type" "$workflow_file" 2>/dev/null)
+              else
+                days_type=$(python3 -c "import json; data=json.load(open('$escaped_path')); days=data['steps'][$i]['when']['weekday'].get('days'); print(type(days).__name__ if days is not None else 'null')" 2>/dev/null)
+              fi
+
+              if [ "$days_type" = "null" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'weekday': missing required field 'days'"
+                validation_errors=$((validation_errors + 1))
+              elif [ "$days_type" != "array" ] && [ "$days_type" != "list" ]; then
+                print_error "Step $((i+1)) ($step_name) when 'weekday': 'days' must be an array, got $days_type"
+                validation_errors=$((validation_errors + 1))
+              else
+                # Validate each day is 0-6
+                local days_length
+                if [ "$parser" = "jq" ]; then
+                  days_length=$(jq -r ".steps[$i].when.weekday.days | length" "$workflow_file" 2>/dev/null)
+                else
+                  days_length=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(len(data['steps'][$i]['when']['weekday']['days']))" 2>/dev/null)
+                fi
+
+                for ((d=0; d<days_length; d++)); do
+                  local day_val
+                  if [ "$parser" = "jq" ]; then
+                    day_val=$(jq -r ".steps[$i].when.weekday.days[$d]" "$workflow_file" 2>/dev/null)
+                  else
+                    day_val=$(python3 -c "import json; data=json.load(open('$escaped_path')); print(data['steps'][$i]['when']['weekday']['days'][$d])" 2>/dev/null)
+                  fi
+
+                  if ! [[ "$day_val" =~ ^[0-6]$ ]]; then
+                    print_error "Step $((i+1)) ($step_name) when 'weekday': days must be integers 0-6 (got '$day_val')"
+                    validation_errors=$((validation_errors + 1))
+                  fi
+                done
+              fi
+              ;;
+          esac
+        fi
+      done
     fi
   done
 
