@@ -385,6 +385,10 @@ clean_virtualenvs() {
 }
 
 print_section() {
+    # Clear the gauge line if it exists (prevent overlap)
+    if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
+        printf "\r%80s\r" ""  # Clear line with spaces, then return to start
+    fi
     echo "" | tee -a "$LOG_FILE"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
     echo -e "${BLUE}${BOLD}  ${1}${NC}" | tee -a "$LOG_FILE"
