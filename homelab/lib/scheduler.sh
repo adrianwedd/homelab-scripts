@@ -252,20 +252,22 @@ install_launchd_schedule() {
   local dry_run="$2"
 
   local launch_dir="$HOME/Library/LaunchAgents"
-  local morning_plist="$launch_dir/com.homelab.morning.plist"
-  local weekly_plist="$launch_dir/com.homelab.weekly.plist"
 
-  # Get schedule configuration (convert cron to launchd time)
-  local morning_hour="${HOMELAB_SCHEDULE_MORNING_HOUR:-8}"
-  local morning_minute="${HOMELAB_SCHEDULE_MORNING_MINUTE:-0}"
-  local weekly_hour="${HOMELAB_SCHEDULE_WEEKLY_HOUR:-2}"
-  local weekly_minute="${HOMELAB_SCHEDULE_WEEKLY_MINUTE:-0}"
-  local weekly_weekday="${HOMELAB_SCHEDULE_WEEKLY_WEEKDAY:-0}"  # 0 = Sunday
+  # Get list of scheduled workflows
+  local scheduled_workflows=()
+  if type -t list_scheduled_workflows >/dev/null 2>&1; then
+    while IFS= read -r workflow_name; do
+      scheduled_workflows+=("$workflow_name")
+    done < <(list_scheduled_workflows)
+  else
+    # Fallback to built-in workflows only
+    scheduled_workflows=("morning" "weekly")
+  fi
 
-  print_info "Schedule configuration:"
-  echo "  Morning routine: Daily at ${morning_hour}:$(printf '%02d' $morning_minute)"
-  echo "  Weekly maintenance: Weekday $weekly_weekday at ${weekly_hour}:$(printf '%02d' $weekly_minute)"
-  echo ""
+  if [ ${#scheduled_workflows[@]} -eq 0 ]; then
+    print_error "No scheduled workflows found"
+    return 1
+  fi
 
   # Create log directory if needed
   mkdir -p "$HOMELAB_LOG_DIR"
@@ -274,32 +276,89 @@ install_launchd_schedule() {
   local escaped_homelab_path=$(xml_escape "$homelab_path")
   local escaped_log_dir=$(xml_escape "$HOMELAB_LOG_DIR")
 
-  # Generate morning plist
-  local morning_plist_content=$(cat <<EOF
+  print_info "Schedule configuration:"
+
+  # Generate plists for each scheduled workflow
+  local plist_files=()
+  local plist_contents=()
+
+  for workflow_name in "${scheduled_workflows[@]}"; do
+    local cron_expr=$(get_workflow_cron_expression "$workflow_name")
+    if [ -z "$cron_expr" ]; then
+      print_warning "Skipping workflow '$workflow_name': no cron expression found"
+      continue
+    fi
+
+    # Parse cron expression to launchd calendar interval
+    # Format: minute hour day month weekday
+    local cron_minute cron_hour cron_day cron_month cron_weekday
+    read -r cron_minute cron_hour cron_day cron_month cron_weekday <<< "$cron_expr"
+
+    # Build StartCalendarInterval dict based on cron fields
+    local calendar_interval="    <key>StartCalendarInterval</key>
+    <dict>"
+
+    # Add Minute if specified (not *)
+    if [[ "$cron_minute" =~ ^[0-9]+$ ]]; then
+      calendar_interval+="
+        <key>Minute</key>
+        <integer>$cron_minute</integer>"
+    fi
+
+    # Add Hour if specified (not *)
+    if [[ "$cron_hour" =~ ^[0-9]+$ ]]; then
+      calendar_interval+="
+        <key>Hour</key>
+        <integer>$cron_hour</integer>"
+    fi
+
+    # Add Day if specified (not *)
+    if [[ "$cron_day" =~ ^[0-9]+$ ]]; then
+      calendar_interval+="
+        <key>Day</key>
+        <integer>$cron_day</integer>"
+    fi
+
+    # Add Month if specified (not *)
+    if [[ "$cron_month" =~ ^[0-9]+$ ]]; then
+      calendar_interval+="
+        <key>Month</key>
+        <integer>$cron_month</integer>"
+    fi
+
+    # Add Weekday if specified (not *)
+    if [[ "$cron_weekday" =~ ^[0-9]+$ ]]; then
+      calendar_interval+="
+        <key>Weekday</key>
+        <integer>$cron_weekday</integer>"
+    fi
+
+    calendar_interval+="
+    </dict>"
+
+    # Build plist content
+    local plist_file="$launch_dir/com.homelab.${workflow_name}.plist"
+    local plist_content=$(cat <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.homelab.morning</string>
+    <string>com.homelab.${workflow_name}</string>
     <key>ProgramArguments</key>
     <array>
         <string>$escaped_homelab_path</string>
-        <string>morning</string>
+        <string>workflow</string>
+        <string>run</string>
+        <string>$workflow_name</string>
         <string>--quiet</string>
         <string>--scheduled</string>
     </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>$morning_hour</integer>
-        <key>Minute</key>
-        <integer>$morning_minute</integer>
-    </dict>
+$calendar_interval
     <key>StandardOutPath</key>
-    <string>$escaped_log_dir/launchd_morning.log</string>
+    <string>$escaped_log_dir/launchd_${workflow_name}.log</string>
     <key>StandardErrorPath</key>
-    <string>$escaped_log_dir/launchd_morning.log</string>
+    <string>$escaped_log_dir/launchd_${workflow_name}.log</string>
     <key>RunAtLoad</key>
     <false/>
 </dict>
@@ -307,92 +366,60 @@ install_launchd_schedule() {
 EOF
 )
 
-  # Generate weekly plist
-  local weekly_plist_content=$(cat <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.homelab.weekly</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$escaped_homelab_path</string>
-        <string>weekly</string>
-        <string>--quiet</string>
-        <string>--scheduled</string>
-    </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Weekday</key>
-        <integer>$weekly_weekday</integer>
-        <key>Hour</key>
-        <integer>$weekly_hour</integer>
-        <key>Minute</key>
-        <integer>$weekly_minute</integer>
-    </dict>
-    <key>StandardOutPath</key>
-    <string>$escaped_log_dir/launchd_weekly.log</string>
-    <key>StandardErrorPath</key>
-    <string>$escaped_log_dir/launchd_weekly.log</string>
-    <key>RunAtLoad</key>
-    <false/>
-</dict>
-</plist>
-EOF
-)
+    plist_files+=("$plist_file")
+    plist_contents+=("$plist_content")
+
+    # Show configuration
+    echo "  $workflow_name: $(get_workflow_schedule "$workflow_name")"
+  done
+
+  echo ""
 
   if [ "$dry_run" = true ]; then
     print_section "Dry-run: Would create the following launchd plists"
     echo ""
-    print_info "Morning plist: $morning_plist"
-    echo "$morning_plist_content" | head -15
-    echo "..."
-    echo ""
-    print_info "Weekly plist: $weekly_plist"
-    echo "$weekly_plist_content" | head -15
-    echo "..."
+    for i in "${!plist_files[@]}"; do
+      print_info "Plist: ${plist_files[$i]}"
+      echo "${plist_contents[$i]}" | head -20
+      echo "..."
+      echo ""
+    done
     return 0
   fi
 
   # Create LaunchAgents directory if needed
   mkdir -p "$launch_dir"
 
-  # Backup existing plists
-  if [ -f "$morning_plist" ]; then
-    local backup_morning="$HOMELAB_LOG_DIR/$(basename "$morning_plist").backup_$(date +%s)"
-    cp "$morning_plist" "$backup_morning"
-    print_info "Backed up existing morning plist to: $backup_morning"
-  fi
+  # Backup and write plists
+  for i in "${!plist_files[@]}"; do
+    local plist_file="${plist_files[$i]}"
+    local plist_content="${plist_contents[$i]}"
 
-  if [ -f "$weekly_plist" ]; then
-    local backup_weekly="$HOMELAB_LOG_DIR/$(basename "$weekly_plist").backup_$(date +%s)"
-    cp "$weekly_plist" "$backup_weekly"
-    print_info "Backed up existing weekly plist to: $backup_weekly"
-  fi
+    # Backup existing plist if present
+    if [ -f "$plist_file" ]; then
+      local backup_file="$HOMELAB_LOG_DIR/$(basename "$plist_file").backup_$(date +%s)"
+      cp "$plist_file" "$backup_file"
+      print_info "Backed up existing plist to: $backup_file"
+    fi
 
-  # Create log directory
-  mkdir -p "$HOMELAB_LOG_DIR"
+    # Write plist
+    echo "$plist_content" > "$plist_file"
 
-  # Write plists
-  echo "$morning_plist_content" > "$morning_plist"
-  echo "$weekly_plist_content" > "$weekly_plist"
+    # Unload old job if present, then load new one
+    launchctl unload "$plist_file" 2>/dev/null || true
+    if launchctl load "$plist_file" 2>/dev/null; then
+      print_success "Loaded: $(basename "$plist_file")"
+    else
+      print_warning "Failed to load: $(basename "$plist_file")"
+    fi
+  done
 
-  # Load jobs
-  launchctl unload "$morning_plist" 2>/dev/null || true
-  launchctl unload "$weekly_plist" 2>/dev/null || true
-  launchctl load "$morning_plist"
-  launchctl load "$weekly_plist"
-
-  print_success "Schedule installed successfully!"
   echo ""
-  print_info "Installed jobs:"
-  echo "  • com.homelab.morning: Daily at ${morning_hour}:$(printf '%02d' $morning_minute)"
-  echo "  • com.homelab.weekly: Weekday $weekly_weekday at ${weekly_hour}:$(printf '%02d' $weekly_minute)"
+  print_success "Schedule installed successfully!"
   echo ""
   print_info "Next steps:"
   echo "  • View schedule: homelab schedule status"
-  echo "  • Check logs: tail -f $HOMELAB_LOG_DIR/launchd_morning.log"
+  echo "  • Check logs: tail -f $HOMELAB_LOG_DIR/launchd_*.log"
   echo "  • Remove schedule: homelab schedule remove"
 }
 
@@ -465,34 +492,30 @@ remove_cron_schedule() {
 # Remove launchd schedule
 remove_launchd_schedule() {
   local launch_dir="$HOME/Library/LaunchAgents"
-  local morning_plist="$launch_dir/com.homelab.morning.plist"
-  local weekly_plist="$launch_dir/com.homelab.weekly.plist"
-
   local removed=0
 
-  # Unload and remove morning job
-  if [ -f "$morning_plist" ]; then
-    launchctl unload "$morning_plist" 2>/dev/null || true
-    local backup="$HOMELAB_LOG_DIR/$(basename "$morning_plist").removed_$(date +%s)"
-    mv "$morning_plist" "$backup"
-    print_success "Removed morning schedule (backed up to: $backup)"
-    removed=$((removed + 1))
-  fi
+  # Find all homelab plists (com.homelab.*.plist)
+  while IFS= read -r plist_file; do
+    if [ -f "$plist_file" ]; then
+      local workflow_name=$(basename "$plist_file" .plist | sed 's/^com\.homelab\.//')
 
-  # Unload and remove weekly job
-  if [ -f "$weekly_plist" ]; then
-    launchctl unload "$weekly_plist" 2>/dev/null || true
-    local backup="$HOMELAB_LOG_DIR/$(basename "$weekly_plist").removed_$(date +%s)"
-    mv "$weekly_plist" "$backup"
-    print_success "Removed weekly schedule (backed up to: $backup)"
-    removed=$((removed + 1))
-  fi
+      # Unload job
+      launchctl unload "$plist_file" 2>/dev/null || true
+
+      # Backup plist
+      local backup="$HOMELAB_LOG_DIR/$(basename "$plist_file").removed_$(date +%s)"
+      mv "$plist_file" "$backup"
+
+      print_success "Removed $workflow_name schedule (backed up to: $backup)"
+      removed=$((removed + 1))
+    fi
+  done < <(find "$launch_dir" -name "com.homelab.*.plist" 2>/dev/null || true)
 
   if [ "$removed" -eq 0 ]; then
     print_warning "No homelab launchd jobs found"
   else
     echo ""
-    print_info "homelab schedule removed successfully"
+    print_info "homelab schedule removed successfully (removed $removed job(s))"
   fi
 }
 
@@ -531,7 +554,7 @@ show_cron_status() {
   fi
 
   # Check for homelab entries
-  if ! crontab -l 2>/dev/null | grep -q "homelab morning"; then
+  if ! crontab -l 2>/dev/null | grep -q "# homelab automated workflows"; then
     print_warning "homelab schedule not installed"
     echo ""
     print_info "Install schedule: homelab schedule install"
@@ -541,54 +564,56 @@ show_cron_status() {
   print_success "homelab schedule is active"
   echo ""
 
+  # Get list of scheduled workflows for display
+  local scheduled_workflows=()
+  if type -t list_scheduled_workflows >/dev/null 2>&1; then
+    while IFS= read -r workflow_name; do
+      scheduled_workflows+=("$workflow_name")
+    done < <(list_scheduled_workflows)
+  fi
+
   # Show current schedule
   print_info "Active schedules:"
-  crontab -l 2>/dev/null | grep -A2 "# homelab automated workflows" | grep -v "^#" | while read -r line; do
-    if [ -n "$line" ]; then
-      # Parse cron line using read
-      local -a cron_parts
-      read -ra cron_parts <<< "$line"
-      local schedule="${cron_parts[0]} ${cron_parts[1]} ${cron_parts[2]} ${cron_parts[3]} ${cron_parts[4]}"
-      local command=$(echo "$line" | sed 's/^[^ ]* [^ ]* [^ ]* [^ ]* [^ ]* //')
 
-      # Determine workflow type
-      if echo "$command" | grep -q "morning"; then
-        echo "  • Morning: $schedule"
-      elif echo "$command" | grep -q "weekly"; then
-        echo "  • Weekly: $schedule"
-      fi
-    fi
+  # Show each scheduled workflow
+  for workflow_name in "${scheduled_workflows[@]}"; do
+    local schedule_desc=$(get_workflow_schedule "$workflow_name")
+    echo "  • $workflow_name: $schedule_desc"
   done
 
   echo ""
 
   # Show recent runs from cron logs
-  if [ -f "$HOMELAB_LOG_DIR/cron_morning.log" ]; then
-    local last_morning=$(tail -1 "$HOMELAB_LOG_DIR/cron_morning.log" 2>/dev/null)
-    [ -n "$last_morning" ] && print_info "Last morning run: $(date -r "$HOMELAB_LOG_DIR/cron_morning.log" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'unknown')"
-  fi
-
-  if [ -f "$HOMELAB_LOG_DIR/cron_weekly.log" ]; then
-    local last_weekly=$(tail -1 "$HOMELAB_LOG_DIR/cron_weekly.log" 2>/dev/null)
-    [ -n "$last_weekly" ] && print_info "Last weekly run: $(date -r "$HOMELAB_LOG_DIR/cron_weekly.log" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'unknown')"
-  fi
+  print_info "Recent workflow runs:"
+  for workflow_name in "${scheduled_workflows[@]}"; do
+    local log_file="$HOMELAB_LOG_DIR/cron_${workflow_name}.log"
+    if [ -f "$log_file" ]; then
+      local last_run=$(date -r "$log_file" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'unknown')
+      echo "  • $workflow_name: $last_run"
+    fi
+  done
 }
 
 # Show launchd status
 show_launchd_status() {
-  local morning_loaded=false
-  local weekly_loaded=false
-
-  # Check if jobs are loaded
-  if launchctl list | grep -q "com.homelab.morning"; then
-    morning_loaded=true
+  # Get list of scheduled workflows
+  local scheduled_workflows=()
+  if type -t list_scheduled_workflows >/dev/null 2>&1; then
+    while IFS= read -r workflow_name; do
+      scheduled_workflows+=("$workflow_name")
+    done < <(list_scheduled_workflows)
   fi
 
-  if launchctl list | grep -q "com.homelab.weekly"; then
-    weekly_loaded=true
-  fi
+  # Check if any homelab jobs are loaded
+  local any_loaded=false
+  for workflow_name in "${scheduled_workflows[@]}"; do
+    if launchctl list | grep -q "com.homelab.${workflow_name}"; then
+      any_loaded=true
+      break
+    fi
+  done
 
-  if [ "$morning_loaded" = false ] && [ "$weekly_loaded" = false ]; then
+  if [ "$any_loaded" = false ]; then
     print_warning "homelab schedule not installed"
     echo ""
     print_info "Install schedule: homelab schedule install"
@@ -600,48 +625,25 @@ show_launchd_status() {
 
   print_info "Active jobs:"
 
-  if [ "$morning_loaded" = true ]; then
-    local morning_plist="$HOME/Library/LaunchAgents/com.homelab.morning.plist"
-    if [ -f "$morning_plist" ]; then
-      local hour=$(grep -A1 "<key>Hour</key>" "$morning_plist" | grep "<integer>" | sed 's/.*<integer>\(.*\)<\/integer>.*/\1/')
-      local minute=$(grep -A1 "<key>Minute</key>" "$morning_plist" | grep "<integer>" | sed 's/.*<integer>\(.*\)<\/integer>.*/\1/')
-      echo "  • Morning: Daily at ${hour}:$(printf '%02d' $minute)"
-    else
-      echo "  • Morning: Loaded (schedule unknown)"
+  # Show each scheduled workflow
+  for workflow_name in "${scheduled_workflows[@]}"; do
+    if launchctl list | grep -q "com.homelab.${workflow_name}"; then
+      local schedule_desc=$(get_workflow_schedule "$workflow_name")
+      echo "  • $workflow_name: $schedule_desc"
     fi
-  fi
-
-  if [ "$weekly_loaded" = true ]; then
-    local weekly_plist="$HOME/Library/LaunchAgents/com.homelab.weekly.plist"
-    if [ -f "$weekly_plist" ]; then
-      local hour=$(grep -A1 "<key>Hour</key>" "$weekly_plist" | grep "<integer>" | sed 's/.*<integer>\(.*\)<\/integer>.*/\1/')
-      local minute=$(grep -A1 "<key>Minute</key>" "$weekly_plist" | grep "<integer>" | sed 's/.*<integer>\(.*\)<\/integer>.*/\1/')
-      local weekday=$(grep -A1 "<key>Weekday</key>" "$weekly_plist" | grep "<integer>" | sed 's/.*<integer>\(.*\)<\/integer>.*/\1/' || echo "0")
-      local weekday_name="Sunday"
-      case "$weekday" in
-        1) weekday_name="Monday" ;;
-        2) weekday_name="Tuesday" ;;
-        3) weekday_name="Wednesday" ;;
-        4) weekday_name="Thursday" ;;
-        5) weekday_name="Friday" ;;
-        6) weekday_name="Saturday" ;;
-      esac
-      echo "  • Weekly: ${weekday_name}s at ${hour}:$(printf '%02d' $minute)"
-    else
-      echo "  • Weekly: Loaded (schedule unknown)"
-    fi
-  fi
+  done
 
   echo ""
 
   # Show recent runs
-  if [ -f "$HOMELAB_LOG_DIR/launchd_morning.log" ]; then
-    print_info "Last morning run: $(date -r "$HOMELAB_LOG_DIR/launchd_morning.log" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'unknown')"
-  fi
-
-  if [ -f "$HOMELAB_LOG_DIR/launchd_weekly.log" ]; then
-    print_info "Last weekly run: $(date -r "$HOMELAB_LOG_DIR/launchd_weekly.log" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'unknown')"
-  fi
+  print_info "Recent workflow runs:"
+  for workflow_name in "${scheduled_workflows[@]}"; do
+    local log_file="$HOMELAB_LOG_DIR/launchd_${workflow_name}.log"
+    if [ -f "$log_file" ]; then
+      local last_run=$(date -r "$log_file" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'unknown')
+      echo "  • $workflow_name: $last_run"
+    fi
+  done
 }
 
 # Show schedule configuration (preview without installing)
