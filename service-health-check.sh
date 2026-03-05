@@ -7,7 +7,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs"
-STATE_DIR="${HOME}/.cache/service-health-check"
+STATE_DIR="${SCRIPT_DIR}/logs/service-health-check"
 STATE_FILE="${STATE_DIR}/state.json"
 
 # Defaults
@@ -44,7 +44,7 @@ print_info() {
 
 # Show usage
 show_help() {
-    cat << EOF
+    cat <<EOF
 service-health-check.sh - Config-driven uptime monitoring
 
 USAGE:
@@ -100,43 +100,43 @@ EOF
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --help)
-                show_help
-                exit 0
-                ;;
-            --config)
-                CONFIG_FILE="$2"
-                shift 2
-                ;;
-            --once)
-                WATCH_MODE=false
-                shift
-                ;;
-            --watch)
-                WATCH_MODE=true
-                shift
-                ;;
-            --interval)
-                CHECK_INTERVAL="$2"
-                shift 2
-                ;;
-            --notify)
-                NOTIFY_METHOD="$2"
-                shift 2
-                ;;
-            --json)
-                JSON_OUTPUT=true
-                shift
-                ;;
-            --dry-run)
-                DRY_RUN=true
-                shift
-                ;;
-            *)
-                print_error "Unknown option: $1"
-                echo "Run with --help for usage information"
-                exit 1
-                ;;
+        --help)
+            show_help
+            exit 0
+            ;;
+        --config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        --once)
+            WATCH_MODE=false
+            shift
+            ;;
+        --watch)
+            WATCH_MODE=true
+            shift
+            ;;
+        --interval)
+            CHECK_INTERVAL="$2"
+            shift 2
+            ;;
+        --notify)
+            NOTIFY_METHOD="$2"
+            shift 2
+            ;;
+        --json)
+            JSON_OUTPUT=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            echo "Run with --help for usage information"
+            exit 1
+            ;;
         esac
     done
 }
@@ -203,7 +203,7 @@ parse_config() {
                 service_data="${service_data} ${key}=${value}"
             fi
         fi
-    done < "$config_file"
+    done <"$config_file"
 
     # Output last service
     if [ -n "$section" ]; then
@@ -283,7 +283,7 @@ check_process() {
         return 0
     fi
 
-    if pgrep -x "$process_name" > /dev/null 2>&1; then
+    if pgrep -x "$process_name" >/dev/null 2>&1; then
         local pid_count
         pid_count=$(pgrep -x "$process_name" | wc -l | xargs)
         echo "pass|Process running (${pid_count} instances)"
@@ -324,38 +324,63 @@ check_container() {
     fi
 }
 
+# Extract a key's value from key=value argument tokens.
+get_param_value() {
+    local key="$1"
+    shift
+    local token
+    for token in "$@"; do
+        case "$token" in
+        "$key="*)
+            echo "${token#*=}"
+            return 0
+            ;;
+        esac
+    done
+    return 1
+}
+
 # Run a single check
 run_check() {
     local name="$1"
     local type="$2"
     shift 2
-    local -A params=()
-
-    # Parse remaining args into params
-    for arg in "$@"; do
-        if [[ "$arg" =~ ^\[([^]]+)\]=(.*)$ ]]; then
-            params[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
-        fi
-    done
 
     local result
     case "$type" in
-        http)
-            result=$(check_http "$name" "${params[url]}" "${params[expect_status]:-200}" \
-                "${params[expect_body]:-}" "${params[timeout]:-5}")
-            ;;
-        tcp)
-            result=$(check_tcp "$name" "${params[host]}" "${params[port]}" "${params[timeout]:-5}")
-            ;;
-        process)
-            result=$(check_process "$name" "${params[name]}")
-            ;;
-        container)
-            result=$(check_container "$name" "${params[name]}")
-            ;;
-        *)
-            result="error|Unknown check type: $type"
-            ;;
+    http)
+        local http_url
+        local expect_status
+        local expect_body
+        local http_timeout
+        http_url="$(get_param_value "url" "$@")"
+        expect_status="$(get_param_value "expect_status" "$@" || echo "200")"
+        expect_body="$(get_param_value "expect_body" "$@" || echo "")"
+        http_timeout="$(get_param_value "timeout" "$@" || echo "5")"
+        result=$(check_http "$name" "$http_url" "$expect_status" "$expect_body" "$http_timeout")
+        ;;
+    tcp)
+        local tcp_host
+        local tcp_port
+        local tcp_timeout
+        tcp_host="$(get_param_value "host" "$@")"
+        tcp_port="$(get_param_value "port" "$@")"
+        tcp_timeout="$(get_param_value "timeout" "$@" || echo "5")"
+        result=$(check_tcp "$name" "$tcp_host" "$tcp_port" "$tcp_timeout")
+        ;;
+    process)
+        local process_name
+        process_name="$(get_param_value "name" "$@")"
+        result=$(check_process "$name" "$process_name")
+        ;;
+    container)
+        local container_name
+        container_name="$(get_param_value "name" "$@")"
+        result=$(check_container "$name" "$container_name")
+        ;;
+    *)
+        result="error|Unknown check type: $type"
+        ;;
     esac
 
     echo "$result"
@@ -375,7 +400,8 @@ notify_webhook() {
     fi
 
     local payload
-    payload=$(cat <<EOF
+    payload=$(
+        cat <<EOF
 {
   "service": "$name",
   "type": "$type",
@@ -384,7 +410,7 @@ notify_webhook() {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF
-)
+    )
 
     if curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$url" >/dev/null 2>&1; then
         return 0
@@ -421,7 +447,7 @@ load_state() {
 save_state() {
     local state="$1"
     mkdir -p "$STATE_DIR"
-    echo "$state" > "$STATE_FILE"
+    echo "$state" >"$STATE_FILE"
 }
 
 # Check if state changed (for notification filtering)
@@ -449,7 +475,11 @@ run_checks() {
 
     local -a results=()
     local prev_state
-    prev_state=$(load_state)
+    if [ "$DRY_RUN" = true ]; then
+        prev_state="{}"
+    else
+        prev_state=$(load_state)
+    fi
     local new_state="{"
     local first=true
 
@@ -462,12 +492,22 @@ run_checks() {
         # Parse service line (basic parsing, real implementation would be more robust)
         local name type params
         name=$(echo "$service_line" | cut -d'|' -f1)
-        type=$(echo "$service_line" | cut -d'|' -f2)
-        params=$(echo "$service_line" | cut -d'|' -f3-)
+        params=$(echo "$service_line" | cut -d'|' -f2-)
+        type=$(get_param_value "type" $params)
+
+        # Build argument list excluding the type key.
+        local -a check_args=()
+        local token
+        for token in $params; do
+            case "$token" in
+            type=*) ;;
+            *) check_args+=("$token") ;;
+            esac
+        done
 
         # Run check
         local check_result
-        check_result=$(run_check "$name" "$type" $params)
+        check_result=$(run_check "$name" "$type" "${check_args[@]}")
 
         local check_status check_message
         check_status=$(echo "$check_result" | cut -d'|' -f1)
@@ -484,21 +524,21 @@ run_checks() {
         # Display result
         if [ "$JSON_OUTPUT" = false ]; then
             case "$check_status" in
-                pass)
-                    echo -e "${GREEN}✓${NC} $name ($type): $check_message"
-                    ;;
-                fail)
-                    echo -e "${RED}✗${NC} $name ($type): $check_message"
-                    ;;
-                skip)
-                    echo -e "${YELLOW}⊘${NC} $name ($type): $check_message"
-                    ;;
-                dry_run)
-                    echo -e "${BLUE}→${NC} $name ($type): $check_message"
-                    ;;
-                *)
-                    echo -e "${YELLOW}?${NC} $name ($type): $check_message"
-                    ;;
+            pass)
+                echo -e "${GREEN}✓${NC} $name ($type): $check_message"
+                ;;
+            fail)
+                echo -e "${RED}✗${NC} $name ($type): $check_message"
+                ;;
+            skip)
+                echo -e "${YELLOW}⊘${NC} $name ($type): $check_message"
+                ;;
+            dry_run)
+                echo -e "${BLUE}→${NC} $name ($type): $check_message"
+                ;;
+            *)
+                echo -e "${YELLOW}?${NC} $name ($type): $check_message"
+                ;;
             esac
         fi
 
@@ -506,10 +546,12 @@ run_checks() {
         if [ "$WATCH_MODE" = true ] && state_changed "$name" "$check_status" "$prev_state"; then
             send_notification "$name" "$type" "$check_status" "$check_message"
         fi
-    done <<< "$services"
+    done <<<"$services"
 
     new_state+="}"
-    save_state "$new_state"
+    if [ "$DRY_RUN" = false ]; then
+        save_state "$new_state"
+    fi
 
     # JSON output
     if [ "$JSON_OUTPUT" = true ]; then
