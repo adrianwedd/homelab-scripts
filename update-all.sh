@@ -18,33 +18,33 @@ ALLOW_PIP_SYSTEM=${ALLOW_PIP_SYSTEM:-0}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dry-run)
-            DRY_RUN=1
-            shift
-            ;;
-        -y|--yes)
-            AUTO_YES=1
-            shift
-            ;;
-        --pip-system)
-            ALLOW_PIP_SYSTEM=1
-            shift
-            ;;
-        --help|-h)
-            echo "Usage: $0 [options]"
-            echo ""
-            echo "Options:"
-            echo "  --dry-run      Show what would be updated without making changes"
-            echo "  -y, --yes      Skip confirmation prompts"
-            echo "  --pip-system   Allow system-wide pip updates (uses --break-system-packages)"
-            echo "  --help, -h     Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Run '$0 --help' for usage"
-            exit 1
-            ;;
+    --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+    -y | --yes)
+        AUTO_YES=1
+        shift
+        ;;
+    --pip-system)
+        ALLOW_PIP_SYSTEM=1
+        shift
+        ;;
+    --help | -h)
+        echo "Usage: $0 [options]"
+        echo ""
+        echo "Options:"
+        echo "  --dry-run      Show what would be updated without making changes"
+        echo "  -y, --yes      Skip confirmation prompts"
+        echo "  --pip-system   Allow system-wide pip updates (uses --break-system-packages)"
+        echo "  --help, -h     Show this help message"
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1"
+        echo "Run '$0 --help' for usage"
+        exit 1
+        ;;
     esac
 done
 
@@ -61,7 +61,15 @@ NC='\033[0m'
 
 # Disable colors when not attached to a TTY to avoid TERM issues
 if [ ! -t 1 ]; then
-    RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; MAGENTA=''; BOLD=''; DIM=''; NC=''
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    CYAN=''
+    MAGENTA=''
+    BOLD=''
+    DIM=''
+    NC=''
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,8 +77,12 @@ LOGS_DIR="$SCRIPT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="$LOGS_DIR/update_${TIMESTAMP}.log"
 
+# Ensure new log files default to 600.
+umask 077
+
 # Create logs directory
 mkdir -p "$LOGS_DIR"
+chmod 700 "$LOGS_DIR" 2>/dev/null || true
 
 # Clear screen (interactive only)
 [ -t 1 ] && clear
@@ -170,9 +182,9 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 
 # Start logging
-echo "Update All - Started at $(date)" > "$LOG_FILE"
-echo "Managers detected: ${managers[*]}" >> "$LOG_FILE"
-echo "" >> "$LOG_FILE"
+echo "Update All - Started at $(date)" >"$LOG_FILE"
+echo "Managers detected: ${managers[*]}" >>"$LOG_FILE"
+echo "" >>"$LOG_FILE"
 
 update_counter=0
 PIP_SKIPPED=0
@@ -186,7 +198,7 @@ if [[ " ${managers[*]} " =~ " brew " ]]; then
         echo -e "  ${DIM}Would run: brew update && brew upgrade && brew cleanup${NC}"
     else
         {
-            echo "=== Homebrew Update ===" >> "$LOG_FILE"
+            echo "=== Homebrew Update ===" >>"$LOG_FILE"
             brew update 2>&1 | tee -a "$LOG_FILE" | grep -E "(Already up-to-date|Updated|Updating)"
             echo ""
 
@@ -199,7 +211,7 @@ if [[ " ${managers[*]} " =~ " brew " ]]; then
                 echo -e "  ${GREEN}✓${NC} All packages up to date"
             fi
 
-            brew cleanup >> "$LOG_FILE" 2>&1
+            brew cleanup >>"$LOG_FILE" 2>&1
         } && {
             echo -e "${DIM}[${NC}${GREEN}✓${NC}${DIM}] Homebrew updated${NC}"
             update_counter=$((update_counter + 1))
@@ -220,10 +232,10 @@ if [[ " ${managers[*]} " =~ " npm " ]]; then
         echo -e "  ${DIM}Would run: npm update -g${NC} ${DIM}(outdated: ${outdated_count:-0})${NC}"
     else
         {
-            echo "=== NPM Global Update ===" >> "$LOG_FILE"
+            echo "=== NPM Global Update ===" >>"$LOG_FILE"
             outdated=$(npm outdated -g --depth=0 2>/dev/null | wc -l | tr -d ' ')
 
-            if [ "$outdated" -gt 1 ]; then  # Header counts as 1
+            if [ "$outdated" -gt 1 ]; then # Header counts as 1
                 echo -e "  ${DIM}Found outdated global packages${NC}"
                 npm update -g 2>&1 | tee -a "$LOG_FILE" | grep -v "^$"
             else
@@ -248,7 +260,7 @@ if [[ " ${managers[*]} " =~ " pnpm " ]]; then
         echo -e "  ${DIM}Would run: pnpm add -g pnpm${NC}"
     else
         {
-            echo "=== pnpm Update ===" >> "$LOG_FILE"
+            echo "=== pnpm Update ===" >>"$LOG_FILE"
             pnpm add -g pnpm 2>&1 | tee -a "$LOG_FILE" | grep -E "(Progress|Success|Already)"
         } && {
             echo -e "${DIM}[${NC}${GREEN}✓${NC}${DIM}] pnpm updated${NC}"
@@ -288,7 +300,7 @@ if [[ " ${managers[*]} " =~ " pip " ]]; then
             PIP_SKIPPED=1
         else
             {
-                echo "=== pip Update ===" >> "$LOG_FILE"
+                echo "=== pip Update ===" >>"$LOG_FILE"
 
                 # Build flags array for PEP 668 override
                 pip_flags=()
@@ -297,7 +309,7 @@ if [[ " ${managers[*]} " =~ " pip " ]]; then
                 fi
 
                 # Update pip itself first
-                pip3 install --upgrade "${pip_flags[@]}" pip >> "$LOG_FILE" 2>&1
+                pip3 install --upgrade "${pip_flags[@]}" pip >>"$LOG_FILE" 2>&1
 
                 # Get list of outdated packages
                 outdated=$(pip3 list --outdated 2>/dev/null | tail -n +3 | awk '{print $1}')
@@ -307,7 +319,7 @@ if [[ " ${managers[*]} " =~ " pip " ]]; then
                     echo -e "  ${DIM}Found ${NC}${BOLD}$count${NC}${DIM} outdated package(s)${NC}"
                     echo "$outdated" | while IFS= read -r pkg; do
                         echo -e "  ${CYAN}•${NC} Upgrading $pkg..."
-                        pip3 install --upgrade "${pip_flags[@]}" "$pkg" >> "$LOG_FILE" 2>&1
+                        pip3 install --upgrade "${pip_flags[@]}" "$pkg" >>"$LOG_FILE" 2>&1
                     done
                 else
                     echo -e "  ${GREEN}✓${NC} All packages up to date"
@@ -332,10 +344,10 @@ if [[ " ${managers[*]} " =~ " gem " ]]; then
         echo -e "  ${DIM}Would run: gem update --system && gem update${NC}"
     else
         {
-            echo "=== RubyGems Update ===" >> "$LOG_FILE"
+            echo "=== RubyGems Update ===" >>"$LOG_FILE"
 
             # Update RubyGems itself
-            gem update --system >> "$LOG_FILE" 2>&1
+            gem update --system >>"$LOG_FILE" 2>&1
 
             # Update all gems
             outdated=$(gem outdated 2>/dev/null | wc -l | tr -d ' ')
@@ -364,7 +376,7 @@ if [[ " ${managers[*]} " =~ " macos " ]]; then
         echo -e "  ${DIM}Would run: softwareupdate -l${NC}"
     else
         {
-            echo "=== macOS Update ===" >> "$LOG_FILE"
+            echo "=== macOS Update ===" >>"$LOG_FILE"
 
             # List available updates
             updates=$(softwareupdate -l 2>&1)
@@ -376,7 +388,7 @@ if [[ " ${managers[*]} " =~ " macos " ]]; then
                 if [ "$count" -gt 0 ]; then
                     echo -e "  ${YELLOW}⚠${NC} ${BOLD}$count${NC} update(s) available"
                     echo -e "  ${DIM}Run 'softwareupdate -ia' to install${NC}"
-                    echo "$updates" >> "$LOG_FILE"
+                    echo "$updates" >>"$LOG_FILE"
                 fi
             fi
         } && {
@@ -414,6 +426,6 @@ else
 fi
 
 echo ""
-echo "Update completed at $(date)" >> "$LOG_FILE"
+echo "Update completed at $(date)" >>"$LOG_FILE"
 
 exit 0
