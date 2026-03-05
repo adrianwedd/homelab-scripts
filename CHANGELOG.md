@@ -8,70 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
-**Homelab Orchestration System - Phase 2.3.1: Custom Workflow System**
-
-- **homelab/lib/workflows.sh** - Custom workflow management infrastructure (480 lines)
-  - JSON-based workflow definitions in `~/.config/homelab/workflows/`
-  - Built-in workflow override support via `~/.config/homelab/.workflow-overrides/`
-  - Workflow discovery and listing (`list_custom_workflows`, `list_all_workflows`)
-  - Workflow metadata extraction (`get_workflow_description`, `get_workflow_schedule`)
-  - JSON parser auto-detection (jq → python3 → grep/sed fallback)
-  - Comprehensive workflow validation (`validate_workflow_definition`)
-    - Required field validation (name, steps)
-    - Step structure validation (name, script, args as arrays)
-    - Script path existence checks (PATH, absolute paths, common directories)
-    - Detailed error reporting with step numbers
-  - Workflow execution engine (`execute_custom_workflow`)
-    - Step-by-step execution with logging
-    - `skip_on_error` support (continue on failure)
-    - Timeout support per step (future implementation)
-    - Notification integration (start/success/warning/failure triggers)
-    - Dry-run mode support
-  - bash 3.2 compatible (macOS default bash)
-
-- **Workflow CLI commands** (homelab.sh):
-  - `homelab workflow list` - List all workflows (built-in + custom with descriptions/schedules)
-  - `homelab workflow show <name>` - Display workflow definition details
-  - `homelab workflow validate <name>` - Validate workflow JSON and structure
-  - `homelab workflow run <name>` - Execute custom workflow with notification support
-
-- **Example workflows** (`~/.config/homelab/workflows/`):
-  - `test-backup.json` - Backup verification workflow (rclone status + integrity check)
-  - `dev-sync.json` - Development sync workflow (git pull + disk check + network scan)
-
-- **Workflow definition format**:
-  ```json
-  {
-    "name": "workflow-name",
-    "description": "Human-readable description",
-    "schedule": {
-      "type": "cron",
-      "expression": "0 3 * * *",
-      "comment": "Daily at 3:00 AM"
-    },
-    "steps": [
-      {
-        "name": "Step Name",
-        "script": "script-name.sh",
-        "args": ["--flag", "value"],
-        "skip_on_error": false,
-        "timeout": 60
-      }
-    ],
-    "notifications": {
-      "triggers": ["warning", "failure"],
-      "channels": ["slack"]
-    }
-  }
-  ```
+- **Issue-backed QA workflow tracking**
+  - Added structured GitHub issue trail for QA remediation sprint (`#1`-`#5`) and next sprint plan (`#6`)
+  - Added QA artifact logs under `./logs/` for shellcheck/shfmt verification snapshots
 
 ### Changed
-- **homelab/homelab.sh**: Added "Workflow Management" section to help text
-- **homelab/lib/config.sh**: Automatic creation of workflow directories on init
+- **Dry-run behavior hardening**
+  - `dyndns-update.sh --dry-run` is now offline and side-effect free
+  - `new-vm-setup.sh --dry-run` now degrades gracefully when `/etc/os-release` is unavailable
+- **Logging/security consistency**
+  - `update-all.sh` now sets `umask 077` before log creation and enforces secure logs directory permissions
+- **Formatting baseline normalization**
+  - Applied repo-wide shell formatting normalization and parser-compatible expression cleanup
 
 ### Fixed
-- N/A
+- **Bash 3 compatibility**
+  - `service-health-check.sh` no longer uses Bash-4-only associative-array parsing in runtime path
+  - Dry-run path in `service-health-check.sh` no longer performs state writes
+- **ShellCheck findings**
+  - Fixed heredoc expansion safety issue in `deploy-scripts.sh` (SC2087)
+  - Fixed sudo+redirect logging patterns in `new-vm-setup.sh` (SC2024)
+- **shfmt parser blockers**
+  - Fixed invalid array-length expansion in `disk-cleanup.sh`
+  - Fixed associative-array key parsing edge cases in `ssh-key-audit.sh`
 
 ## [2.2.0] - 2025-11-19
 
