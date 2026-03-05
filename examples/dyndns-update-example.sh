@@ -6,27 +6,27 @@
 # Basic Cloudflare update with environment variable token
 export CF_TOKEN="your-cloudflare-api-token-here"
 ./dyndns-update.sh --provider cloudflare --zone example.com \
-	--record home --token env:CF_TOKEN
+    --record home --token env:CF_TOKEN
 
 # Update @ record (apex/root domain)
 ./dyndns-update.sh --provider cloudflare --zone example.com \
-	--record @ --token env:CF_TOKEN
+    --record @ --token env:CF_TOKEN
 
 # Custom TTL (10 minutes = 600 seconds)
 ./dyndns-update.sh --provider cloudflare --zone example.com \
-	--record home --token env:CF_TOKEN --ttl 600
+    --record home --token env:CF_TOKEN --ttl 600
 
 # Force update even if IP unchanged (bypasses cache and rate limiting)
 ./dyndns-update.sh --provider cloudflare --zone example.com \
-	--record home --token env:CF_TOKEN --force
+    --record home --token env:CF_TOKEN --force
 
 # Dry run to preview without making changes
 ./dyndns-update.sh --provider cloudflare --zone example.com \
-	--record home --token env:CF_TOKEN --dry-run
+    --record home --token env:CF_TOKEN --dry-run
 
 # JSON output for automation/monitoring
 ./dyndns-update.sh --provider cloudflare --zone example.com \
-	--record home --token env:CF_TOKEN --json
+    --record home --token env:CF_TOKEN --json
 
 # Cron job example (runs every 15 minutes)
 # */15 * * * * /path/to/dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:CF_TOKEN --json >> /var/log/dyndns.log 2>&1

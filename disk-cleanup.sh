@@ -59,7 +59,7 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
 chmod 700 "$LOG_DIR" 2>/dev/null || true
 
 LOG_FILE="$LOG_DIR/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
-VERBOSE=false  # Reserved for future verbose output feature
+VERBOSE=false # Reserved for future verbose output feature
 SKIP_GIT_GC=false
 ROLLBACK_MODE=false
 ROLLBACK_MANIFEST=""
@@ -104,9 +104,9 @@ VENV_MIN_AGE_DAYS=30
 
 # Detect timeout command (GNU timeout or macOS gtimeout)
 TIMEOUT_CMD=""
-if command -v timeout &> /dev/null; then
+if command -v timeout &>/dev/null; then
     TIMEOUT_CMD="timeout"
-elif command -v gtimeout &> /dev/null; then
+elif command -v gtimeout &>/dev/null; then
     TIMEOUT_CMD="gtimeout"
 fi
 
@@ -216,7 +216,7 @@ start_gauge() {
     if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
         (
             while true; do
-                gauge_line > /dev/tty 2>/dev/null || true
+                gauge_line >/dev/tty 2>/dev/null || true
                 sleep "$GAUGE_UPDATE_INTERVAL"
             done
         ) &
@@ -229,7 +229,7 @@ stop_gauge() {
         kill "$GAUGE_PID" 2>/dev/null || true
         wait "$GAUGE_PID" 2>/dev/null || true
         GAUGE_PID=""
-        echo "" > /dev/tty 2>/dev/null || true
+        echo "" >/dev/tty 2>/dev/null || true
     fi
 }
 
@@ -385,10 +385,6 @@ clean_virtualenvs() {
 }
 
 print_section() {
-    # Clear the gauge line if it exists (prevent overlap)
-    if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
-        printf "\r%80s\r" ""  # Clear line with spaces, then return to start
-    fi
     echo "" | tee -a "$LOG_FILE"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
     echo -e "${BLUE}${BOLD}  ${1}${NC}" | tee -a "$LOG_FILE"
@@ -424,11 +420,11 @@ size_to_bytes() {
     local unit=$(echo "$size" | sed 's/[0-9.]*//g' | tr '[:lower:]' '[:upper:]')
 
     case "$unit" in
-        K|KB) awk "BEGIN {printf \"%.0f\", $number * 1024}" ;;
-        M|MB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024}" ;;
-        G|GB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024}" ;;
-        T|TB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024 * 1024}" ;;
-        B|*) echo "${number%.*}" ;;
+    K | KB) awk "BEGIN {printf \"%.0f\", $number * 1024}" ;;
+    M | MB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024}" ;;
+    G | GB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024}" ;;
+    T | TB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024 * 1024}" ;;
+    B | *) echo "${number%.*}" ;;
     esac
 }
 
@@ -498,7 +494,7 @@ confirm_action() {
     local message=$1
     echo -e "${YELLOW}?${NC} ${message} (y/N): " | tee -a "$LOG_FILE"
     read -r response
-    echo "$response" >> "$LOG_FILE"
+    echo "$response" >>"$LOG_FILE"
 
     if [[ "$response" =~ ^[Yy]$ ]]; then
         return 0
@@ -550,7 +546,7 @@ add_to_manifest() {
 create_manifest() {
     local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    cat > "$MANIFEST_FILE" << EOF
+    cat >"$MANIFEST_FILE" <<EOF
 {
     "version": "1.0",
     "timestamp": "$timestamp",
@@ -560,12 +556,12 @@ EOF
 
     local first=true
     for op in "${MANIFEST_OPERATIONS[@]}"; do
-        IFS='|' read -r type desc can_rollback data <<< "$op"
+        IFS='|' read -r type desc can_rollback data <<<"$op"
 
-        [ "$first" = false ] && echo "," >> "$MANIFEST_FILE"
+        [ "$first" = false ] && echo "," >>"$MANIFEST_FILE"
         first=false
 
-        cat >> "$MANIFEST_FILE" << EOF
+        cat >>"$MANIFEST_FILE" <<EOF
         {
             "type": "$type",
             "description": "$desc",
@@ -575,7 +571,7 @@ EOF
 EOF
     done
 
-    cat >> "$MANIFEST_FILE" << EOF
+    cat >>"$MANIFEST_FILE" <<EOF
 
     ],
     "total_freed_bytes": $TOTAL_FREED_BYTES,
@@ -626,7 +622,7 @@ rollback_from_manifest() {
 
 # Function to show usage
 show_usage() {
-    cat << EOF
+    cat <<EOF
 Usage: $0 [OPTIONS]
 
 Comprehensive disk cleanup script to free up space from caches and temporary files.
@@ -677,168 +673,168 @@ EOF
 ################################################################################
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -d|--dry-run)
-            DRY_RUN=true
-            shift
-            ;;
-        -y|--yes)
-            INTERACTIVE=false
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
-            shift
-            ;;
-        --skip-git-gc)
-            SKIP_GIT_GC=true
-            shift
-            ;;
-        --full-gc)
-            FULL_GC=true
-            SMART_GC=false
-            shift
-            ;;
-        --smart-gc)
-            SMART_GC=true
-            FULL_GC=false
-            shift
-            ;;
-        --gc-threshold)
-            if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-                print_error "Invalid threshold: $2 (must be a number)"
-                exit 1
-            fi
-            # Bounds check: reasonable range 0.1GB to 1000GB
-            if awk "BEGIN {exit !($2 < 0.1 || $2 > 1000)}"; then
-                print_error "Invalid threshold: $2 (must be between 0.1 and 1000 GB)"
-                exit 1
-            fi
-            GC_THRESHOLD_GB="$2"
-            shift 2
-            ;;
-        --no-fun)
-            SHOW_FUN_FACTS=false
-            shift
-            ;;
-        --gauge)
-            ENABLE_GAUGE=true
-            shift
-            ;;
-        --no-gauge)
-            ENABLE_GAUGE=false
-            shift
-            ;;
-        --json)
-            JSON_MODE=true
-            shift
-            ;;
-        --docker-wait)
-            if ! echo "$2" | grep -Eq '^[0-9]+$'; then
-                print_error "Invalid seconds: $2 (must be a positive integer)"
-                exit 1
-            fi
-            if [ "$2" -lt 1 ] || [ "$2" -gt 3600 ]; then
-                print_error "Invalid wait time: $2 (must be between 1 and 3600 seconds)"
-                exit 1
-            fi
-            DOCKER_WAIT_SECS="$2"
-            shift 2
-            ;;
-        --skip-docker)
-            SKIP_DOCKER=true
-            shift
-            ;;
-        --scan-venvs)
-            check_bash_version_for_venv
-            FLAG_SCAN_VENVS=true
-            shift
-            ;;
-        --clean-venvs)
-            check_bash_version_for_venv
-            FLAG_CLEAN_VENVS=true
-            shift
-            ;;
-        --venv-roots)
-            # Support colon-separated list to safely include paths with spaces
-            IFS=':' read -r -a VENV_ROOTS <<< "$2"
-            # Validate all paths for security
-            for i in "${!VENV_ROOTS[@]}"; do
-                root="${VENV_ROOTS[$i]}"
-                # Resolve to absolute path with multiple fallbacks
-                abs_root=""
-                if command -v realpath >/dev/null 2>&1; then
-                    abs_root=$(realpath -m -- "$root" 2>/dev/null || echo "")
-                elif command -v readlink >/dev/null 2>&1; then
-                    abs_root=$(readlink -f -- "$root" 2>/dev/null || echo "")
-                elif command -v python3 >/dev/null 2>&1; then
-                    abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" -- "$root" 2>/dev/null || echo "")
-                fi
-
-                # If no canonicalization tool available, reject paths with traversal sequences
-                if [ -z "$abs_root" ]; then
-                    if [[ "$root" == *"/../"* ]] || [[ "$root" == *"../*"* ]] || [[ "$root" == *"/./"* ]] || [[ "$root" == *"./*"* ]]; then
-                        print_error "Security: Path contains traversal sequences and cannot be validated: $root"
-                        print_info "Install realpath, readlink, or python3 for path canonicalization"
-                        exit 1
-                    fi
-                    abs_root="$root"
-                fi
-
-                # Security: Ensure path is under $HOME and is a directory
-                if [[ ! "$abs_root" == "$HOME"* ]] || [ ! -d "$abs_root" ]; then
-                    print_error "Security: venv-roots must be existing directories under \$HOME: $root (resolved to: $abs_root)"
-                    exit 1
-                fi
-
-                # Security: Prevent system directories
-                if [[ "$abs_root" == "/usr"* ]] || [[ "$abs_root" == "/etc"* ]] || [[ "$abs_root" == "/var"* ]] || [[ "$abs_root" == "/bin"* ]] || [[ "$abs_root" == "/sbin"* ]]; then
-                    print_error "Security: Cannot scan system directories: $root (resolved to: $abs_root)"
-                    exit 1
-                fi
-                VENV_ROOTS[$i]="$abs_root"
-            done
-            shift 2
-            ;;
-        --venv-age)
-            if ! echo "$2" | grep -Eq '^[0-9]+$'; then
-                print_error "Invalid age: $2 (must be a positive integer)"
-                exit 1
-            fi
-            # Bounds check: 1 day to 3650 days (10 years)
-            if [ "$2" -lt 1 ] || [ "$2" -gt 3650 ]; then
-                print_error "Invalid age: $2 (must be between 1 and 3650 days)"
-                exit 1
-            fi
-            VENV_MIN_AGE_DAYS="$2"
-            shift 2
-            ;;
-        --venv-min-gb)
-            if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-                print_error "Invalid venv size: $2 (must be a number)"
-                exit 1
-            fi
-            # Bounds check: 0.01GB (10MB) to 100GB
-            if awk "BEGIN {exit !($2 < 0.01 || $2 > 100)}"; then
-                print_error "Invalid venv size: $2 (must be between 0.01 and 100 GB)"
-                exit 1
-            fi
-            VENV_MIN_GB="$2"
-            shift 2
-            ;;
-        --rollback)
-            ROLLBACK_MODE=true
-            ROLLBACK_MANIFEST="$2"
-            shift 2
-            ;;
-        -h|--help)
-            show_usage
-            exit 0
-            ;;
-        *)
-            print_error "Unknown option: $1"
-            show_usage
+    -d | --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    -y | --yes)
+        INTERACTIVE=false
+        shift
+        ;;
+    -v | --verbose)
+        VERBOSE=true
+        shift
+        ;;
+    --skip-git-gc)
+        SKIP_GIT_GC=true
+        shift
+        ;;
+    --full-gc)
+        FULL_GC=true
+        SMART_GC=false
+        shift
+        ;;
+    --smart-gc)
+        SMART_GC=true
+        FULL_GC=false
+        shift
+        ;;
+    --gc-threshold)
+        if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+            print_error "Invalid threshold: $2 (must be a number)"
             exit 1
-            ;;
+        fi
+        # Bounds check: reasonable range 0.1GB to 1000GB
+        if awk "BEGIN {exit !($2 < 0.1 || $2 > 1000)}"; then
+            print_error "Invalid threshold: $2 (must be between 0.1 and 1000 GB)"
+            exit 1
+        fi
+        GC_THRESHOLD_GB="$2"
+        shift 2
+        ;;
+    --no-fun)
+        SHOW_FUN_FACTS=false
+        shift
+        ;;
+    --gauge)
+        ENABLE_GAUGE=true
+        shift
+        ;;
+    --no-gauge)
+        ENABLE_GAUGE=false
+        shift
+        ;;
+    --json)
+        JSON_MODE=true
+        shift
+        ;;
+    --docker-wait)
+        if ! echo "$2" | grep -Eq '^[0-9]+$'; then
+            print_error "Invalid seconds: $2 (must be a positive integer)"
+            exit 1
+        fi
+        if [ "$2" -lt 1 ] || [ "$2" -gt 3600 ]; then
+            print_error "Invalid wait time: $2 (must be between 1 and 3600 seconds)"
+            exit 1
+        fi
+        DOCKER_WAIT_SECS="$2"
+        shift 2
+        ;;
+    --skip-docker)
+        SKIP_DOCKER=true
+        shift
+        ;;
+    --scan-venvs)
+        check_bash_version_for_venv
+        FLAG_SCAN_VENVS=true
+        shift
+        ;;
+    --clean-venvs)
+        check_bash_version_for_venv
+        FLAG_CLEAN_VENVS=true
+        shift
+        ;;
+    --venv-roots)
+        # Support colon-separated list to safely include paths with spaces
+        IFS=':' read -r -a VENV_ROOTS <<<"$2"
+        # Validate all paths for security
+        for i in "${!VENV_ROOTS[@]}"; do
+            root="${VENV_ROOTS[$i]}"
+            # Resolve to absolute path with multiple fallbacks
+            abs_root=""
+            if command -v realpath >/dev/null 2>&1; then
+                abs_root=$(realpath -m -- "$root" 2>/dev/null || echo "")
+            elif command -v readlink >/dev/null 2>&1; then
+                abs_root=$(readlink -f -- "$root" 2>/dev/null || echo "")
+            elif command -v python3 >/dev/null 2>&1; then
+                abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" -- "$root" 2>/dev/null || echo "")
+            fi
+
+            # If no canonicalization tool available, reject paths with traversal sequences
+            if [ -z "$abs_root" ]; then
+                if [[ "$root" == *"/../"* ]] || [[ "$root" == *"../*"* ]] || [[ "$root" == *"/./"* ]] || [[ "$root" == *"./*"* ]]; then
+                    print_error "Security: Path contains traversal sequences and cannot be validated: $root"
+                    print_info "Install realpath, readlink, or python3 for path canonicalization"
+                    exit 1
+                fi
+                abs_root="$root"
+            fi
+
+            # Security: Ensure path is under $HOME and is a directory
+            if [[ ! "$abs_root" == "$HOME"* ]] || [ ! -d "$abs_root" ]; then
+                print_error "Security: venv-roots must be existing directories under \$HOME: $root (resolved to: $abs_root)"
+                exit 1
+            fi
+
+            # Security: Prevent system directories
+            if [[ "$abs_root" == "/usr"* ]] || [[ "$abs_root" == "/etc"* ]] || [[ "$abs_root" == "/var"* ]] || [[ "$abs_root" == "/bin"* ]] || [[ "$abs_root" == "/sbin"* ]]; then
+                print_error "Security: Cannot scan system directories: $root (resolved to: $abs_root)"
+                exit 1
+            fi
+            VENV_ROOTS[$i]="$abs_root"
+        done
+        shift 2
+        ;;
+    --venv-age)
+        if ! echo "$2" | grep -Eq '^[0-9]+$'; then
+            print_error "Invalid age: $2 (must be a positive integer)"
+            exit 1
+        fi
+        # Bounds check: 1 day to 3650 days (10 years)
+        if [ "$2" -lt 1 ] || [ "$2" -gt 3650 ]; then
+            print_error "Invalid age: $2 (must be between 1 and 3650 days)"
+            exit 1
+        fi
+        VENV_MIN_AGE_DAYS="$2"
+        shift 2
+        ;;
+    --venv-min-gb)
+        if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+            print_error "Invalid venv size: $2 (must be a number)"
+            exit 1
+        fi
+        # Bounds check: 0.01GB (10MB) to 100GB
+        if awk "BEGIN {exit !($2 < 0.01 || $2 > 100)}"; then
+            print_error "Invalid venv size: $2 (must be between 0.01 and 100 GB)"
+            exit 1
+        fi
+        VENV_MIN_GB="$2"
+        shift 2
+        ;;
+    --rollback)
+        ROLLBACK_MODE=true
+        ROLLBACK_MANIFEST="$2"
+        shift 2
+        ;;
+    -h | --help)
+        show_usage
+        exit 0
+        ;;
+    *)
+        print_error "Unknown option: $1"
+        show_usage
+        exit 1
+        ;;
     esac
 done
 
@@ -905,9 +901,9 @@ print_section "Cleaning Docker"
 
 if [ "$SKIP_DOCKER" = true ]; then
     print_info "Skipping Docker cleanup (--skip-docker)"
-elif command -v docker &> /dev/null; then
+elif command -v docker &>/dev/null; then
     # Check if Docker daemon is running
-    if ! docker info &> /dev/null; then
+    if ! docker info &>/dev/null; then
         print_warning "Docker daemon is not running"
 
         if confirm_action "Start Docker daemon?"; then
@@ -919,14 +915,14 @@ elif command -v docker &> /dev/null; then
 
                 print_info "Waiting for Docker daemon to start (up to ${DOCKER_WAIT_SECS}s)..."
                 waited=0
-                while [ $waited -lt "$DOCKER_WAIT_SECS" ] && ! docker info &> /dev/null; do
+                while [ $waited -lt "$DOCKER_WAIT_SECS" ] && ! docker info &>/dev/null; do
                     sleep 2
                     waited=$((waited + 2))
                     echo -n "."
                 done
                 echo ""
 
-                if docker info &> /dev/null; then
+                if docker info &>/dev/null; then
                     print_success "Docker daemon started successfully"
                 else
                     print_error "Failed to start Docker daemon after ${waited}s"
@@ -946,7 +942,7 @@ elif command -v docker &> /dev/null; then
     fi
 
     # Proceed with cleanup if Docker is now running
-    if docker info &> /dev/null && confirm_action "Clean Docker (removes unused containers, images, volumes)?"; then
+    if docker info &>/dev/null && confirm_action "Clean Docker (removes unused containers, images, volumes)?"; then
         if [ "$DRY_RUN" = true ]; then
             print_info "[DRY RUN] Would run: docker system prune -af --volumes"
             docker system df 2>&1 | tee -a "$LOG_FILE"
@@ -1106,7 +1102,7 @@ if [ "$SKIP_GIT_GC" = false ]; then
                             print_success "Completed (no size change)"
                         fi
                         # Update last GC marker
-                        date +%s > .git/.last_gc 2>/dev/null || true
+                        date +%s >.git/.last_gc 2>/dev/null || true
                     fi
                 fi
             done
@@ -1136,7 +1132,7 @@ fi
 ################################################################################
 print_section "Cleaning Homebrew"
 
-if command -v brew &> /dev/null; then
+if command -v brew &>/dev/null; then
     if confirm_action "Clean Homebrew caches?"; then
         if [ "$DRY_RUN" = true ]; then
             print_info "[DRY RUN] Would run: brew cleanup --prune=all -s"
@@ -1166,7 +1162,7 @@ fi
 ################################################################################
 print_section "Cleaning NPM Cache"
 
-if command -v npm &> /dev/null; then
+if command -v npm &>/dev/null; then
     cache_dir=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
 
     if [ -d "$cache_dir" ]; then
@@ -1201,7 +1197,7 @@ fi
 ################################################################################
 print_section "Cleaning Playwright Browsers"
 
-if command -v npx &> /dev/null; then
+if command -v npx &>/dev/null; then
     playwright_cache="$HOME/Library/Caches/ms-playwright"
 
     if [ -d "$playwright_cache" ]; then
@@ -1236,7 +1232,7 @@ fi
 ################################################################################
 print_section "Cleaning pnpm Store"
 
-if command -v pnpm &> /dev/null; then
+if command -v pnpm &>/dev/null; then
     if confirm_action "Prune pnpm store?"; then
         if [ "$DRY_RUN" = true ]; then
             print_info "[DRY RUN] Would run: pnpm store prune"
@@ -1265,9 +1261,9 @@ fi
 ################################################################################
 print_section "Cleaning pip/Python Cache"
 
-if command -v pip &> /dev/null || command -v pip3 &> /dev/null; then
+if command -v pip &>/dev/null || command -v pip3 &>/dev/null; then
     PIP_CMD="pip"
-    command -v pip3 &> /dev/null && PIP_CMD="pip3"
+    command -v pip3 &>/dev/null && PIP_CMD="pip3"
 
     cache_dir=$($PIP_CMD cache dir 2>/dev/null || echo "$HOME/Library/Caches/pip")
 
@@ -1357,7 +1353,7 @@ else
     print_success "Total space freed: $total_freed_human"
 
     # Create manifest for non-dry-run cleanups
-    if [ "${#MANIFEST_OPERATIONS[@]:-0}" -gt 0 ]; then
+    if [ "${#MANIFEST_OPERATIONS[@]}" -gt 0 ]; then
         create_manifest
         echo "" | tee -a "$LOG_FILE"
         print_info "💾 Manifest created for reference"
@@ -1388,14 +1384,14 @@ if [ "$JSON_MODE" = true ]; then
     JSON_FILE="$LOG_DIR/disk_cleanup_summary_$(date +%Y%m%d_%H%M%S).json"
     {
         echo '{'
-        echo "  \"version\": \"1.0\"," 
-        echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," 
+        echo "  \"version\": \"1.0\","
+        echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
         if [ "$DRY_RUN" = true ]; then echo '  "dry_run": true,'; else echo '  "dry_run": false,'; fi
-        echo "  \"log_file\": \"$LOG_FILE\"," 
+        echo "  \"log_file\": \"$LOG_FILE\","
         echo "  \"start_ts\": $RUN_START_TS,"
         echo "  \"end_ts\": $RUN_END_TS,"
         echo "  \"total_freed_bytes\": $TOTAL_FREED_BYTES,"
-        echo "  \"total_freed_human\": \"$(bytes_to_human \"$TOTAL_FREED_BYTES\")\"," 
+        echo "  \"total_freed_human\": \"$(bytes_to_human \"$TOTAL_FREED_BYTES\")\","
         if [ "$DOCKER_EXECUTED" = true ]; then echo '  "docker_executed": true,'; else echo '  "docker_executed": false,'; fi
         echo "  \"git_gc\": { \"processed\": $GIT_GC_PROCESSED, \"skipped\": $GIT_GC_SKIPPED, \"failed\": $GIT_GC_FAILED },"
         echo "  \"venv\": { \"found\": $VENV_FOUND, \"candidates\": $VENV_CANDIDATES, \"potential_bytes\": $VENV_POTENTIAL_BYTES, \"removed\": $VENV_REMOVED, \"freed_bytes\": $VENV_FREED_BYTES }"

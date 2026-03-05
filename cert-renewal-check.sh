@@ -111,43 +111,43 @@ EOF
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --domains)
-            DOMAINS_FILE="$2"
-            shift 2
-            ;;
-        --cert)
-            CERT_FILES+=("$2")
-            shift 2
-            ;;
-        --warn-days)
-            WARN_DAYS="$2"
-            if ! [[ "$WARN_DAYS" =~ ^[0-9]+$ ]] || [ "$WARN_DAYS" -lt 1 ] || [ "$WARN_DAYS" -gt 365 ]; then
-                echo "Error: --warn-days must be between 1 and 365"
-                exit 1
-            fi
-            shift 2
-            ;;
-        --auto-renew)
-            AUTO_RENEW=true
-            shift
-            ;;
-        --json)
-            OUTPUT_JSON=true
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            shift
-            ;;
-        --help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "Error: Unknown option $1"
-            show_help
+    --domains)
+        DOMAINS_FILE="$2"
+        shift 2
+        ;;
+    --cert)
+        CERT_FILES+=("$2")
+        shift 2
+        ;;
+    --warn-days)
+        WARN_DAYS="$2"
+        if ! [[ "$WARN_DAYS" =~ ^[0-9]+$ ]] || [ "$WARN_DAYS" -lt 1 ] || [ "$WARN_DAYS" -gt 365 ]; then
+            echo "Error: --warn-days must be between 1 and 365"
             exit 1
-            ;;
+        fi
+        shift 2
+        ;;
+    --auto-renew)
+        AUTO_RENEW=true
+        shift
+        ;;
+    --json)
+        OUTPUT_JSON=true
+        shift
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --help)
+        show_help
+        exit 0
+        ;;
+    *)
+        echo "Error: Unknown option $1"
+        show_help
+        exit 1
+        ;;
     esac
 done
 
@@ -205,7 +205,7 @@ check_domain() {
     # Calculate days remaining
     local now_epoch
     now_epoch=$(date +%s)
-    days_remaining=$(( (expiry_epoch - now_epoch) / 86400 ))
+    days_remaining=$(((expiry_epoch - now_epoch) / 86400))
 
     # Determine status
     if [ "$days_remaining" -lt 0 ]; then
@@ -257,7 +257,7 @@ check_cert_file() {
     # Calculate days remaining
     local now_epoch
     now_epoch=$(date +%s)
-    days_remaining=$(( (expiry_epoch - now_epoch) / 86400 ))
+    days_remaining=$(((expiry_epoch - now_epoch) / 86400))
 
     # Determine status
     if [ "$days_remaining" -lt 0 ]; then
@@ -284,7 +284,7 @@ if [ "$DRY_RUN" = true ]; then
         while IFS= read -r domain || [ -n "$domain" ]; do
             [[ -z "$domain" || "$domain" =~ ^# ]] && continue
             echo "  - $domain"
-        done < "$DOMAINS_FILE"
+        done <"$DOMAINS_FILE"
     fi
 
     if [ "${#CERT_FILES[@]}" -gt 0 ]; then
@@ -309,7 +309,7 @@ if [ -n "$DOMAINS_FILE" ]; then
 
         result=$(check_domain "$domain")
         results+=("$result")
-    done < "$DOMAINS_FILE"
+    done <"$DOMAINS_FILE"
 fi
 
 # Check certificate files
@@ -324,19 +324,19 @@ fi
 # Output results
 if [ "$OUTPUT_JSON" = true ]; then
     # JSON output
-    echo "{" > "$JSON_FILE"
-    echo "  \"timestamp\": \"$(date -Iseconds)\"," >> "$JSON_FILE"
-    echo "  \"warn_days\": $WARN_DAYS," >> "$JSON_FILE"
-    echo "  \"certificates\": [" >> "$JSON_FILE"
+    echo "{" >"$JSON_FILE"
+    echo "  \"timestamp\": \"$(date -Iseconds)\"," >>"$JSON_FILE"
+    echo "  \"warn_days\": $WARN_DAYS," >>"$JSON_FILE"
+    echo "  \"certificates\": [" >>"$JSON_FILE"
 
     first=true
     for result in "${results[@]}"; do
-        IFS='|' read -r type name status days message <<< "$result"
+        IFS='|' read -r type name status days message <<<"$result"
 
-        [ "$first" = false ] && echo "," >> "$JSON_FILE"
+        [ "$first" = false ] && echo "," >>"$JSON_FILE"
         first=false
 
-        cat >> "$JSON_FILE" <<EOF
+        cat >>"$JSON_FILE" <<EOF
     {
       "type": "$type",
       "name": "$name",
@@ -347,8 +347,8 @@ if [ "$OUTPUT_JSON" = true ]; then
 EOF
     done
 
-    echo "  ]" >> "$JSON_FILE"
-    echo "}" >> "$JSON_FILE"
+    echo "  ]" >>"$JSON_FILE"
+    echo "}" >>"$JSON_FILE"
 
     print_success "JSON output saved to: $JSON_FILE"
     cat "$JSON_FILE"
@@ -360,21 +360,21 @@ else
     printf "%s\n" "$(printf '─%.0s' {1..120})" | tee -a "$LOG_FILE"
 
     for result in "${results[@]}"; do
-        IFS='|' read -r type name status days message <<< "$result"
+        IFS='|' read -r type name status days message <<<"$result"
 
         case "$status" in
-            OK)
-                color="$GREEN"
-                ;;
-            WARNING)
-                color="$YELLOW"
-                ;;
-            EXPIRED|ERROR)
-                color="$RED"
-                ;;
-            *)
-                color="$NC"
-                ;;
+        OK)
+            color="$GREEN"
+            ;;
+        WARNING)
+            color="$YELLOW"
+            ;;
+        EXPIRED | ERROR)
+            color="$RED"
+            ;;
+        *)
+            color="$NC"
+            ;;
         esac
 
         printf "${color}%-10s %-40s %-10s %-15s %s${NC}\n" "$type" "${name:0:40}" "$status" "$days" "$message" | tee -a "$LOG_FILE"
@@ -386,7 +386,7 @@ if [ "$AUTO_RENEW" = true ]; then
     # Count expiring certificates
     expiring_count=0
     for result in "${results[@]}"; do
-        IFS='|' read -r type name status days message <<< "$result"
+        IFS='|' read -r type name status days message <<<"$result"
         if [ "$status" = "WARNING" ] || [ "$status" = "EXPIRED" ]; then
             expiring_count=$((expiring_count + 1))
         fi

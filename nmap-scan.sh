@@ -123,55 +123,55 @@ EOF
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --cidr)
-            CIDR_LIST="$2"
-            shift 2
-            ;;
-        --fast)
-            SCAN_MODE="fast"
-            shift
-            ;;
-        --full)
-            SCAN_MODE="full"
-            shift
-            ;;
-        --output)
-            OUTPUT_MODE="$2"
-            if [[ ! "$OUTPUT_MODE" =~ ^(json|table|both)$ ]]; then
-                echo "Error: --output must be json, table, or both"
-                exit 1
-            fi
-            shift 2
-            ;;
-        --no-delta)
-            DO_DELTA=false
-            shift
-            ;;
-        --exclude)
-            EXCLUDE_LIST="$2"
-            shift 2
-            ;;
-        --rate)
-            RATE_LIMIT="$2"
-            if ! [[ "$RATE_LIMIT" =~ ^[0-9]+$ ]] || [ "$RATE_LIMIT" -lt 1 ] || [ "$RATE_LIMIT" -gt 10000 ]; then
-                echo "Error: --rate must be between 1 and 10000"
-                exit 1
-            fi
-            shift 2
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            shift
-            ;;
-        --help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "Error: Unknown option $1"
-            show_help
+    --cidr)
+        CIDR_LIST="$2"
+        shift 2
+        ;;
+    --fast)
+        SCAN_MODE="fast"
+        shift
+        ;;
+    --full)
+        SCAN_MODE="full"
+        shift
+        ;;
+    --output)
+        OUTPUT_MODE="$2"
+        if [[ ! "$OUTPUT_MODE" =~ ^(json|table|both)$ ]]; then
+            echo "Error: --output must be json, table, or both"
             exit 1
-            ;;
+        fi
+        shift 2
+        ;;
+    --no-delta)
+        DO_DELTA=false
+        shift
+        ;;
+    --exclude)
+        EXCLUDE_LIST="$2"
+        shift 2
+        ;;
+    --rate)
+        RATE_LIMIT="$2"
+        if ! [[ "$RATE_LIMIT" =~ ^[0-9]+$ ]] || [ "$RATE_LIMIT" -lt 1 ] || [ "$RATE_LIMIT" -gt 10000 ]; then
+            echo "Error: --rate must be between 1 and 10000"
+            exit 1
+        fi
+        shift 2
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --help)
+        show_help
+        exit 0
+        ;;
+    *)
+        echo "Error: Unknown option $1"
+        show_help
+        exit 1
+        ;;
     esac
 done
 
@@ -272,7 +272,7 @@ validate_cidr() {
     local prefix=$(echo "$cidr" | cut -d'/' -f2)
 
     # Validate each octet (0-255)
-    IFS='.' read -ra octets <<< "$ip_part"
+    IFS='.' read -ra octets <<<"$ip_part"
     if [ "${#octets[@]}" -ne 4 ]; then
         print_error "Invalid IP address: $ip_part (must have 4 octets)"
         return 1
@@ -306,7 +306,7 @@ if [ -z "$CIDR_LIST" ]; then
 fi
 
 # Validate all CIDRs in the list
-IFS=',' read -ra CIDR_ARRAY <<< "$CIDR_LIST"
+IFS=',' read -ra CIDR_ARRAY <<<"$CIDR_LIST"
 for cidr in "${CIDR_ARRAY[@]}"; do
     # Trim leading/trailing whitespace (pure bash)
     cidr="${cidr#"${cidr%%[![:space:]]*}"}"
@@ -339,7 +339,7 @@ build_nmap_cmd() {
     # Scan mode - adapt based on root privileges
     if [ "$SCAN_MODE" = "fast" ]; then
         # Fast mode: host discovery + quick TCP scan on common ports
-        cmd="$cmd -sn -PS22,80,443"  # Ping scan + TCP SYN to common ports
+        cmd="$cmd -sn -PS22,80,443" # Ping scan + TCP SYN to common ports
         if ! is_root; then
             # Non-root: -sn doesn't require root, but -PS does
             # Fall back to -sT (TCP connect) for port scanning
@@ -349,20 +349,20 @@ build_nmap_cmd() {
     else
         # Full mode: comprehensive TCP scan
         if is_root; then
-            cmd="$cmd -sS"  # TCP SYN scan (fast, requires root)
+            cmd="$cmd -sS" # TCP SYN scan (fast, requires root)
         else
-            cmd="$cmd -sT"  # TCP connect scan (slower, works without root)
+            cmd="$cmd -sT" # TCP connect scan (slower, works without root)
             print_warning "Running as non-root: using TCP connect scan (-sT)"
             print_info "SYN scan (-sS) requires root privileges. For faster scans, run with sudo"
         fi
-        cmd="$cmd -p 1-1000"  # Top 1000 ports (not all 65535)
+        cmd="$cmd -p 1-1000" # Top 1000 ports (not all 65535)
     fi
 
     # Rate limiting (applies to all modes)
     cmd="$cmd --max-rate $RATE_LIMIT"
 
     # Output format
-    cmd="$cmd -oX -"  # XML output to stdout
+    cmd="$cmd -oX -" # XML output to stdout
 
     # Add CIDR
     cmd="$cmd $cidr"
@@ -384,7 +384,7 @@ if [ "$DRY_RUN" = true ]; then
     # Show exact commands that would be run
     print_info "Commands that would be executed:"
     echo ""
-    IFS=',' read -ra CIDR_ARRAY <<< "$CIDR_LIST"
+    IFS=',' read -ra CIDR_ARRAY <<<"$CIDR_LIST"
     for cidr in "${CIDR_ARRAY[@]}"; do
         # Trim leading/trailing whitespace (pure bash)
         cidr="${cidr#"${cidr%%[![:space:]]*}"}"
@@ -489,7 +489,7 @@ parse_nmap_xml() {
 print_section "Starting Network Scan"
 
 # Convert comma-separated CIDRs to array
-IFS=',' read -ra CIDR_ARRAY <<< "$CIDR_LIST"
+IFS=',' read -ra CIDR_ARRAY <<<"$CIDR_LIST"
 
 # Collect all results
 temp_xml=$(mktemp)
@@ -504,7 +504,7 @@ for cidr in "${CIDR_ARRAY[@]}"; do
     nmap_cmd=$(build_nmap_cmd "$cidr")
     print_info "Command: $nmap_cmd"
 
-    if ! eval "$nmap_cmd" >> "$temp_xml" 2>>"$LOG_FILE"; then
+    if ! eval "$nmap_cmd" >>"$temp_xml" 2>>"$LOG_FILE"; then
         print_error "Scan failed for $cidr"
         continue
     fi
@@ -514,7 +514,7 @@ done
 
 # Parse XML to JSON
 print_info "Parsing results..."
-parse_nmap_xml < "$temp_xml" > "$JSON_FILE"
+parse_nmap_xml <"$temp_xml" >"$JSON_FILE"
 
 # Update latest symlink
 ln -sf "$(basename "$JSON_FILE")" "$LATEST_LINK"

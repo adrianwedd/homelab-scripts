@@ -21,77 +21,77 @@ VENV_MIN_GB=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --auto-best)
-            AUTO_MODE="best"
-            shift
-            ;;
-        --auto-full)
-            AUTO_MODE="full"
-            shift
-            ;;
-        --status)
-            STATUS_ONLY=1
-            shift
-            ;;
-        --profile)
-            PROFILE="$2"
-            shift 2
-            ;;
-        --clean-venvs)
-            CLEAN_VENVS=1
-            shift
-            ;;
-        --scan-venvs)
-            SCAN_VENVS=1
-            shift
-            ;;
-        --venv-roots)
-            VENV_ROOTS="$2"
-            shift 2
-            ;;
-        --venv-age)
-            VENV_MIN_AGE_DAYS="$2"
-            shift 2
-            ;;
-        --venv-min-gb)
-            VENV_MIN_GB="$2"
-            shift 2
-            ;;
-        --help|-h)
-            echo "Usage: $0 [options]"
-            echo ""
-            echo "Options:"
-            echo "  --auto-best        Automatically run quick cleanup (skip git gc)"
-            echo "  --auto-full        Automatically run full cleanup (with git gc)"
-            echo "  --status           Show what can be cleaned and exit"
-            echo "  --profile <name>   Use cleanup profile: quick|thorough|emergency"
-            echo "  --help, -h         Show this help message"
-            echo ""
-            echo "Venv cleanup options (passed to disk-cleanup.sh):"
-            echo "  --scan-venvs       Scan and report virtualenv sizes"
-            echo "  --clean-venvs      Remove stale virtualenvs by thresholds"
-            echo "  --venv-roots \"PATHS\"  Space-separated roots to scan"
-            echo "  --venv-age DAYS    Minimum age in days (default 30)"
-            echo "  --venv-min-gb GB   Minimum size in GB (default 0.5)"
-            echo ""
-            echo "Profiles:"
-            echo "  quick      Fast cleanup (~2-3 min): Docker, caches, skip git gc"
-            echo "  thorough   Deep cleanup (~3-6 hrs): Everything including git gc"
-            echo "  emergency  Ultra-fast (~30 sec): Docker only, no confirmations"
-            echo ""
-            echo "Examples:"
-            echo "  $0 --status                      # Check what can be cleaned"
-            echo "  $0 --auto-best                   # Quick cleanup (skip git gc)"
-            echo "  $0 --auto-full                   # Full cleanup with git gc"
-            echo "  $0 --scan-venvs                  # Scan Python virtualenvs"
-            echo "  $0 --clean-venvs --venv-age 60   # Clean venvs older than 60 days"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Run '$0 --help' for usage"
-            exit 1
-            ;;
+    --auto-best)
+        AUTO_MODE="best"
+        shift
+        ;;
+    --auto-full)
+        AUTO_MODE="full"
+        shift
+        ;;
+    --status)
+        STATUS_ONLY=1
+        shift
+        ;;
+    --profile)
+        PROFILE="$2"
+        shift 2
+        ;;
+    --clean-venvs)
+        CLEAN_VENVS=1
+        shift
+        ;;
+    --scan-venvs)
+        SCAN_VENVS=1
+        shift
+        ;;
+    --venv-roots)
+        VENV_ROOTS="$2"
+        shift 2
+        ;;
+    --venv-age)
+        VENV_MIN_AGE_DAYS="$2"
+        shift 2
+        ;;
+    --venv-min-gb)
+        VENV_MIN_GB="$2"
+        shift 2
+        ;;
+    --help | -h)
+        echo "Usage: $0 [options]"
+        echo ""
+        echo "Options:"
+        echo "  --auto-best        Automatically run quick cleanup (skip git gc)"
+        echo "  --auto-full        Automatically run full cleanup (with git gc)"
+        echo "  --status           Show what can be cleaned and exit"
+        echo "  --profile <name>   Use cleanup profile: quick|thorough|emergency"
+        echo "  --help, -h         Show this help message"
+        echo ""
+        echo "Venv cleanup options (passed to disk-cleanup.sh):"
+        echo "  --scan-venvs       Scan and report virtualenv sizes"
+        echo "  --clean-venvs      Remove stale virtualenvs by thresholds"
+        echo "  --venv-roots \"PATHS\"  Space-separated roots to scan"
+        echo "  --venv-age DAYS    Minimum age in days (default 30)"
+        echo "  --venv-min-gb GB   Minimum size in GB (default 0.5)"
+        echo ""
+        echo "Profiles:"
+        echo "  quick      Fast cleanup (~2-3 min): Docker, caches, skip git gc"
+        echo "  thorough   Deep cleanup (~3-6 hrs): Everything including git gc"
+        echo "  emergency  Ultra-fast (~30 sec): Docker only, no confirmations"
+        echo ""
+        echo "Examples:"
+        echo "  $0 --status                      # Check what can be cleaned"
+        echo "  $0 --auto-best                   # Quick cleanup (skip git gc)"
+        echo "  $0 --auto-full                   # Full cleanup with git gc"
+        echo "  $0 --scan-venvs                  # Scan Python virtualenvs"
+        echo "  $0 --clean-venvs --venv-age 60   # Clean venvs older than 60 days"
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1"
+        echo "Run '$0 --help' for usage"
+        exit 1
+        ;;
     esac
 done
 
@@ -129,11 +129,11 @@ size_to_mb() {
     local unit=$(echo "$size" | grep -oE '[KMGT]B')
 
     case "$unit" in
-        KB) awk "BEGIN {printf \"%.2f\", $value / 1024}" ;;
-        MB) echo "$value" ;;
-        GB) awk "BEGIN {printf \"%.2f\", $value * 1024}" ;;
-        TB) awk "BEGIN {printf \"%.2f\", $value * 1024 * 1024}" ;;
-        *) echo "0" ;;
+    KB) awk "BEGIN {printf \"%.2f\", $value / 1024}" ;;
+    MB) echo "$value" ;;
+    GB) awk "BEGIN {printf \"%.2f\", $value * 1024}" ;;
+    TB) awk "BEGIN {printf \"%.2f\", $value * 1024 * 1024}" ;;
+    *) echo "0" ;;
     esac
 }
 
@@ -204,7 +204,7 @@ read_single_char() {
 
     # If timed out, default to abort
     if [ "$timed_out" -eq 1 ]; then
-        char="4"  # Abort option
+        char="4" # Abort option
         echo -e "${YELLOW}[timeout]${NC}" >&2
     else
         # Echo the character for visual feedback to stderr
@@ -232,7 +232,7 @@ show_progress_bar() {
     local eta=0
     if [ "$current" -gt 0 ]; then
         local avg_time=$((elapsed / current))
-        eta=$(( (total - current) * avg_time ))
+        eta=$(((total - current) * avg_time))
     fi
 
     # Format ETA
@@ -257,11 +257,11 @@ show_progress_bar() {
 
 # Interactive menu for cleanup selection
 show_interactive_menu() {
-    local -n items=$1  # Array of items: "name|size|time|selected"
+    local -n items=$1 # Array of items: "name|size|time|selected"
 
     # Check if terminal supports interactive mode
     if [ ! -t 0 ] || [ ! -t 1 ]; then
-        return 1  # Fall back to simple mode
+        return 1 # Fall back to simple mode
     fi
 
     local selected=0
@@ -282,7 +282,7 @@ show_interactive_menu() {
 
         # Display all items
         for i in "${!items[@]}"; do
-            IFS='|' read -r name size time checked <<< "${items[$i]}"
+            IFS='|' read -r name size time checked <<<"${items[$i]}"
 
             # Highlight current cursor position
             local prefix="  "
@@ -348,37 +348,37 @@ show_interactive_menu() {
         stty "$old_tty"
 
         case "$key" in
-            27)  # Escape sequence (arrow keys)
-                dd bs=2 count=1 2>/dev/null | read -r
-                local arrow=$(dd bs=1 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')
-                case "$arrow" in
-                    65) cursor=$((cursor > 0 ? cursor - 1 : ${#items[@]} - 1)) ;;  # Up
-                    66) cursor=$(((cursor + 1) % ${#items[@]})) ;;  # Down
-                esac
-                ;;
-            32)  # Space - toggle
-                IFS='|' read -r name size time checked <<< "${items[$cursor]}"
-                checked=$((1 - checked))
-                items[$cursor]="$name|$size|$time|$checked"
-                ;;
-            65|97)  # A/a - select all
-                for i in "${!items[@]}"; do
-                    IFS='|' read -r name size time checked <<< "${items[$i]}"
-                    items[$i]="$name|$size|$time|1"
-                done
-                ;;
-            78|110)  # N/n - select none
-                for i in "${!items[@]}"; do
-                    IFS='|' read -r name size time checked <<< "${items[$i]}"
-                    items[$i]="$name|$size|$time|0"
-                done
-                ;;
-            10|13)  # Enter - proceed
-                return 0
-                ;;
-            81|113)  # Q/q - quit
-                return 2
-                ;;
+        27) # Escape sequence (arrow keys)
+            dd bs=2 count=1 2>/dev/null | read -r
+            local arrow=$(dd bs=1 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')
+            case "$arrow" in
+            65) cursor=$((cursor > 0 ? cursor - 1 : ${#items[@]} - 1)) ;; # Up
+            66) cursor=$(((cursor + 1) % ${#items[@]})) ;;                # Down
+            esac
+            ;;
+        32) # Space - toggle
+            IFS='|' read -r name size time checked <<<"${items[$cursor]}"
+            checked=$((1 - checked))
+            items[$cursor]="$name|$size|$time|$checked"
+            ;;
+        65 | 97) # A/a - select all
+            for i in "${!items[@]}"; do
+                IFS='|' read -r name size time checked <<<"${items[$i]}"
+                items[$i]="$name|$size|$time|1"
+            done
+            ;;
+        78 | 110) # N/n - select none
+            for i in "${!items[@]}"; do
+                IFS='|' read -r name size time checked <<<"${items[$i]}"
+                items[$i]="$name|$size|$time|0"
+            done
+            ;;
+        10 | 13) # Enter - proceed
+            return 0
+            ;;
+        81 | 113) # Q/q - quit
+            return 2
+            ;;
         esac
     done
 }
@@ -698,7 +698,7 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 
 # Run analysis silently in background
-"$CLEANUP_SCRIPT" --dry-run --skip-git-gc > "$TEMP_LOG" 2>&1 &
+"$CLEANUP_SCRIPT" --dry-run --skip-git-gc >"$TEMP_LOG" 2>&1 &
 ANALYSIS_PID=$!
 
 # Track completed sections to avoid duplicates
@@ -776,7 +776,7 @@ while kill -0 $ANALYSIS_PID 2>/dev/null; do
     fi
 
     # Rotate spinner
-    spinner_idx=$(( (spinner_idx + 1) % 10 ))
+    spinner_idx=$(((spinner_idx + 1) % 10))
     sleep 0.2
 done
 
@@ -873,11 +873,11 @@ item_count=0
 get_size_color() {
     local mb=$1
     if awk "BEGIN {exit !($mb >= 5120)}"; then
-        echo "$RED"  # >= 5GB
+        echo "$RED" # >= 5GB
     elif awk "BEGIN {exit !($mb >= 1024)}"; then
-        echo "$YELLOW"  # >= 1GB
+        echo "$YELLOW" # >= 1GB
     else
-        echo "$GREEN"  # < 1GB
+        echo "$GREEN" # < 1GB
     fi
 }
 
@@ -1066,9 +1066,9 @@ run_cleanup_with_progress() {
     [ -n "$VENV_MIN_GB" ] && extra_flags+=("--venv-min-gb" "$VENV_MIN_GB")
 
     if [ "$skip_git" = "yes" ]; then
-        "$CLEANUP_SCRIPT" -y --skip-git-gc "${extra_flags[@]}" > "$cleanup_log" 2>&1 &
+        "$CLEANUP_SCRIPT" -y --skip-git-gc "${extra_flags[@]}" >"$cleanup_log" 2>&1 &
     else
-        "$CLEANUP_SCRIPT" -y "${extra_flags[@]}" > "$cleanup_log" 2>&1 &
+        "$CLEANUP_SCRIPT" -y "${extra_flags[@]}" >"$cleanup_log" 2>&1 &
     fi
 
     CLEANUP_PID=$!
@@ -1263,30 +1263,30 @@ fi
 # Profile-based execution
 if [ -n "$PROFILE" ]; then
     case "$PROFILE" in
-        quick)
-            echo -e "${GREEN}▶${NC} Starting quick profile cleanup..."
-            run_cleanup_with_progress "yes"
-            exit 0
-            ;;
-        thorough)
-            echo -e "${GREEN}▶${NC} Starting thorough profile cleanup..."
-            echo -e "${YELLOW}⚠${NC}  ${DIM}This may take 1-4 hours for git garbage collection${NC}"
-            run_cleanup_with_progress "no"
-            exit 0
-            ;;
-        emergency)
-            echo -e "${RED}🚨${NC} ${BOLD}EMERGENCY MODE${NC}"
-            echo -e "${YELLOW}⚠${NC}  Ultra-fast cleanup (Docker only)"
-            echo ""
-            # Run emergency cleanup - just Docker
-            "$CLEANUP_SCRIPT" -y --skip-git-gc 2>&1 | grep -E "(Docker|Total)" || true
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}✗${NC} Unknown profile: $PROFILE"
-            echo "  Valid profiles: quick, thorough, emergency"
-            exit 1
-            ;;
+    quick)
+        echo -e "${GREEN}▶${NC} Starting quick profile cleanup..."
+        run_cleanup_with_progress "yes"
+        exit 0
+        ;;
+    thorough)
+        echo -e "${GREEN}▶${NC} Starting thorough profile cleanup..."
+        echo -e "${YELLOW}⚠${NC}  ${DIM}This may take 1-4 hours for git garbage collection${NC}"
+        run_cleanup_with_progress "no"
+        exit 0
+        ;;
+    emergency)
+        echo -e "${RED}🚨${NC} ${BOLD}EMERGENCY MODE${NC}"
+        echo -e "${YELLOW}⚠${NC}  Ultra-fast cleanup (Docker only)"
+        echo ""
+        # Run emergency cleanup - just Docker
+        "$CLEANUP_SCRIPT" -y --skip-git-gc 2>&1 | grep -E "(Docker|Total)" || true
+        exit 0
+        ;;
+    *)
+        echo -e "${RED}✗${NC} Unknown profile: $PROFILE"
+        echo "  Valid profiles: quick, thorough, emergency"
+        exit 1
+        ;;
     esac
 fi
 
@@ -1348,59 +1348,59 @@ echo ""
 choice=$(read_single_char "${DIM}>${NC} " "1234")
 
 case "$choice" in
+1)
+    echo -e "${GREEN}▶${NC} Starting cleanup..."
+    run_cleanup_with_progress "yes"
+    ;;
+
+2)
+    echo ""
+    echo -e "${YELLOW}⚠${NC}  This will include git garbage collection"
+    echo -e "   ${DIM}This may take 1-4 hours depending on repo sizes${NC}"
+    echo ""
+    confirm=$(read_single_char "Continue? [${GREEN}y${NC}/${RED}N${NC}]: " "yYnN")
+
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo -e "${GREEN}▶${NC} Starting full cleanup (this will take a while)..."
+        run_cleanup_with_progress "no"
+    else
+        echo ""
+        echo -e "${BLUE}ℹ${NC} Cancelled"
+    fi
+    ;;
+
+3)
+    show_beautiful_report "$TEMP_LOG"
+
+    echo -e "${BOLD}${YELLOW}▸ SELECT OPERATION${NC}"
+    echo ""
+    echo -e "  ${DIM}[${NC}${BOLD}1${NC}${DIM}]${NC} ${GREEN}Execute cleanup${NC} ${DIM}→ $total_estimate in $time_estimate${NC}"
+    echo -e "  ${DIM}[${NC}${BOLD}2${NC}${DIM}]${NC} ${BLUE}Full cleanup + git gc${NC} ${DIM}→ adds 1-4 hours${NC}"
+    echo -e "  ${DIM}[${NC}${BOLD}3${NC}${DIM}]${NC} ${RED}Abort${NC}"
+    echo ""
+    detailed_choice=$(read_single_char "${DIM}>${NC} " "123")
+
+    case "$detailed_choice" in
     1)
+        echo ""
         echo -e "${GREEN}▶${NC} Starting cleanup..."
         run_cleanup_with_progress "yes"
         ;;
-
     2)
         echo ""
-        echo -e "${YELLOW}⚠${NC}  This will include git garbage collection"
-        echo -e "   ${DIM}This may take 1-4 hours depending on repo sizes${NC}"
-        echo ""
-        confirm=$(read_single_char "Continue? [${GREEN}y${NC}/${RED}N${NC}]: " "yYnN")
-
-        if [[ "$confirm" =~ ^[Yy]$ ]]; then
-            echo ""
-            echo -e "${GREEN}▶${NC} Starting full cleanup (this will take a while)..."
-            run_cleanup_with_progress "no"
-        else
-            echo ""
-            echo -e "${BLUE}ℹ${NC} Cancelled"
-        fi
+        echo -e "${GREEN}▶${NC} Starting full cleanup (this will take a while)..."
+        run_cleanup_with_progress "no"
         ;;
-
-    3)
-        show_beautiful_report "$TEMP_LOG"
-
-        echo -e "${BOLD}${YELLOW}▸ SELECT OPERATION${NC}"
+    *)
         echo ""
-        echo -e "  ${DIM}[${NC}${BOLD}1${NC}${DIM}]${NC} ${GREEN}Execute cleanup${NC} ${DIM}→ $total_estimate in $time_estimate${NC}"
-        echo -e "  ${DIM}[${NC}${BOLD}2${NC}${DIM}]${NC} ${BLUE}Full cleanup + git gc${NC} ${DIM}→ adds 1-4 hours${NC}"
-        echo -e "  ${DIM}[${NC}${BOLD}3${NC}${DIM}]${NC} ${RED}Abort${NC}"
-        echo ""
-        detailed_choice=$(read_single_char "${DIM}>${NC} " "123")
-
-        case "$detailed_choice" in
-            1)
-                echo ""
-                echo -e "${GREEN}▶${NC} Starting cleanup..."
-                run_cleanup_with_progress "yes"
-                ;;
-            2)
-                echo ""
-                echo -e "${GREEN}▶${NC} Starting full cleanup (this will take a while)..."
-                run_cleanup_with_progress "no"
-                ;;
-            *)
-                echo ""
-                echo -e "${BLUE}ℹ${NC} No changes made"
-                ;;
-        esac
+        echo -e "${BLUE}ℹ${NC} No changes made"
         ;;
+    esac
+    ;;
 
-    4|*)
-        echo ""
-        echo -e "${BLUE}ℹ${NC} Cleanup cancelled"
-        ;;
+4 | *)
+    echo ""
+    echo -e "${BLUE}ℹ${NC} Cleanup cancelled"
+    ;;
 esac

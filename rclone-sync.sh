@@ -33,23 +33,23 @@ REMOTE_PATH="${REMOTE_PATH:-repos/}"
 LOG_FILE="${LOG_FILE:-$HOME/rclone-sync.log}"
 PID_FILE="${PID_FILE:-$HOME/.rclone-sync.pid}"
 EXCLUDE_FILE="${EXCLUDE_FILE:-$HOME/.rclone-exclude}"
-MAX_LOG_SIZE=$((50 * 1024 * 1024))  # 50MB
+MAX_LOG_SIZE=$((50 * 1024 * 1024)) # 50MB
 
 # Transfer settings
 TRANSFERS="${TRANSFERS:-8}"
-BANDWIDTH_LIMIT="${BANDWIDTH_LIMIT:-}"  # e.g., "10M" for 10MB/s
+BANDWIDTH_LIMIT="${BANDWIDTH_LIMIT:-}" # e.g., "10M" for 10MB/s
 STATS_INTERVAL="${STATS_INTERVAL:-5m}"
 
 # Cleanup on exit
 cleanup_on_interrupt() {
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE" 2>/dev/null)
-        if [ -n "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
+        if [ -n "$PID" ] && ps -p "$PID" >/dev/null 2>&1; then
             print_warning "Received interrupt signal"
             print_info "Stopping rclone sync (PID: $PID)..."
             kill "$PID" 2>/dev/null
             sleep 2
-            if ps -p "$PID" > /dev/null 2>&1; then
+            if ps -p "$PID" >/dev/null 2>&1; then
                 kill -9 "$PID" 2>/dev/null
             fi
             rm -f "$PID_FILE"
@@ -101,7 +101,7 @@ rotate_log() {
 # Function to create default exclude file
 create_default_excludes() {
     if [ ! -f "$EXCLUDE_FILE" ]; then
-        cat > "$EXCLUDE_FILE" << 'EOF'
+        cat >"$EXCLUDE_FILE" <<'EOF'
 # Default exclusions for rclone sync
 # Edit this file to customize what gets excluded
 
@@ -164,7 +164,7 @@ EOF
 
 # Function to check if rclone is installed
 check_rclone() {
-    if ! command -v rclone &> /dev/null; then
+    if ! command -v rclone &>/dev/null; then
         print_error "rclone is not installed"
         print_info "Install with: brew install rclone"
         exit 1
@@ -201,7 +201,7 @@ check_running() {
         # Portable locking: PID file + process verification
         if [ -f "$PID_FILE" ]; then
             OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
-            if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" > /dev/null 2>&1; then
+            if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" >/dev/null 2>&1; then
                 if ps -p "$OLD_PID" -o command= 2>/dev/null | grep -q "rclone sync.*${REMOTE_NAME}"; then
                     print_warning "rclone sync is already running (PID: $OLD_PID)"
                     print_info "To stop it: $0 --stop"
@@ -270,7 +270,7 @@ dry_run() {
     echo ""
 
     local -a args
-    read -ra args <<< "$(build_rclone_args)"
+    read -ra args <<<"$(build_rclone_args)"
 
     rclone sync "$SOURCE_DIR" "${REMOTE_NAME}:${REMOTE_PATH}" \
         --dry-run \
@@ -314,11 +314,11 @@ start_sync() {
         echo "Source: $SOURCE_DIR"
         echo "Destination: ${REMOTE_NAME}:${REMOTE_PATH}"
         echo "==========================================================="
-    } >> "$LOG_FILE"
+    } >>"$LOG_FILE"
 
     # Build arguments
     local -a args
-    read -ra args <<< "$(build_rclone_args)"
+    read -ra args <<<"$(build_rclone_args)"
 
     # Start rclone in background
     rclone sync "$SOURCE_DIR" "${REMOTE_NAME}:${REMOTE_PATH}" \
@@ -333,7 +333,7 @@ start_sync() {
 
     # Verify process started
     sleep 1
-    if ! ps -p "$SYNC_PID" > /dev/null 2>&1; then
+    if ! ps -p "$SYNC_PID" >/dev/null 2>&1; then
         print_error "Failed to start rclone sync"
         print_info "Check log for errors: tail -50 $LOG_FILE"
         exit 1
@@ -357,7 +357,7 @@ stop_sync() {
     if [ ! -f "$PID_FILE" ]; then
         print_warning "No PID file found. Sync may not be running."
         # Check for any rclone sync processes
-        if pgrep -f "rclone sync.*${REMOTE_NAME}" > /dev/null; then
+        if pgrep -f "rclone sync.*${REMOTE_NAME}" >/dev/null; then
             print_warning "Found running rclone sync processes."
             print_info "To stop them, run: pkill -f \"rclone sync.*${REMOTE_NAME}\""
         fi
@@ -372,27 +372,27 @@ stop_sync() {
         return 1
     fi
 
-    if ps -p "$PID" > /dev/null 2>&1; then
+    if ps -p "$PID" >/dev/null 2>&1; then
         print_info "Stopping rclone sync (PID: $PID)..."
         # Use pkill to be more specific
         pkill -P "$PID" -f "rclone sync.*${REMOTE_NAME}" 2>/dev/null || kill "$PID" 2>/dev/null
 
         # Wait up to 10 seconds for graceful shutdown
         local waited=0
-        while [ $waited -lt 10 ] && ps -p "$PID" > /dev/null 2>&1; do
+        while [ $waited -lt 10 ] && ps -p "$PID" >/dev/null 2>&1; do
             sleep 1
             waited=$((waited + 1))
             echo -n "."
         done
         echo ""
 
-        if ps -p "$PID" > /dev/null 2>&1; then
+        if ps -p "$PID" >/dev/null 2>&1; then
             print_warning "Process still running, forcing kill..."
             pkill -9 -P "$PID" -f "rclone sync.*${REMOTE_NAME}" 2>/dev/null || kill -9 "$PID" 2>/dev/null
             sleep 1
         fi
 
-        if ps -p "$PID" > /dev/null 2>&1; then
+        if ps -p "$PID" >/dev/null 2>&1; then
             print_error "Failed to stop process"
             return 1
         else
@@ -403,7 +403,7 @@ stop_sync() {
     fi
 
     rm -f "$PID_FILE"
-    echo "Sync stopped at $(date)" >> "$LOG_FILE"
+    echo "Sync stopped at $(date)" >>"$LOG_FILE"
 }
 
 # Function to check status
@@ -419,7 +419,7 @@ check_status() {
             return 1
         fi
 
-        if ps -p "$PID" > /dev/null 2>&1; then
+        if ps -p "$PID" >/dev/null 2>&1; then
             # Verify it's actually an rclone sync process
             local cmd=$(ps -p "$PID" -o command= 2>/dev/null || echo "")
             if echo "$cmd" | grep -q "rclone sync"; then
@@ -494,7 +494,7 @@ show_logs() {
 
 # Function to show help
 show_help() {
-    cat << EOF
+    cat <<EOF
 ${BOLD}Usage:${NC} $0 [OPTION]
 
 Sync ~/repos to Google Drive with optimized filters.
@@ -550,55 +550,55 @@ EOF
 
 # Parse command line arguments
 case "${1:-}" in
-    --start)
-        check_rclone
-        check_remote
-        check_source
-        check_running
-        create_default_excludes
-        start_sync
-        ;;
-    --stop)
-        stop_sync
-        ;;
-    --status)
-        check_status
-        ;;
-    --dry-run)
-        check_rclone
-        check_remote
-        check_source
-        create_default_excludes
-        dry_run
-        ;;
-    --logs)
-        show_logs "${2:-50}"
-        ;;
-    --create-exclude)
-        rm -f "$EXCLUDE_FILE"
-        create_default_excludes
-        print_info "Edit with: $0 --edit-exclude"
-        ;;
-    --edit-exclude)
-        create_default_excludes
-        ${EDITOR:-nano} "$EXCLUDE_FILE"
-        ;;
-    --help|-h)
-        show_help
-        ;;
-    "")
-        # Default action: start
-        check_rclone
-        check_remote
-        check_source
-        check_running
-        create_default_excludes
-        start_sync
-        ;;
-    *)
-        print_error "Unknown option: $1"
-        echo ""
-        show_help
-        exit 1
-        ;;
+--start)
+    check_rclone
+    check_remote
+    check_source
+    check_running
+    create_default_excludes
+    start_sync
+    ;;
+--stop)
+    stop_sync
+    ;;
+--status)
+    check_status
+    ;;
+--dry-run)
+    check_rclone
+    check_remote
+    check_source
+    create_default_excludes
+    dry_run
+    ;;
+--logs)
+    show_logs "${2:-50}"
+    ;;
+--create-exclude)
+    rm -f "$EXCLUDE_FILE"
+    create_default_excludes
+    print_info "Edit with: $0 --edit-exclude"
+    ;;
+--edit-exclude)
+    create_default_excludes
+    ${EDITOR:-nano} "$EXCLUDE_FILE"
+    ;;
+--help | -h)
+    show_help
+    ;;
+"")
+    # Default action: start
+    check_rclone
+    check_remote
+    check_source
+    check_running
+    create_default_excludes
+    start_sync
+    ;;
+*)
+    print_error "Unknown option: $1"
+    echo ""
+    show_help
+    exit 1
+    ;;
 esac

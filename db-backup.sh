@@ -33,9 +33,9 @@ JSON_FILE="$LOGS_DIR/backup_$TIMESTAMP.json"
 
 # Default settings
 DB_TYPE=""
-DB_DSN="${DB_DSN:-}"  # From environment variable
+DB_DSN="${DB_DSN:-}" # From environment variable
 OUTPUT_DIR="./backups"
-RETENTION="7:4:12"  # daily:weekly:monthly
+RETENTION="7:4:12" # daily:weekly:monthly
 RCLONE_REMOTE=""
 TEST_RESTORE=false
 OUTPUT_JSON=false
@@ -149,71 +149,71 @@ EOF
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --db)
-            DB_TYPE="$2"
-            if [[ ! "$DB_TYPE" =~ ^(pg|mysql)$ ]]; then
-                echo "Error: --db must be 'pg' or 'mysql'"
-                exit 1
-            fi
-            shift 2
-            ;;
-        --dsn)
-            DB_DSN="$2"
-            shift 2
-            ;;
-        --out)
-            OUTPUT_DIR="$2"
-            shift 2
-            ;;
-        --retention)
-            RETENTION="$2"
-            if [[ ! "$RETENTION" =~ ^[0-9]+:[0-9]+:[0-9]+$ ]]; then
-                echo "Error: --retention must be in format daily:weekly:monthly (e.g., 7:4:12)"
-                exit 1
-            fi
-            IFS=':' read -r DAILY_KEEP WEEKLY_KEEP MONTHLY_KEEP <<< "$RETENTION"
-
-            # Validate retention bounds
-            if [ "$DAILY_KEEP" -lt 1 ] || [ "$DAILY_KEEP" -gt 3650 ]; then
-                echo "Error: Daily retention must be between 1 and 3650 days"
-                exit 1
-            fi
-            if [ "$WEEKLY_KEEP" -lt 1 ] || [ "$WEEKLY_KEEP" -gt 520 ]; then
-                echo "Error: Weekly retention must be between 1 and 520 weeks (~10 years)"
-                exit 1
-            fi
-            if [ "$MONTHLY_KEEP" -lt 1 ] || [ "$MONTHLY_KEEP" -gt 360 ]; then
-                echo "Error: Monthly retention must be between 1 and 360 months (30 years)"
-                exit 1
-            fi
-
-            shift 2
-            ;;
-        --rclone)
-            RCLONE_REMOTE="$2"
-            shift 2
-            ;;
-        --test-restore)
-            TEST_RESTORE=true
-            shift
-            ;;
-        --json)
-            OUTPUT_JSON=true
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            shift
-            ;;
-        --help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "Error: Unknown option $1"
-            show_help
+    --db)
+        DB_TYPE="$2"
+        if [[ ! "$DB_TYPE" =~ ^(pg|mysql)$ ]]; then
+            echo "Error: --db must be 'pg' or 'mysql'"
             exit 1
-            ;;
+        fi
+        shift 2
+        ;;
+    --dsn)
+        DB_DSN="$2"
+        shift 2
+        ;;
+    --out)
+        OUTPUT_DIR="$2"
+        shift 2
+        ;;
+    --retention)
+        RETENTION="$2"
+        if [[ ! "$RETENTION" =~ ^[0-9]+:[0-9]+:[0-9]+$ ]]; then
+            echo "Error: --retention must be in format daily:weekly:monthly (e.g., 7:4:12)"
+            exit 1
+        fi
+        IFS=':' read -r DAILY_KEEP WEEKLY_KEEP MONTHLY_KEEP <<<"$RETENTION"
+
+        # Validate retention bounds
+        if [ "$DAILY_KEEP" -lt 1 ] || [ "$DAILY_KEEP" -gt 3650 ]; then
+            echo "Error: Daily retention must be between 1 and 3650 days"
+            exit 1
+        fi
+        if [ "$WEEKLY_KEEP" -lt 1 ] || [ "$WEEKLY_KEEP" -gt 520 ]; then
+            echo "Error: Weekly retention must be between 1 and 520 weeks (~10 years)"
+            exit 1
+        fi
+        if [ "$MONTHLY_KEEP" -lt 1 ] || [ "$MONTHLY_KEEP" -gt 360 ]; then
+            echo "Error: Monthly retention must be between 1 and 360 months (30 years)"
+            exit 1
+        fi
+
+        shift 2
+        ;;
+    --rclone)
+        RCLONE_REMOTE="$2"
+        shift 2
+        ;;
+    --test-restore)
+        TEST_RESTORE=true
+        shift
+        ;;
+    --json)
+        OUTPUT_JSON=true
+        shift
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --help)
+        show_help
+        exit 0
+        ;;
+    *)
+        echo "Error: Unknown option $1"
+        show_help
+        exit 1
+        ;;
     esac
 done
 
@@ -314,14 +314,14 @@ parse_dsn() {
         DB_PASS=$(url_decode "${BASH_REMATCH[2]}")
         DB_HOST="${BASH_REMATCH[3]}"
         DB_PORT="${BASH_REMATCH[4]:-}"
-        DB_NAME="${BASH_REMATCH[5]%%\?*}"  # Strip query params
+        DB_NAME="${BASH_REMATCH[5]%%\?*}" # Strip query params
     elif [[ "$dsn" =~ ://([^:]+):([^@]+)@([^:/]+):?([0-9]+)?/(.+)$ ]]; then
         # Standard format (IPv4 or hostname)
         DB_USER=$(url_decode "${BASH_REMATCH[1]}")
         DB_PASS=$(url_decode "${BASH_REMATCH[2]}")
         DB_HOST="${BASH_REMATCH[3]}"
         DB_PORT="${BASH_REMATCH[4]:-}"
-        DB_NAME="${BASH_REMATCH[5]%%\?*}"  # Strip query params
+        DB_NAME="${BASH_REMATCH[5]%%\?*}" # Strip query params
     else
         print_error "Failed to parse DSN"
         echo ""
@@ -392,7 +392,7 @@ perform_backup() {
 
         # Use PGPASSWORD environment variable for authentication
         if PGPASSWORD="$DB_PASS" pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
-            --no-owner --no-privileges --clean --if-exists 2>>"$LOG_FILE" | gzip > "$output_file"; then
+            --no-owner --no-privileges --clean --if-exists 2>>"$LOG_FILE" | gzip >"$output_file"; then
             success=true
         fi
 
@@ -401,11 +401,14 @@ perform_backup() {
 
         # Create secure credentials file to avoid password in process list
         local creds_file
-        creds_file=$(mktemp) || { print_error "Failed to create temp file"; return 1; }
+        creds_file=$(mktemp) || {
+            print_error "Failed to create temp file"
+            return 1
+        }
         chmod 600 "$creds_file"
 
         # Write credentials to temp file
-        cat > "$creds_file" << EOF
+        cat >"$creds_file" <<EOF
 [client]
 user=$DB_USER
 password=$DB_PASS
@@ -415,7 +418,7 @@ EOF
 
         # Use --defaults-extra-file for secure credential passing
         if mysqldump --defaults-extra-file="$creds_file" \
-            --single-transaction --routines --triggers "$DB_NAME" 2>>"$LOG_FILE" | gzip > "$output_file"; then
+            --single-transaction --routines --triggers "$DB_NAME" 2>>"$LOG_FILE" | gzip >"$output_file"; then
             success=true
         fi
 
@@ -644,7 +647,7 @@ fi
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
-    cat > "$JSON_FILE" <<EOF
+    cat >"$JSON_FILE" <<EOF
 {
   "timestamp": "$(get_iso8601_timestamp)",
   "database": {

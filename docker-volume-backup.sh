@@ -36,35 +36,35 @@ NC='\033[0m'
 
 # Print functions
 print_error() {
-	echo -e "${RED}✗ Error:${NC} $1" >&2
-	echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
+    echo -e "${RED}✗ Error:${NC} $1" >&2
+    echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
 }
 
 print_success() {
-	echo -e "${GREEN}✓${NC} $1"
-	echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
+    echo -e "${GREEN}✓${NC} $1"
+    echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
 }
 
 print_warning() {
-	echo -e "${YELLOW}⚠${NC} $1"
-	echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
+    echo -e "${YELLOW}⚠${NC} $1"
+    echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
 }
 
 print_info() {
-	echo -e "${BLUE}ℹ${NC} $1"
-	echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
+    echo -e "${BLUE}ℹ${NC} $1"
+    echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
 }
 
 print_section() {
-	echo ""
-	echo -e "${BLUE}━━━ $1 ━━━${NC}"
-	echo ""
-	echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
+    echo ""
+    echo -e "${BLUE}━━━ $1 ━━━${NC}"
+    echo ""
+    echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
 }
 
 # Show usage
 show_help() {
-	cat <<'HELP'
+    cat <<'HELP'
 docker-volume-backup.sh - Consistent Docker volume snapshots
 
 USAGE:
@@ -113,62 +113,62 @@ HELP
 
 # Parse CLI arguments
 while [[ $# -gt 0 ]]; do
-	case $1 in
-	--volume)
-		VOLUME_NAME="$2"
-		shift 2
-		;;
-	--all)
-		BACKUP_ALL=true
-		shift
-		;;
-	--out)
-		BACKUP_DIR="$2"
-		shift 2
-		;;
-	--backup-image)
-		BACKUP_IMAGE="$2"
-		shift 2
-		;;
-	--stop)
-		STOP_CONTAINERS=true
-		shift
-		;;
-	--no-stop)
-		STOP_CONTAINERS=false
-		shift
-		;;
-	--dry-run)
-		DRY_RUN=true
-		shift
-		;;
-	--json)
-		OUTPUT_JSON=true
-		shift
-		;;
-	--help)
-		show_help
-		exit 0
-		;;
-	*)
-		echo "Error: Unknown option $1"
-		show_help
-		exit 1
-		;;
-	esac
+    case $1 in
+    --volume)
+        VOLUME_NAME="$2"
+        shift 2
+        ;;
+    --all)
+        BACKUP_ALL=true
+        shift
+        ;;
+    --out)
+        BACKUP_DIR="$2"
+        shift 2
+        ;;
+    --backup-image)
+        BACKUP_IMAGE="$2"
+        shift 2
+        ;;
+    --stop)
+        STOP_CONTAINERS=true
+        shift
+        ;;
+    --no-stop)
+        STOP_CONTAINERS=false
+        shift
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --json)
+        OUTPUT_JSON=true
+        shift
+        ;;
+    --help)
+        show_help
+        exit 0
+        ;;
+    *)
+        echo "Error: Unknown option $1"
+        show_help
+        exit 1
+        ;;
+    esac
 done
 
 # Validate arguments
 if [ "$BACKUP_ALL" = false ] && [ -z "$VOLUME_NAME" ]; then
-	echo "Error: Must specify --volume <name> or --all"
-	show_help
-	exit 1
+    echo "Error: Must specify --volume <name> or --all"
+    show_help
+    exit 1
 fi
 
 if [ "$BACKUP_ALL" = true ] && [ -n "$VOLUME_NAME" ]; then
-	echo "Error: Cannot use both --volume and --all"
-	show_help
-	exit 1
+    echo "Error: Cannot use both --volume and --all"
+    show_help
+    exit 1
 fi
 
 # Validate output directory
@@ -181,22 +181,22 @@ umask 077
 
 # Start logging
 {
-	echo "================================================"
-	echo "Docker Volume Backup - $(get_iso8601_timestamp)"
-	echo "================================================"
-	echo "Volume: ${VOLUME_NAME:-all volumes}"
-	echo "Backup all: $BACKUP_ALL"
-	echo "Output directory: $BACKUP_DIR"
-	echo "Stop containers: $STOP_CONTAINERS"
-	echo "Dry run: $DRY_RUN"
-	echo "================================================"
+    echo "================================================"
+    echo "Docker Volume Backup - $(get_iso8601_timestamp)"
+    echo "================================================"
+    echo "Volume: ${VOLUME_NAME:-all volumes}"
+    echo "Backup all: $BACKUP_ALL"
+    echo "Output directory: $BACKUP_DIR"
+    echo "Stop containers: $STOP_CONTAINERS"
+    echo "Dry run: $DRY_RUN"
+    echo "================================================"
 } >>"$LOG_FILE"
 
 print_section "Docker Volume Backup"
 if [ "$BACKUP_ALL" = true ]; then
-	print_info "Mode: Backup all volumes"
+    print_info "Mode: Backup all volumes"
 else
-	print_info "Mode: Backup single volume: $VOLUME_NAME"
+    print_info "Mode: Backup single volume: $VOLUME_NAME"
 fi
 print_info "Output directory: $BACKUP_DIR"
 [ "$STOP_CONTAINERS" = true ] && print_info "Container stop: enabled"
@@ -206,145 +206,145 @@ print_info "Log file: $LOG_FILE"
 print_section "Pre-flight Checks"
 
 if ! command -v docker >/dev/null 2>&1; then
-	print_error "Docker not found. Install Docker first."
-	exit 1
+    print_error "Docker not found. Install Docker first."
+    exit 1
 fi
 print_success "Docker installed"
 
 # Check if Docker daemon is running
 if ! docker info >/dev/null 2>&1; then
-	print_error "Docker daemon not running. Start Docker first."
-	exit 1
+    print_error "Docker daemon not running. Start Docker first."
+    exit 1
 fi
 print_success "Docker daemon running"
 
 # Get volumes to backup
 if [ "$BACKUP_ALL" = true ]; then
-	VOLUMES=$(docker volume ls --format '{{.Name}}' 2>/dev/null)
-	if [ -z "$VOLUMES" ]; then
-		print_warning "No Docker volumes found"
-		exit 0
-	fi
-	VOLUME_COUNT=$(echo "$VOLUMES" | wc -l | tr -d ' ')
-	print_info "Found $VOLUME_COUNT volumes to backup"
+    VOLUMES=$(docker volume ls --format '{{.Name}}' 2>/dev/null)
+    if [ -z "$VOLUMES" ]; then
+        print_warning "No Docker volumes found"
+        exit 0
+    fi
+    VOLUME_COUNT=$(echo "$VOLUMES" | wc -l | tr -d ' ')
+    print_info "Found $VOLUME_COUNT volumes to backup"
 else
-	# Validate single volume exists
-	if ! docker volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
-		print_error "Volume not found: $VOLUME_NAME"
-		exit 1
-	fi
-	VOLUMES="$VOLUME_NAME"
-	print_success "Volume exists: $VOLUME_NAME"
+    # Validate single volume exists
+    if ! docker volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
+        print_error "Volume not found: $VOLUME_NAME"
+        exit 1
+    fi
+    VOLUMES="$VOLUME_NAME"
+    print_success "Volume exists: $VOLUME_NAME"
 fi
 
 if [ "$DRY_RUN" = true ]; then
-	print_warning "DRY RUN MODE - no actual backups will be created"
-	echo ""
-	print_info "Would backup the following volumes:"
-	echo "$VOLUMES" | while read -r vol; do
-		echo "  - $vol"
-	done
-	echo ""
-	[ "$STOP_CONTAINERS" = true ] && print_info "Would stop dependent containers during backup"
-	exit 0
+    print_warning "DRY RUN MODE - no actual backups will be created"
+    echo ""
+    print_info "Would backup the following volumes:"
+    echo "$VOLUMES" | while read -r vol; do
+        echo "  - $vol"
+    done
+    echo ""
+    [ "$STOP_CONTAINERS" = true ] && print_info "Would stop dependent containers during backup"
+    exit 0
 fi
 
 print_success "Pre-flight checks passed"
 
 # Ensure backup image is available for backups
 if ! ensure_docker_image "$BACKUP_IMAGE" "$LOG_FILE"; then
-	print_error "Failed to ensure $BACKUP_IMAGE is available"
-	exit 1
+    print_error "Failed to ensure $BACKUP_IMAGE is available"
+    exit 1
 fi
 
 # Function to get containers using a volume
 get_volume_containers() {
-	local volume=$1
-	docker ps --filter "volume=$volume" --format '{{.Names}}' 2>/dev/null || echo ""
+    local volume=$1
+    docker ps --filter "volume=$volume" --format '{{.Names}}' 2>/dev/null || echo ""
 }
 
 # Function to backup a single volume
 backup_volume() {
-	local volume=$1
-	local backup_file="${BACKUP_DIR}/${volume}_${TIMESTAMP}.tar.gz"
-	local containers
-	local stopped_containers=()
+    local volume=$1
+    local backup_file="${BACKUP_DIR}/${volume}_${TIMESTAMP}.tar.gz"
+    local containers
+    local stopped_containers=()
 
-	print_section "Backing Up: $volume"
+    print_section "Backing Up: $volume"
 
-	# Get containers using this volume
-	containers=$(get_volume_containers "$volume")
+    # Get containers using this volume
+    containers=$(get_volume_containers "$volume")
 
-	if [ -n "$containers" ]; then
-		print_info "Volume used by containers: $(echo "$containers" | tr '\n' ', ' | sed 's/,$//')"
+    if [ -n "$containers" ]; then
+        print_info "Volume used by containers: $(echo "$containers" | tr '\n' ', ' | sed 's/,$//')"
 
-		# Stop containers if requested
-		if [ "$STOP_CONTAINERS" = true ]; then
-			print_info "Stopping containers for consistency..."
-			while IFS= read -r container; do
-				if [ -n "$container" ]; then
-					if docker stop "$container" >>"$LOG_FILE" 2>&1; then
-						print_success "Stopped: $container"
-						stopped_containers+=("$container")
-						STOPPED_CONTAINERS+=("$container")
-					else
-						print_error "Failed to stop: $container"
-						BACKUP_FAILED=true
-						return 1
-					fi
-				fi
-			done <<<"$containers"
-		else
-			print_warning "Backing up while containers running (may be inconsistent)"
-		fi
-	else
-		print_info "No containers using this volume"
-	fi
+        # Stop containers if requested
+        if [ "$STOP_CONTAINERS" = true ]; then
+            print_info "Stopping containers for consistency..."
+            while IFS= read -r container; do
+                if [ -n "$container" ]; then
+                    if docker stop "$container" >>"$LOG_FILE" 2>&1; then
+                        print_success "Stopped: $container"
+                        stopped_containers+=("$container")
+                        STOPPED_CONTAINERS+=("$container")
+                    else
+                        print_error "Failed to stop: $container"
+                        BACKUP_FAILED=true
+                        return 1
+                    fi
+                fi
+            done <<<"$containers"
+        else
+            print_warning "Backing up while containers running (may be inconsistent)"
+        fi
+    else
+        print_info "No containers using this volume"
+    fi
 
-	# Perform backup using helper container
-	print_info "Creating backup: $backup_file"
-	if docker run --rm \
-		-v "${volume}:/data:ro" \
-		-v "$BACKUP_DIR:/backup" \
-		"$BACKUP_IMAGE" tar czf "/backup/$(basename "$backup_file")" /data >>"$LOG_FILE" 2>&1; then
-		chmod 600 "$backup_file"
-		BACKUP_SIZE=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file" 2>/dev/null || echo "0")
-		BACKUP_SIZE_MB=$((BACKUP_SIZE / 1024 / 1024))
-		print_success "Backup created: $backup_file (${BACKUP_SIZE_MB}MB)"
-		BACKED_UP_VOLUMES+=("$volume:$backup_file:$BACKUP_SIZE")
-	else
-		print_error "Failed to backup volume: $volume"
-		BACKUP_FAILED=true
-		return 1
-	fi
+    # Perform backup using helper container
+    print_info "Creating backup: $backup_file"
+    if docker run --rm \
+        -v "${volume}:/data:ro" \
+        -v "$BACKUP_DIR:/backup" \
+        "$BACKUP_IMAGE" tar czf "/backup/$(basename "$backup_file")" /data >>"$LOG_FILE" 2>&1; then
+        chmod 600 "$backup_file"
+        BACKUP_SIZE=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file" 2>/dev/null || echo "0")
+        BACKUP_SIZE_MB=$((BACKUP_SIZE / 1024 / 1024))
+        print_success "Backup created: $backup_file (${BACKUP_SIZE_MB}MB)"
+        BACKED_UP_VOLUMES+=("$volume:$backup_file:$BACKUP_SIZE")
+    else
+        print_error "Failed to backup volume: $volume"
+        BACKUP_FAILED=true
+        return 1
+    fi
 
-	# Restart stopped containers
-	if [ ${#stopped_containers[@]} -gt 0 ]; then
-		print_info "Restarting containers..."
-		for container in "${stopped_containers[@]}"; do
-			if docker start "$container" >>"$LOG_FILE" 2>&1; then
-				print_success "Restarted: $container"
-			else
-				print_error "Failed to restart: $container"
-				BACKUP_FAILED=true
-			fi
-		done
-	fi
+    # Restart stopped containers
+    if [ ${#stopped_containers[@]} -gt 0 ]; then
+        print_info "Restarting containers..."
+        for container in "${stopped_containers[@]}"; do
+            if docker start "$container" >>"$LOG_FILE" 2>&1; then
+                print_success "Restarted: $container"
+            else
+                print_error "Failed to restart: $container"
+                BACKUP_FAILED=true
+            fi
+        done
+    fi
 }
 
 # Backup all volumes
 while IFS= read -r volume; do
-	if [ -n "$volume" ]; then
-		backup_volume "$volume"
-	fi
+    if [ -n "$volume" ]; then
+        backup_volume "$volume"
+    fi
 done <<<"$VOLUMES"
 
 # Summary
 print_section "Backup Summary"
 
 if [ "$BACKUP_FAILED" = true ]; then
-	print_error "Some backups failed - check logs for details"
-	exit 1
+    print_error "Some backups failed - check logs for details"
+    exit 1
 fi
 
 SUCCESSFUL_COUNT=${#BACKED_UP_VOLUMES[@]}
@@ -353,15 +353,15 @@ print_success "Backed up $SUCCESSFUL_COUNT volume(s)"
 # Calculate total size
 TOTAL_SIZE=0
 for entry in "${BACKED_UP_VOLUMES[@]}"; do
-	SIZE=$(echo "$entry" | cut -d: -f3)
-	TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
+    SIZE=$(echo "$entry" | cut -d: -f3)
+    TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
 done
 TOTAL_SIZE_MB=$((TOTAL_SIZE / 1024 / 1024))
 print_info "Total backup size: ${TOTAL_SIZE_MB}MB"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
-	cat >"$JSON_FILE" <<EOF
+    cat >"$JSON_FILE" <<EOF
 {
   "timestamp": "$(get_iso8601_timestamp)",
   "backup_dir": "$BACKUP_DIR",
@@ -371,32 +371,32 @@ if [ "$OUTPUT_JSON" = true ]; then
   "backups": [
 EOF
 
-	FIRST=true
-	for entry in "${BACKED_UP_VOLUMES[@]}"; do
-		VOLUME=$(echo "$entry" | cut -d: -f1)
-		FILE=$(echo "$entry" | cut -d: -f2)
-		SIZE=$(echo "$entry" | cut -d: -f3)
+    FIRST=true
+    for entry in "${BACKED_UP_VOLUMES[@]}"; do
+        VOLUME=$(echo "$entry" | cut -d: -f1)
+        FILE=$(echo "$entry" | cut -d: -f2)
+        SIZE=$(echo "$entry" | cut -d: -f3)
 
-		[ "$FIRST" = false ] && echo "," >>"$JSON_FILE"
-		FIRST=false
+        [ "$FIRST" = false ] && echo "," >>"$JSON_FILE"
+        FIRST=false
 
-		cat >>"$JSON_FILE" <<ENTRY
+        cat >>"$JSON_FILE" <<ENTRY
     {
       "volume": "$VOLUME",
       "file": "$FILE",
       "size_bytes": $SIZE
     }
 ENTRY
-	done
+    done
 
-	cat >>"$JSON_FILE" <<EOF
+    cat >>"$JSON_FILE" <<EOF
 
   ],
   "log_file": "$LOG_FILE"
 }
 EOF
-	chmod 600 "$JSON_FILE"
-	print_info "JSON summary: $JSON_FILE"
+    chmod 600 "$JSON_FILE"
+    print_info "JSON summary: $JSON_FILE"
 fi
 
 exit 0

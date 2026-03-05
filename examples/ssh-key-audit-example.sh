@@ -27,4 +27,3 @@ echo "7) Custom system paths"
 
 echo "8) Full JSON report"
 ./ssh-key-audit.sh --all-users --system --json
-
