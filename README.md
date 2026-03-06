@@ -1494,6 +1494,27 @@ nano rclone-sync.sh
 
 ---
 
+## Unified QA Harness
+
+Run the full validation suite with one command:
+
+```bash
+./qa-all.sh
+```
+
+CI-friendly mode (deterministic artifact layout):
+
+```bash
+./qa-all.sh --ci
+```
+
+Artifacts are written to `./logs/qa/run_YYYYMMDD_HHMMSS/` and include:
+- Per-check logs
+- `summary.txt`
+- `summary.json` (machine-readable status report)
+
+---
+
 ## Dependencies
 
 ### Required Dependencies

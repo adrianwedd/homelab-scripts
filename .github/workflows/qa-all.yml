@@ -1,0 +1,32 @@
+name: Unified QA
+
+on:
+push:
+branches: [ main ]
+paths:
+- '**.sh'
+- '.github/workflows/qa-all.yml'
+pull_request:
+branches: [ main ]
+paths:
+- '**.sh'
+- '.github/workflows/qa-all.yml'
+
+jobs:
+qa-all:
+name: Unified QA Harness
+runs-on: ubuntu-latest
+
+steps:
+- name: Checkout code
+uses: actions/checkout@v4
+
+- name: Install QA dependencies
+run: |
+    sudo apt-get update -y
+sudo apt-get install -y shellcheck shfmt jq
+
+- name: Run qa-all harness
+run: |
+    chmod +x ./qa-all.sh
+./qa-all.sh --ci
