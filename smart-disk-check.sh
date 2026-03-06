@@ -205,17 +205,17 @@ fi
     echo "================================================"
 } >>"$LOG_FILE"
 
-# Check for smartctl
-if ! command -v smartctl >/dev/null 2>&1; then
-    print_error "smartctl not found. Install smartmontools:"
-    echo "  macOS:  brew install smartmontools"
-    echo "  Linux:  sudo apt install smartmontools"
-    exit 1
-fi
-print_success "smartctl found"
-
 # Dry-run preview
 if [ "$DRY_RUN" = true ]; then
+    if command -v smartctl >/dev/null 2>&1; then
+        print_success "smartctl found"
+    else
+        print_warning "smartctl not found; dry-run preview mode will continue without device probing"
+        echo "  Install smartmontools for real checks:"
+        echo "    macOS:  brew install smartmontools"
+        echo "    Linux:  sudo apt install smartmontools"
+    fi
+
     print_section "Dry Run - Preview"
 
     if [ "$AUTO_DISCOVER" = true ]; then
@@ -241,6 +241,15 @@ if [ "$DRY_RUN" = true ]; then
     print_success "Dry-run complete. Use without --dry-run to execute."
     exit 0
 fi
+
+# Check for smartctl
+if ! command -v smartctl >/dev/null 2>&1; then
+    print_error "smartctl not found. Install smartmontools:"
+    echo "  macOS:  brew install smartmontools"
+    echo "  Linux:  sudo apt install smartmontools"
+    exit 1
+fi
+print_success "smartctl found"
 
 # Device discovery
 print_section "Device Discovery"

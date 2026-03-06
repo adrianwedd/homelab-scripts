@@ -213,6 +213,17 @@ print_success "Docker installed"
 
 # Check if Docker daemon is running
 if ! docker info >/dev/null 2>&1; then
+    if [ "$DRY_RUN" = true ]; then
+        print_warning "Docker daemon not running; using dependency-light dry-run preview"
+        echo ""
+        if [ "$BACKUP_ALL" = true ]; then
+            print_info "Would backup all Docker volumes (list unavailable while daemon is down)"
+        else
+            print_info "Would backup volume: $VOLUME_NAME"
+        fi
+        [ "$STOP_CONTAINERS" = true ] && print_info "Would stop dependent containers during backup"
+        exit 0
+    fi
     print_error "Docker daemon not running. Start Docker first."
     exit 1
 fi
