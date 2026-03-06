@@ -135,6 +135,56 @@ run_expect_success "smart_disk_check_dry_run" ./smart-disk-check.sh --dry-run
 run_expect_success "ssh_key_audit_dry_run" ./ssh-key-audit.sh --dry-run
 run_expect_success "new_vm_setup_dry_run" ./new-vm-setup.sh --hostname qa-vm --user qauser --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForDryRunOnly qa@local" --dry-run
 
+run_expect_success "json_contract_cert_renewal" bash -c '
+    ./cert-renewal-check.sh --domains examples/domains.txt --json --dry-run >/dev/null 2>&1
+    jf=$(ls -t logs/cert/cert_check_*.json | head -n 1)
+    jq -e ".script and .version and .timestamp and .status and (.duration_ms >= 0) and (.errors|type==\"array\") and (.result|type==\"object\")" "$jf" >/dev/null
+'
+run_expect_success "json_contract_db_backup" bash -c '
+    DB_DSN="postgres://user:pass@localhost/db" ./db-backup.sh --db pg --json --dry-run >/dev/null 2>&1
+    jf=$(ls -t logs/db-backup/backup_*.json | head -n 1)
+    jq -e ".script and .version and .timestamp and .status and (.duration_ms >= 0) and (.errors|type==\"array\") and (.result|type==\"object\")" "$jf" >/dev/null
+'
+run_expect_success "json_contract_smart_disk" bash -c '
+    ./smart-disk-check.sh --json --dry-run >/dev/null 2>&1
+    jf=$(ls -t logs/smart-check/smart_check_summary_*.json | head -n 1)
+    jq -e ".script and .version and .timestamp and .status and (.duration_ms >= 0) and (.errors|type==\"array\") and (.result|type==\"object\")" "$jf" >/dev/null
+'
+run_expect_success "json_contract_new_vm_setup" bash -c '
+    ./new-vm-setup.sh --hostname qa-vm-json --user qauser --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForDryRunOnly qa@local" --json --dry-run >/dev/null 2>&1
+    jf=$(ls -t logs/new-vm-setup/vm_setup_summary_*.json | head -n 1)
+    jq -e ".script and .version and .timestamp and .status and (.duration_ms >= 0) and (.errors|type==\"array\") and (.result|type==\"object\")" "$jf" >/dev/null
+'
+run_expect_success "json_contract_service_health" bash -c '
+    ./service-health-check.sh --json --dry-run --config examples/services.conf >"'"$RUN_DIR"'/service_health_json.out" 2>/dev/null
+    jq -e ".script and .version and .timestamp and .status and (.duration_ms >= 0) and (.errors|type==\"array\") and (.result|type==\"object\")" "'"$RUN_DIR"'/service_health_json.out" >/dev/null
+'
+
+run_expect_success "config_precedence_update_all" bash -c '
+    td=$(mktemp -d)
+    printf "DRY_RUN=0\n" >"$td/system.conf"
+    printf "DRY_RUN=1\n" >"$td/user.conf"
+    out=$(HOMELAB_SYSTEM_CONFIG="$td/system.conf" HOMELAB_USER_CONFIG="$td/user.conf" ./update-all.sh --show-config)
+    echo "$out" | grep -q "^DRY_RUN=1$"
+    out=$(HOMELAB_SYSTEM_CONFIG="$td/system.conf" HOMELAB_USER_CONFIG="$td/user.conf" UPDATE_ALL_DRY_RUN=0 ./update-all.sh --show-config)
+    echo "$out" | grep -q "^DRY_RUN=0$"
+    out=$(HOMELAB_SYSTEM_CONFIG="$td/system.conf" HOMELAB_USER_CONFIG="$td/user.conf" UPDATE_ALL_DRY_RUN=0 ./update-all.sh --dry-run --show-config)
+    echo "$out" | grep -q "^DRY_RUN=1$"
+    rm -rf "$td"
+'
+run_expect_success "config_precedence_disk_cleanup" bash -c '
+    td=$(mktemp -d)
+    printf "SKIP_DOCKER=false\n" >"$td/system.conf"
+    printf "SKIP_DOCKER=true\n" >"$td/user.conf"
+    out=$(HOMELAB_SYSTEM_CONFIG="$td/system.conf" HOMELAB_USER_CONFIG="$td/user.conf" ./disk-cleanup.sh --show-config)
+    echo "$out" | grep -q "^SKIP_DOCKER=true$"
+    out=$(HOMELAB_SYSTEM_CONFIG="$td/system.conf" HOMELAB_USER_CONFIG="$td/user.conf" DISK_CLEANUP_SKIP_DOCKER=false ./disk-cleanup.sh --show-config)
+    echo "$out" | grep -q "^SKIP_DOCKER=false$"
+    out=$(HOMELAB_SYSTEM_CONFIG="$td/system.conf" HOMELAB_USER_CONFIG="$td/user.conf" DISK_CLEANUP_SKIP_DOCKER=false ./disk-cleanup.sh --skip-docker --show-config)
+    echo "$out" | grep -q "^SKIP_DOCKER=true$"
+    rm -rf "$td"
+'
+
 run_expect_failure "gc_threshold_bounds" ./disk-cleanup.sh --gc-threshold 9999999
 run_expect_failure "venv_age_bounds" ./disk-cleanup.sh --venv-age 99999
 run_expect_failure "venv_roots_system_block" ./disk-cleanup.sh --venv-roots /etc

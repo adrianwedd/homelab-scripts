@@ -10,6 +10,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 LOG_DIR="${SCRIPT_DIR}/logs/new-vm-setup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START_TS=$(date +%s)
 LOG_FILE="${LOG_DIR}/vm_setup_${TIMESTAMP}.log"
 JSON_FILE="${LOG_DIR}/vm_setup_summary_${TIMESTAMP}.json"
 
@@ -477,6 +478,23 @@ if [ "$DRY_RUN" = true ]; then
         echo ""
     fi
 
+    if [ "$OUTPUT_JSON" = true ]; then
+        DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+        {
+            echo "{"
+            echo "  \"script\": \"new-vm-setup\","
+            echo "  \"version\": \"1.3.0\","
+            echo "  \"timestamp\": \"$(get_iso8601_timestamp)\","
+            echo "  \"status\": \"success\","
+            echo "  \"duration_ms\": $DURATION_MS,"
+            echo "  \"errors\": [],"
+            echo "  \"result\": {\"dry_run\": true, \"user\": \"${USERNAME:-}\", \"hostname\": \"${HOSTNAME:-}\"}"
+            echo "}"
+        } >"$JSON_FILE"
+        chmod 600 "$JSON_FILE"
+        print_success "JSON summary written to: $JSON_FILE"
+    fi
+
     print_success "Dry-run complete. Use without --dry-run to execute."
     exit 0
 fi
@@ -728,9 +746,18 @@ echo "Warnings: ${#WARNINGS[@]}"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
+    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+    JSON_STATUS="success"
+    [ ${#WARNINGS[@]} -gt 0 ] && JSON_STATUS="warning"
     {
         echo "{"
+        echo "  \"script\": \"new-vm-setup\","
+        echo "  \"version\": \"1.3.0\","
         echo "  \"timestamp\": \"$(get_iso8601_timestamp)\","
+        echo "  \"status\": \"$JSON_STATUS\","
+        echo "  \"duration_ms\": $DURATION_MS,"
+        echo "  \"errors\": [],"
+        echo "  \"result\": {\"user\": \"${USERNAME:-}\", \"warnings\": ${#WARNINGS[@]}},"
         echo "  \"distro\": \"$OS_DISTRO\","
         echo "  \"package_manager\": \"$PKG_MANAGER\","
         echo "  \"hostname_before\": \"${HOSTNAME_BEFORE:-}\","

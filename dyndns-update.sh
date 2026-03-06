@@ -21,6 +21,7 @@ DRY_RUN=false
 OUTPUT_JSON=false
 FORCE_UPDATE=false
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START_TS=$(date +%s)
 LOG_FILE="${LOG_DIR}/dyndns_${TIMESTAMP}.log"
 JSON_FILE="${LOG_DIR}/dyndns_summary_${TIMESTAMP}.json"
 CACHE_FILE="${CACHE_DIR}/last-update.cache"
@@ -413,9 +414,20 @@ print_info "TTL: ${TTL}s"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
+    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
     cat >"$JSON_FILE" <<EOF
 {
+  "script": "dyndns-update",
+  "version": "1.2.1",
   "timestamp": "$(get_iso8601_timestamp)",
+  "status": "success",
+  "duration_ms": $DURATION_MS,
+  "errors": [],
+  "result": {
+    "provider": "$PROVIDER",
+    "full_record": "$FULL_RECORD",
+    "ip": "$CURRENT_IP"
+  },
   "provider": "$PROVIDER",
   "zone": "$ZONE",
   "record": "$RECORD",

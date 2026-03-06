@@ -20,6 +20,7 @@ NO_PULL=false
 DRY_RUN=false
 OUTPUT_JSON=false
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START_TS=$(date +%s)
 LOG_FILE="${LOG_DIR}/redeploy_${TIMESTAMP}.log"
 JSON_FILE="${LOG_DIR}/redeploy_summary_${TIMESTAMP}.json"
 
@@ -380,9 +381,20 @@ print_success "All services deployed and healthy"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
+    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
     cat >"$JSON_FILE" <<EOF
 {
+  "script": "compose-redeploy",
+  "version": "1.2.1",
   "timestamp": "$(get_iso8601_timestamp)",
+  "status": "success",
+  "duration_ms": $DURATION_MS,
+  "errors": [],
+  "result": {
+    "service_count": $SERVICE_COUNT,
+    "deployment_failed": false,
+    "rollback_performed": false
+  },
   "compose_file": "$COMPOSE_FILE",
   "project_name": "$PROJECT_NAME",
   "services": $(echo "$SERVICES" | jq -R . | jq -s .),

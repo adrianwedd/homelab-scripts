@@ -28,6 +28,7 @@ if [ ! -d "$LOGS_DIR" ]; then
 fi
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START_TS=$(date +%s)
 LOG_FILE="$LOGS_DIR/backup_$TIMESTAMP.log"
 JSON_FILE="$LOGS_DIR/backup_$TIMESTAMP.json"
 
@@ -610,6 +611,25 @@ if [ "$DRY_RUN" = true ]; then
     print_info "Would apply retention policy after backup"
     [ -n "$RCLONE_REMOTE" ] && print_info "Would upload to: $RCLONE_REMOTE"
     [ "$TEST_RESTORE" = true ] && print_info "Would perform test restore"
+    if [ "$OUTPUT_JSON" = true ]; then
+        DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+        cat >"$JSON_FILE" <<EOF
+{
+  "script": "db-backup",
+  "version": "1.2.1",
+  "timestamp": "$(get_iso8601_timestamp)",
+  "status": "success",
+  "duration_ms": $DURATION_MS,
+  "errors": [],
+  "result": {
+    "dry_run": true,
+    "database_type": "$DB_TYPE",
+    "database_name": "$DB_NAME"
+  }
+}
+EOF
+        print_success "JSON summary: $JSON_FILE"
+    fi
     exit 0
 fi
 
@@ -647,9 +667,20 @@ fi
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
+    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
     cat >"$JSON_FILE" <<EOF
 {
+  "script": "db-backup",
+  "version": "1.2.1",
   "timestamp": "$(get_iso8601_timestamp)",
+  "status": "success",
+  "duration_ms": $DURATION_MS,
+  "errors": [],
+  "result": {
+    "backup_file": "$BACKUP_FILE",
+    "database_type": "$DB_TYPE",
+    "database_name": "$DB_NAME"
+  },
   "database": {
     "type": "$DB_TYPE",
     "name": "$DB_NAME",

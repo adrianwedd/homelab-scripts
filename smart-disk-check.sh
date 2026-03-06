@@ -10,6 +10,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 LOG_DIR="${SCRIPT_DIR}/logs/smart-check"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START_TS=$(date +%s)
 LOG_FILE="${LOG_DIR}/smart_check_${TIMESTAMP}.log"
 JSON_FILE="${LOG_DIR}/smart_check_summary_${TIMESTAMP}.json"
 
@@ -235,6 +236,28 @@ if [ "$DRY_RUN" = true ]; then
     if [ -n "$RUN_TEST" ]; then
         echo ""
         print_info "Would schedule $TEST_TYPE S.M.A.R.T. test on all devices"
+    fi
+
+    if [ "$OUTPUT_JSON" = true ]; then
+        DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+        cat >"$JSON_FILE" <<EOF
+{
+  "script": "smart-disk-check",
+  "version": "1.2.1",
+  "timestamp": "$(get_iso8601_timestamp)",
+  "status": "success",
+  "duration_ms": $DURATION_MS,
+  "errors": [],
+  "result": {
+    "dry_run": true,
+    "auto_discover": $AUTO_DISCOVER,
+    "warn_temp": $WARN_TEMP,
+    "crit_temp": $CRIT_TEMP
+  }
+}
+EOF
+        chmod 600 "$JSON_FILE"
+        print_success "JSON summary written to: $JSON_FILE"
     fi
 
     echo ""
@@ -476,9 +499,22 @@ echo "  Critical: $DEVICES_CRITICAL"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
+    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+    JSON_STATUS="success"
+    if [ "$DEVICES_CRITICAL" -gt 0 ]; then
+        JSON_STATUS="critical"
+    elif [ "$DEVICES_WARNING" -gt 0 ]; then
+        JSON_STATUS="warning"
+    fi
     {
         echo "{"
+        echo "  \"script\": \"smart-disk-check\","
+        echo "  \"version\": \"1.2.1\","
         echo "  \"timestamp\": \"$(get_iso8601_timestamp)\","
+        echo "  \"status\": \"$JSON_STATUS\","
+        echo "  \"duration_ms\": $DURATION_MS,"
+        echo "  \"errors\": [],"
+        echo "  \"result\": {\"devices_checked\": $DEVICES_CHECKED, \"devices_critical\": $DEVICES_CRITICAL},"
         echo "  \"devices_checked\": $DEVICES_CHECKED,"
         echo "  \"devices_healthy\": $DEVICES_HEALTHY,"
         echo "  \"devices_warning\": $DEVICES_WARNING,"

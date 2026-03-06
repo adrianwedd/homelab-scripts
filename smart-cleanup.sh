@@ -18,6 +18,15 @@ SCAN_VENVS=0
 VENV_ROOTS=""
 VENV_MIN_AGE_DAYS=""
 VENV_MIN_GB=""
+SHOW_CONFIG=0
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
+# Config precedence: defaults < system < user < env < CLI
+load_script_config_chain "smart-cleanup"
+apply_env_overrides "SMART_CLEANUP_" \
+    AUTO_MODE STATUS_ONLY PROFILE CLEAN_VENVS SCAN_VENVS VENV_ROOTS VENV_MIN_AGE_DAYS VENV_MIN_GB
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,6 +74,7 @@ while [[ $# -gt 0 ]]; do
         echo "  --auto-full        Automatically run full cleanup (with git gc)"
         echo "  --status           Show what can be cleaned and exit"
         echo "  --profile <name>   Use cleanup profile: quick|thorough|emergency"
+        echo "  --show-config      Print effective config and exit"
         echo "  --help, -h         Show this help message"
         echo ""
         echo "Venv cleanup options (passed to disk-cleanup.sh):"
@@ -87,6 +97,10 @@ while [[ $# -gt 0 ]]; do
         echo "  $0 --clean-venvs --venv-age 60   # Clean venvs older than 60 days"
         exit 0
         ;;
+    --show-config)
+        SHOW_CONFIG=1
+        shift
+        ;;
     *)
         echo "Unknown option: $1"
         echo "Run '$0 --help' for usage"
@@ -94,6 +108,18 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+if [ "$SHOW_CONFIG" -eq 1 ]; then
+    echo "AUTO_MODE=$AUTO_MODE"
+    echo "STATUS_ONLY=$STATUS_ONLY"
+    echo "PROFILE=$PROFILE"
+    echo "CLEAN_VENVS=$CLEAN_VENVS"
+    echo "SCAN_VENVS=$SCAN_VENVS"
+    echo "VENV_ROOTS=$VENV_ROOTS"
+    echo "VENV_MIN_AGE_DAYS=$VENV_MIN_AGE_DAYS"
+    echo "VENV_MIN_GB=$VENV_MIN_GB"
+    exit 0
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -106,8 +132,6 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/lib/common.sh"
 CLEANUP_SCRIPT="$SCRIPT_DIR/disk-cleanup.sh"
 LOGS_DIR="$SCRIPT_DIR/logs"
 TEMP_LOG="$LOGS_DIR/smart_cleanup_$$.log"

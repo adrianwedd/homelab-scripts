@@ -17,6 +17,7 @@ CHECK_INTERVAL=60
 NOTIFY_METHOD=""
 JSON_OUTPUT=false
 DRY_RUN=false
+RUN_START_TS=$(date +%s)
 
 # Colors
 RED='\033[0;31m'
@@ -555,9 +556,31 @@ run_checks() {
 
     # JSON output
     if [ "$JSON_OUTPUT" = true ]; then
+        local duration_ms
+        duration_ms=$((($(date +%s) - RUN_START_TS) * 1000))
+        local pass_count=0
+        local fail_count=0
+        local warning_count=0
+        local result
+        for result in "${results[@]}"; do
+            case "$(echo "$result" | cut -d'|' -f3)" in
+            pass) pass_count=$((pass_count + 1)) ;;
+            fail) fail_count=$((fail_count + 1)) ;;
+            skip | dry_run) warning_count=$((warning_count + 1)) ;;
+            esac
+        done
+        local overall_status="success"
+        [ "$fail_count" -gt 0 ] && overall_status="error"
+        [ "$fail_count" -eq 0 ] && [ "$warning_count" -gt 0 ] && overall_status="warning"
+
         echo "{"
+        echo "  \"script\": \"service-health-check\","
         echo "  \"version\": \"1.0\","
         echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+        echo "  \"status\": \"$overall_status\","
+        echo "  \"duration_ms\": $duration_ms,"
+        echo "  \"errors\": [],"
+        echo "  \"result\": {\"pass\": $pass_count, \"fail\": $fail_count, \"warning\": $warning_count},"
         echo "  \"checks\": ["
 
         local first_result=true

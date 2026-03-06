@@ -19,6 +19,7 @@ STOP_CONTAINERS=false
 DRY_RUN=false
 OUTPUT_JSON=false
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START_TS=$(date +%s)
 LOG_FILE="${LOG_DIR}/volume_backup_${TIMESTAMP}.log"
 JSON_FILE="${LOG_DIR}/volume_backup_summary_${TIMESTAMP}.json"
 
@@ -372,9 +373,19 @@ print_info "Total backup size: ${TOTAL_SIZE_MB}MB"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
+    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
     cat >"$JSON_FILE" <<EOF
 {
+  "script": "docker-volume-backup",
+  "version": "1.2.1",
   "timestamp": "$(get_iso8601_timestamp)",
+  "status": "success",
+  "duration_ms": $DURATION_MS,
+  "errors": [],
+  "result": {
+    "volumes_backed_up": $SUCCESSFUL_COUNT,
+    "total_size_bytes": $TOTAL_SIZE
+  },
   "backup_dir": "$BACKUP_DIR",
   "stop_containers": $STOP_CONTAINERS,
   "volumes_backed_up": $SUCCESSFUL_COUNT,

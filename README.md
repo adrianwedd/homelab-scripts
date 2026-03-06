@@ -1513,6 +1513,40 @@ Artifacts are written to `./logs/qa/run_YYYYMMDD_HHMMSS/` and include:
 - `summary.txt`
 - `summary.json` (machine-readable status report)
 
+### Config Precedence
+
+Participating scripts use deterministic precedence:
+
+`defaults < system config < user config < environment < CLI`
+
+Default config paths:
+- System: `/etc/homelab-scripts.conf`
+- Script-specific system: `/etc/homelab-scripts/<script>.conf`
+- User: `~/.config/homelab-scripts/config.conf`
+- Script-specific user: `~/.config/homelab-scripts/<script>.conf`
+
+Testing overrides:
+- `HOMELAB_SYSTEM_CONFIG`, `HOMELAB_USER_CONFIG` can be set to custom file paths.
+- Script environment prefixes (examples): `UPDATE_ALL_`, `DISK_CLEANUP_`, `SMART_CLEANUP_`.
+
+### JSON Contract (v1)
+
+Scripts with JSON output expose a stable top-level envelope:
+
+```json
+{
+  "script": "script-name",
+  "version": "x.y.z",
+  "timestamp": "ISO-8601",
+  "status": "success|warning|error|critical",
+  "duration_ms": 1234,
+  "errors": [],
+  "result": {}
+}
+```
+
+Legacy fields remain available for backward compatibility during migration.
+
 ---
 
 ## Dependencies

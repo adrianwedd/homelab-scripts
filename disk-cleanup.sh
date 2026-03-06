@@ -67,6 +67,7 @@ fi
 
 LOG_FILE="$LOG_DIR/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
 VERBOSE=false # Reserved for future verbose output feature
+SHOW_CONFIG=false
 SKIP_GIT_GC=false
 ROLLBACK_MODE=false
 ROLLBACK_MANIFEST=""
@@ -653,6 +654,7 @@ OPTIONS:
     --venv-min-gb GB    Minimum size in GB to consider (default: $VENV_MIN_GB)
     --docker-wait SECS  Wait up to SECS for Docker to start (default: $DOCKER_WAIT_SECS)
     --skip-docker       Skip Docker cleanup entirely
+    --show-config       Print effective config and exit
     --rollback <file>   View rollback info from manifest file
     -h, --help          Show this help message
 
@@ -679,6 +681,11 @@ EOF
 ################################################################################
 # Parse command line arguments
 ################################################################################
+# Config precedence: defaults < system < user < env < CLI
+load_script_config_chain "disk-cleanup"
+apply_env_overrides "DISK_CLEANUP_" \
+    DRY_RUN INTERACTIVE VERBOSE SKIP_GIT_GC FULL_GC SMART_GC GC_THRESHOLD_GB ENABLE_GAUGE SHOW_FUN_FACTS DOCKER_WAIT_SECS SKIP_DOCKER
+
 while [[ $# -gt 0 ]]; do
     case $1 in
     -d | --dry-run)
@@ -750,6 +757,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     --skip-docker)
         SKIP_DOCKER=true
+        shift
+        ;;
+    --show-config)
+        SHOW_CONFIG=true
         shift
         ;;
     --scan-venvs)
@@ -845,6 +856,21 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+if [ "$SHOW_CONFIG" = true ]; then
+    echo "DRY_RUN=$DRY_RUN"
+    echo "INTERACTIVE=$INTERACTIVE"
+    echo "VERBOSE=$VERBOSE"
+    echo "SKIP_GIT_GC=$SKIP_GIT_GC"
+    echo "FULL_GC=$FULL_GC"
+    echo "SMART_GC=$SMART_GC"
+    echo "GC_THRESHOLD_GB=$GC_THRESHOLD_GB"
+    echo "ENABLE_GAUGE=$ENABLE_GAUGE"
+    echo "SHOW_FUN_FACTS=$SHOW_FUN_FACTS"
+    echo "DOCKER_WAIT_SECS=$DOCKER_WAIT_SECS"
+    echo "SKIP_DOCKER=$SKIP_DOCKER"
+    exit 0
+fi
 
 ################################################################################
 # Rollback mode

@@ -130,6 +130,64 @@ ensure_docker_image() {
     return 0
 }
 
+# Load simple KEY=VALUE config files using deterministic precedence.
+# Precedence: defaults < system < user < env < CLI
+# Usage: load_script_config_chain "script-name"
+# Files loaded (if present):
+#   ${HOMELAB_SYSTEM_CONFIG:-/etc/homelab-scripts.conf}
+#   ${HOMELAB_SYSTEM_SCRIPT_CONFIG:-/etc/homelab-scripts/<script>.conf}
+#   ${HOMELAB_USER_CONFIG:-$HOME/.config/homelab-scripts/config.conf}
+#   ${HOMELAB_USER_SCRIPT_CONFIG:-$HOME/.config/homelab-scripts/<script>.conf}
+load_script_config_chain() {
+    local script_name="$1"
+    local system_config="${HOMELAB_SYSTEM_CONFIG:-/etc/homelab-scripts.conf}"
+    local system_script_config="${HOMELAB_SYSTEM_SCRIPT_CONFIG:-/etc/homelab-scripts/${script_name}.conf}"
+    local user_config="${HOMELAB_USER_CONFIG:-$HOME/.config/homelab-scripts/config.conf}"
+    local user_script_config="${HOMELAB_USER_SCRIPT_CONFIG:-$HOME/.config/homelab-scripts/${script_name}.conf}"
+
+    load_simple_config_file "$system_config"
+    load_simple_config_file "$system_script_config"
+    load_simple_config_file "$user_config"
+    load_simple_config_file "$user_script_config"
+}
+
+# Load a simple config file containing KEY=VALUE pairs.
+# Ignores blank lines and comment lines starting with '#'.
+load_simple_config_file() {
+    local config_file="$1"
+    [ -f "$config_file" ] || return 0
+
+    local line key value
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+        '' | [[:space:]]*'#'*) continue ;;
+        esac
+
+        if echo "$line" | grep -Eq '^[A-Z0-9_]+='; then
+            key="${line%%=*}"
+            value="${line#*=}"
+            # Strip optional surrounding double quotes.
+            value="${value#\"}"
+            value="${value%\"}"
+            printf -v "$key" '%s' "$value"
+        fi
+    done <"$config_file"
+}
+
+# Apply environment variable overrides with a fixed prefix.
+# Example: apply_env_overrides "UPDATE_ALL_" DRY_RUN AUTO_YES
+apply_env_overrides() {
+    local prefix="$1"
+    shift
+    local key env_name
+    for key in "$@"; do
+        env_name="${prefix}${key}"
+        if [ -n "${!env_name+x}" ]; then
+            printf -v "$key" '%s' "${!env_name}"
+        fi
+    done
+}
+
 # Acquire an exclusive lock using mkdir + PID file semantics.
 # Usage: acquire_lock "/path/to/lockfile" [stale_seconds]
 # Returns 0 when lock acquired, 1 if another active process holds it.

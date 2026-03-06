@@ -9,12 +9,18 @@
 
 set -u
 
-# Parse arguments
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
+# Defaults
 DRY_RUN=0
 AUTO_YES=0
-# Allow system-wide pip updates in externally managed envs (PEP 668)
-# Default: 0 (skip safely). Enable via --pip-system or ALLOW_PIP_SYSTEM=1
 ALLOW_PIP_SYSTEM=${ALLOW_PIP_SYSTEM:-0}
+SHOW_CONFIG=0
+
+# Config precedence: defaults < system < user < env < CLI
+load_script_config_chain "update-all"
+apply_env_overrides "UPDATE_ALL_" DRY_RUN AUTO_YES ALLOW_PIP_SYSTEM
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,6 +36,10 @@ while [[ $# -gt 0 ]]; do
         ALLOW_PIP_SYSTEM=1
         shift
         ;;
+    --show-config)
+        SHOW_CONFIG=1
+        shift
+        ;;
     --help | -h)
         echo "Usage: $0 [options]"
         echo ""
@@ -37,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         echo "  --dry-run      Show what would be updated without making changes"
         echo "  -y, --yes      Skip confirmation prompts"
         echo "  --pip-system   Allow system-wide pip updates (uses --break-system-packages)"
+        echo "  --show-config  Print effective config and exit"
         echo "  --help, -h     Show this help message"
         exit 0
         ;;
@@ -48,8 +59,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/lib/common.sh"
+if [ "$SHOW_CONFIG" -eq 1 ]; then
+    echo "DRY_RUN=$DRY_RUN"
+    echo "AUTO_YES=$AUTO_YES"
+    echo "ALLOW_PIP_SYSTEM=$ALLOW_PIP_SYSTEM"
+    exit 0
+fi
 
 # Colors
 RED='\033[0;31m'

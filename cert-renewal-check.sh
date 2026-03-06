@@ -26,6 +26,7 @@ if [ ! -d "$LOGS_DIR" ]; then
 fi
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RUN_START_TS=$(date +%s)
 LOG_FILE="$LOGS_DIR/cert_check_$TIMESTAMP.log"
 JSON_FILE="$LOGS_DIR/cert_check_$TIMESTAMP.json"
 
@@ -294,6 +295,29 @@ if [ "$DRY_RUN" = true ]; then
         done
     fi
 
+    if [ "$OUTPUT_JSON" = true ]; then
+        local_domains_count=0
+        if [ -n "$DOMAINS_FILE" ] && [ -f "$DOMAINS_FILE" ]; then
+            local_domains_count=$(grep -cvE '^\s*($|#)' "$DOMAINS_FILE" 2>/dev/null || echo 0)
+        fi
+        DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+        cat >"$JSON_FILE" <<EOF
+{
+  "script": "cert-renewal-check",
+  "version": "1.1.0",
+  "timestamp": "$(date -Iseconds)",
+  "status": "success",
+  "duration_ms": $DURATION_MS,
+  "errors": [],
+  "result": {"dry_run": true, "domains_count": $local_domains_count, "cert_files_count": ${#CERT_FILES[@]}},
+  "warn_days": $WARN_DAYS,
+  "certificates": []
+}
+EOF
+        print_success "JSON output saved to: $JSON_FILE"
+        cat "$JSON_FILE"
+    fi
+
     exit 0
 fi
 
@@ -324,8 +348,15 @@ fi
 # Output results
 if [ "$OUTPUT_JSON" = true ]; then
     # JSON output
+    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
     echo "{" >"$JSON_FILE"
+    echo "  \"script\": \"cert-renewal-check\"," >>"$JSON_FILE"
+    echo "  \"version\": \"1.1.0\"," >>"$JSON_FILE"
     echo "  \"timestamp\": \"$(date -Iseconds)\"," >>"$JSON_FILE"
+    echo "  \"status\": \"success\"," >>"$JSON_FILE"
+    echo "  \"duration_ms\": $DURATION_MS," >>"$JSON_FILE"
+    echo "  \"errors\": []," >>"$JSON_FILE"
+    echo "  \"result\": {\"warn_days\": $WARN_DAYS, \"checked\": ${#results[@]}}," >>"$JSON_FILE"
     echo "  \"warn_days\": $WARN_DAYS," >>"$JSON_FILE"
     echo "  \"certificates\": [" >>"$JSON_FILE"
 
