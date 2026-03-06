@@ -129,3 +129,63 @@ ensure_docker_image() {
     fi
     return 0
 }
+
+# Acquire an exclusive lock using mkdir + PID file semantics.
+# Usage: acquire_lock "/path/to/lockfile" [stale_seconds]
+# Returns 0 when lock acquired, 1 if another active process holds it.
+acquire_lock() {
+    local lock_path="$1"
+    local stale_seconds="${2:-86400}"
+    local lock_dir="${lock_path}.d"
+    local pid_file="${lock_dir}/pid"
+    local now_epoch
+    now_epoch=$(date +%s)
+
+    mkdir -p "$(dirname "$lock_path")" 2>/dev/null || true
+
+    if mkdir "$lock_dir" 2>/dev/null; then
+        printf "%s\n" "$$" >"$pid_file"
+        chmod 600 "$pid_file" 2>/dev/null || true
+        return 0
+    fi
+
+    local existing_pid=""
+    if [ -f "$pid_file" ]; then
+        existing_pid=$(cat "$pid_file" 2>/dev/null || echo "")
+    fi
+
+    # Live process holds lock.
+    if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+        return 1
+    fi
+
+    # Stale lock recovery (missing pid or dead process and old lock dir).
+    if [ -d "$lock_dir" ]; then
+        local mtime=0
+        if stat -f %m "$lock_dir" >/dev/null 2>&1; then
+            mtime=$(stat -f %m "$lock_dir" 2>/dev/null || echo "0")
+        elif stat -c %Y "$lock_dir" >/dev/null 2>&1; then
+            mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || echo "0")
+        fi
+        if [ $((now_epoch - mtime)) -ge "$stale_seconds" ]; then
+            rm -rf "$lock_dir" 2>/dev/null || true
+            if mkdir "$lock_dir" 2>/dev/null; then
+                printf "%s\n" "$$" >"$pid_file"
+                chmod 600 "$pid_file" 2>/dev/null || true
+                return 0
+            fi
+        fi
+    fi
+
+    return 1
+}
+
+# Release a previously acquired lock.
+# Usage: release_lock "/path/to/lockfile"
+release_lock() {
+    local lock_path="$1"
+    local lock_dir="${lock_path}.d"
+    if [ -d "$lock_dir" ]; then
+        rm -rf "$lock_dir" 2>/dev/null || true
+    fi
+}

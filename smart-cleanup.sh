@@ -107,15 +107,26 @@ DIM='\033[2m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
 CLEANUP_SCRIPT="$SCRIPT_DIR/disk-cleanup.sh"
 LOGS_DIR="$SCRIPT_DIR/logs"
 TEMP_LOG="$LOGS_DIR/smart_cleanup_$$.log"
+LOCK_FILE="$LOGS_DIR/.locks/smart-cleanup.lock"
 
 # Create logs directory if it doesn't exist
 mkdir -p "$LOGS_DIR"
 
-# Cleanup temp file on exit
-trap 'rm -f "$TEMP_LOG"' EXIT
+if ! acquire_lock "$LOCK_FILE" 86400; then
+    echo -e "${YELLOW}⚠${NC} Another smart-cleanup run is already active (lock: $LOCK_FILE)"
+    exit 3
+fi
+
+# Cleanup temp file and lock on exit
+cleanup_on_exit() {
+    rm -f "$TEMP_LOG"
+    release_lock "$LOCK_FILE"
+}
+trap cleanup_on_exit EXIT INT TERM
 
 if [ ! -f "$CLEANUP_SCRIPT" ]; then
     echo -e "${RED}✗${NC} Cleanup script not found: $CLEANUP_SCRIPT"

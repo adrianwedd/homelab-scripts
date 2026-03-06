@@ -49,7 +49,9 @@ NC='\033[0m' # No Color
 DRY_RUN=false
 INTERACTIVE=true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
 LOG_DIR="$SCRIPT_DIR/logs"
+LOCK_FILE="$LOG_DIR/.locks/disk-cleanup.lock"
 
 # Security: Set secure umask for log files (owner read/write only)
 umask 077
@@ -57,6 +59,11 @@ umask 077
 # Create logs directory with secure permissions
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 chmod 700 "$LOG_DIR" 2>/dev/null || true
+
+if ! acquire_lock "$LOCK_FILE" 86400; then
+    echo "Another disk-cleanup run is already active (lock: $LOCK_FILE)."
+    exit 3
+fi
 
 LOG_FILE="$LOG_DIR/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
 VERBOSE=false # Reserved for future verbose output feature
@@ -118,6 +125,7 @@ declare -a MANIFEST_OPERATIONS
 
 # Cleanup on exit
 cleanup_on_exit() {
+    release_lock "$LOCK_FILE"
     if [ -f "$LOG_FILE" ]; then
         print_info "Full log saved to: $LOG_FILE"
     fi

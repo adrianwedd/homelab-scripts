@@ -48,6 +48,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -72,10 +75,10 @@ if [ ! -t 1 ]; then
     NC=''
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOGS_DIR="$SCRIPT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="$LOGS_DIR/update_${TIMESTAMP}.log"
+LOCK_FILE="$LOGS_DIR/.locks/update-all.lock"
 
 # Ensure new log files default to 600.
 umask 077
@@ -83,6 +86,15 @@ umask 077
 # Create logs directory
 mkdir -p "$LOGS_DIR"
 chmod 700 "$LOGS_DIR" 2>/dev/null || true
+
+if ! acquire_lock "$LOCK_FILE" 86400; then
+    echo "Another update-all run is already active (lock: $LOCK_FILE)."
+    exit 3
+fi
+cleanup_on_exit() {
+    release_lock "$LOCK_FILE"
+}
+trap cleanup_on_exit EXIT INT TERM
 
 # Clear screen (interactive only)
 [ -t 1 ] && clear
