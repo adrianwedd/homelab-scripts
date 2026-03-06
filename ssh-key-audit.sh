@@ -437,18 +437,18 @@ calculate_risk_score() {
         ssh-dir-perms:*)
             local perms="${issue#ssh-dir-perms:}"
             target_score=$((target_score + SSH_AUDIT_RISK_SSH_DIR_PERMS))
-            local desc="${RISK_DESCRIPTIONS[ssh - dir - perms]} (perms: $perms)"
+            local desc="${RISK_DESCRIPTIONS["ssh-dir-perms"]} (perms: $perms)"
             risk_factors+=("{\"type\": \"target\", \"factor\": \"ssh-dir-perms\", \"weight\": $SSH_AUDIT_RISK_SSH_DIR_PERMS, \"description\": \"$(json_escape "$desc")\"}")
             ;;
         auth-keys-perms:*)
             local perms="${issue#auth-keys-perms:}"
             target_score=$((target_score + SSH_AUDIT_RISK_AUTH_KEYS_PERMS))
-            local desc="${RISK_DESCRIPTIONS[auth - keys - perms]} (perms: $perms)"
+            local desc="${RISK_DESCRIPTIONS["auth-keys-perms"]} (perms: $perms)"
             risk_factors+=("{\"type\": \"target\", \"factor\": \"auth-keys-perms\", \"weight\": $SSH_AUDIT_RISK_AUTH_KEYS_PERMS, \"description\": \"$(json_escape "$desc")\"}")
             ;;
         auth-keys-missing)
             target_score=$((target_score + SSH_AUDIT_RISK_AUTH_KEYS_MISSING))
-            risk_factors+=("{\"type\": \"target\", \"factor\": \"auth-keys-missing\", \"weight\": $SSH_AUDIT_RISK_AUTH_KEYS_MISSING, \"description\": \"$(json_escape "${RISK_DESCRIPTIONS[auth - keys - missing]}")\"}")
+            risk_factors+=("{\"type\": \"target\", \"factor\": \"auth-keys-missing\", \"weight\": $SSH_AUDIT_RISK_AUTH_KEYS_MISSING, \"description\": \"$(json_escape "${RISK_DESCRIPTIONS["auth-keys-missing"]}")\"}")
             ;;
         esac
     done
@@ -486,19 +486,19 @@ calculate_risk_score() {
             unsafe-options:*)
                 key_score=$((key_score + SSH_AUDIT_RISK_UNSAFE_OPTIONS))
                 local opts="${issue#unsafe-options:}"
-                local desc="${RISK_DESCRIPTIONS[unsafe - options]} ($opts)"
+                local desc="${RISK_DESCRIPTIONS["unsafe-options"]} ($opts)"
                 risk_factors+=("{\"type\": \"key\", \"key_index\": $key_index, \"factor\": \"unsafe-options\", \"weight\": $SSH_AUDIT_RISK_UNSAFE_OPTIONS, \"description\": \"$(json_escape "$desc")\"}")
                 ;;
             duplicate:*)
                 key_score=$((key_score + SSH_AUDIT_RISK_DUPLICATE))
                 local count="${issue#duplicate:}"
-                local desc="${RISK_DESCRIPTIONS[duplicate]} (found on $count targets)"
+                local desc="${RISK_DESCRIPTIONS["duplicate"]} (found on $count targets)"
                 risk_factors+=("{\"type\": \"key\", \"key_index\": $key_index, \"factor\": \"duplicate\", \"weight\": $SSH_AUDIT_RISK_DUPLICATE, \"description\": \"$(json_escape "$desc")\"}")
                 ;;
             stale:*)
                 local age_days="${issue#stale:}"
                 local stale_weight=0
-                local desc="${RISK_DESCRIPTIONS[stale]}"
+                local desc="${RISK_DESCRIPTIONS["stale"]}"
 
                 # Use >= threshold logic (non-additive)
                 if [ "$age_days" -ge 365 ]; then

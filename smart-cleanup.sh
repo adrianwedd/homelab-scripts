@@ -138,7 +138,9 @@ TEMP_LOG="$LOGS_DIR/smart_cleanup_$$.log"
 LOCK_FILE="$LOGS_DIR/.locks/smart-cleanup.lock"
 
 # Create logs directory if it doesn't exist
+umask 077
 mkdir -p "$LOGS_DIR"
+chmod 700 "$LOGS_DIR" 2>/dev/null || true
 
 if ! acquire_lock "$LOCK_FILE" 86400; then
     echo -e "${YELLOW}⚠${NC} Another smart-cleanup run is already active (lock: $LOCK_FILE)"
@@ -292,6 +294,10 @@ show_progress_bar() {
 
 # Interactive menu for cleanup selection
 show_interactive_menu() {
+    # local -n (nameref) requires Bash 4.3+
+    if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 3 ]; }; then
+        return 1 # Fall back to simple mode
+    fi
     local -n items=$1 # Array of items: "name|size|time|selected"
 
     # Check if terminal supports interactive mode

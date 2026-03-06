@@ -161,9 +161,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Setup logging
+umask 077
 mkdir -p "$LOG_DIR" && chmod 700 "$LOG_DIR" || true
 mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR" || true
-umask 077
 
 # Start logging
 {

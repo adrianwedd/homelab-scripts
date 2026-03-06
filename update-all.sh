@@ -22,6 +22,11 @@ SHOW_CONFIG=0
 load_script_config_chain "update-all"
 apply_env_overrides "UPDATE_ALL_" DRY_RUN AUTO_YES ALLOW_PIP_SYSTEM
 
+# Normalize string booleans from config/env to integers
+case "$DRY_RUN" in true | TRUE | yes | YES) DRY_RUN=1 ;; false | FALSE | no | NO) DRY_RUN=0 ;; esac
+case "$AUTO_YES" in true | TRUE | yes | YES) AUTO_YES=1 ;; false | FALSE | no | NO) AUTO_YES=0 ;; esac
+case "$ALLOW_PIP_SYSTEM" in true | TRUE | yes | YES) ALLOW_PIP_SYSTEM=1 ;; false | FALSE | no | NO) ALLOW_PIP_SYSTEM=0 ;; esac
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
     --dry-run)

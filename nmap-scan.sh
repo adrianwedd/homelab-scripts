@@ -333,13 +333,12 @@ print_info "JSON output: $JSON_FILE"
 # Build nmap command
 build_nmap_cmd() {
     local cidr="$1"
-    local cmd="nmap"
-    local needs_root=false
+    NMAP_CMD=(nmap)
 
     # Scan mode - adapt based on root privileges
     if [ "$SCAN_MODE" = "fast" ]; then
         # Fast mode: host discovery + quick TCP scan on common ports
-        cmd="$cmd -sn -PS22,80,443" # Ping scan + TCP SYN to common ports
+        NMAP_CMD+=(-sn "-PS22,80,443") # Ping scan + TCP SYN to common ports
         if ! is_root; then
             # Non-root: -sn doesn't require root, but -PS does
             # Fall back to -sT (TCP connect) for port scanning
@@ -349,32 +348,28 @@ build_nmap_cmd() {
     else
         # Full mode: comprehensive TCP scan
         if is_root; then
-            cmd="$cmd -sS" # TCP SYN scan (fast, requires root)
+            NMAP_CMD+=(-sS) # TCP SYN scan (fast, requires root)
         else
-            cmd="$cmd -sT" # TCP connect scan (slower, works without root)
+            NMAP_CMD+=(-sT) # TCP connect scan (slower, works without root)
             print_warning "Running as non-root: using TCP connect scan (-sT)"
             print_info "SYN scan (-sS) requires root privileges. For faster scans, run with sudo"
         fi
-        cmd="$cmd -p 1-1000" # Top 1000 ports (not all 65535)
+        NMAP_CMD+=(-p 1-1000) # Top 1000 ports (not all 65535)
     fi
 
     # Rate limiting (applies to all modes)
-    cmd="$cmd --max-rate $RATE_LIMIT"
+    NMAP_CMD+=(--max-rate "$RATE_LIMIT")
 
     # Output format
-    cmd="$cmd -oX -" # XML output to stdout
+    NMAP_CMD+=(-oX -) # XML output to stdout
 
     # Add CIDR
-    cmd="$cmd $cidr"
+    NMAP_CMD+=("$cidr")
 
     # Exclusions
     if [ -n "$EXCLUDE_LIST" ]; then
-        # Convert comma-separated list to space-separated for --exclude
-        local excludes=$(echo "$EXCLUDE_LIST" | tr ',' ' ')
-        cmd="$cmd --exclude $excludes"
+        NMAP_CMD+=(--exclude "$EXCLUDE_LIST")
     fi
-
-    echo "$cmd"
 }
 
 if [ "$DRY_RUN" = true ]; then
@@ -389,8 +384,8 @@ if [ "$DRY_RUN" = true ]; then
         # Trim leading/trailing whitespace (pure bash)
         cidr="${cidr#"${cidr%%[![:space:]]*}"}"
         cidr="${cidr%"${cidr##*[![:space:]]}"}"
-        nmap_cmd=$(build_nmap_cmd "$cidr")
-        echo "  $nmap_cmd"
+        build_nmap_cmd "$cidr"
+        echo "  ${NMAP_CMD[*]}"
     done
     echo ""
 
@@ -501,10 +496,10 @@ for cidr in "${CIDR_ARRAY[@]}"; do
     cidr="${cidr%"${cidr##*[![:space:]]}"}"
     print_info "Scanning $cidr..."
 
-    nmap_cmd=$(build_nmap_cmd "$cidr")
-    print_info "Command: $nmap_cmd"
+    build_nmap_cmd "$cidr"
+    print_info "Command: ${NMAP_CMD[*]}"
 
-    if ! eval "$nmap_cmd" >>"$temp_xml" 2>>"$LOG_FILE"; then
+    if ! "${NMAP_CMD[@]}" >>"$temp_xml" 2>>"$LOG_FILE"; then
         print_error "Scan failed for $cidr"
         continue
     fi
@@ -516,14 +511,11 @@ done
 print_info "Parsing results..."
 parse_nmap_xml <"$temp_xml" >"$JSON_FILE"
 
-# Update latest symlink
-ln -sf "$(basename "$JSON_FILE")" "$LATEST_LINK"
-
 # Count hosts
 host_count=$(grep -c '"ip":' "$JSON_FILE" || echo 0)
 print_success "Found $host_count active host(s)"
 
-# Delta tracking
+# Delta tracking (must run before updating latest symlink)
 if [ "$DO_DELTA" = true ] && [ -f "$LATEST_LINK" ]; then
     prev_file=$(readlink "$LATEST_LINK" 2>/dev/null)
     if [ -n "$prev_file" ] && [ -f "$LOGS_DIR/$prev_file" ] && [ "$LOGS_DIR/$prev_file" != "$JSON_FILE" ]; then
@@ -558,6 +550,9 @@ if [ "$DO_DELTA" = true ] && [ -f "$LATEST_LINK" ]; then
         print_info "No previous scan found for delta comparison"
     fi
 fi
+
+# Update latest symlink (after delta comparison)
+ln -sf "$(basename "$JSON_FILE")" "$LATEST_LINK"
 
 # Output results
 if [[ "$OUTPUT_MODE" =~ ^(table|both)$ ]]; then

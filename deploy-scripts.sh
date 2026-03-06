@@ -114,7 +114,7 @@ sync_rsync() {
         return 0
     fi
     rsync -az --delete \
-        --rsync-path="mkdir -p $REMOTE_PATH && rsync" \
+        --rsync-path="mkdir -p '$REMOTE_PATH' && rsync" \
         --exclude '.git/' --exclude 'logs/' --exclude '.claude/' \
         "$SCRIPT_DIR/" "$host":"$REMOTE_PATH/"
 }

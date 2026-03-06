@@ -101,7 +101,7 @@ validate_output_dir() {
     done
 
     # Require path to be under $HOME or relative
-    if [[ "$canonical" != "$HOME"* ]] && [[ "$canonical" != "."* ]] && [[ "$canonical" != "./"* ]]; then
+    if [[ "$canonical" != "$HOME" && "$canonical" != "$HOME/"* ]] && [[ "$canonical" != "."* ]] && [[ "$canonical" != "./"* ]]; then
         echo "Error: Output directory must be under \$HOME for safety" >&2
         echo "       Provided: $canonical" >&2
         echo "       Required: Under $HOME" >&2

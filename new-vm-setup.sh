@@ -607,7 +607,11 @@ if [ -n "$USERNAME" ]; then
     if [ -n "$SSH_KEY" ]; then
         print_section "SSH Key Setup"
 
-        USER_HOME=$(eval echo "~$USERNAME")
+        USER_HOME=$(getent passwd "$USERNAME" 2>/dev/null | cut -d: -f6)
+        if [ -z "$USER_HOME" ]; then
+            USER_HOME="/home/$USERNAME"
+            print_warning "Could not resolve home for $USERNAME, assuming $USER_HOME"
+        fi
         SSH_DIR="$USER_HOME/.ssh"
         AUTH_KEYS="$SSH_DIR/authorized_keys"
 
@@ -711,7 +715,11 @@ if [ -n "$DOTFILES_URL" ] && [ "$NO_DOTFILES" = false ]; then
     if ! command -v git >/dev/null 2>&1; then
         print_warning "git not found. Install git to clone dotfiles."
     else
-        USER_HOME=$(eval echo "~$USERNAME")
+        USER_HOME=$(getent passwd "$USERNAME" 2>/dev/null | cut -d: -f6)
+        if [ -z "$USER_HOME" ]; then
+            USER_HOME="/home/$USERNAME"
+            print_warning "Could not resolve home for $USERNAME, assuming $USER_HOME"
+        fi
         DOTFILES_DIR="$USER_HOME/dotfiles"
 
         if [ -d "$DOTFILES_DIR" ]; then

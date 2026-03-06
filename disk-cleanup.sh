@@ -531,7 +531,7 @@ safe_remove() {
 
     print_info "Removing: $dir ($size_human)"
 
-    if rm -rf "$dir" 2>/dev/null || true; then
+    if rm -rf "$dir" 2>/dev/null; then
         local freed=$(track_freed_space "$size_before" 0)
         print_success "Removed $desc: $(bytes_to_human $freed) freed"
         return 0

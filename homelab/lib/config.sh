@@ -19,7 +19,7 @@ set_script_path() {
     local script_path="$2"
     # Convert script-name.sh to SCRIPT_NAME_SH
     local var_name="HOMELAB_SCRIPT_$(echo "$script_name" | tr '[:lower:]' '[:upper:]' | sed 's/[.-]/_/g')"
-    eval "$var_name=\"$script_path\""
+    printf -v "$var_name" '%s' "$script_path"
 }
 
 # Default configuration values

@@ -652,8 +652,12 @@ if ! backup_path=$(perform_backup "$BACKUP_FILE"); then
     exit 1
 fi
 
-# Apply retention
-apply_retention "$OUTPUT_DIR"
+# Apply retention (requires Bash 4+ for associative arrays)
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    print_warning "Retention policy requires Bash 4+ (current: $BASH_VERSION). Skipping retention."
+else
+    apply_retention "$OUTPUT_DIR"
+fi
 
 # Upload to rclone if specified
 if [ -n "$RCLONE_REMOTE" ]; then

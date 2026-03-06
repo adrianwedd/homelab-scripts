@@ -193,7 +193,7 @@ format_notification_slack() {
 
     # Build fields array
     local fields='['
-    fields="${fields}{\"title\":\"Duration\",\"value\":\"${duration}\",\"short\":true},"
+    fields="${fields}{\"title\":\"Duration\",\"value\":\"$(json_escape "$duration")\",\"short\":true},"
     fields="${fields}{\"title\":\"Steps\",\"value\":\"${completed}/${total}\",\"short\":true},"
 
     if [ -n "$skipped" ] && [ "$skipped" != "0" ]; then
@@ -203,22 +203,22 @@ format_notification_slack() {
 
     if [ -n "$failed" ] && [ "$failed" != "0" ]; then
         local failed_list=$(echo "$failed" | tr ',' '\n' | sed 's/^/• /' | tr '\n' '\\n')
-        fields="${fields}{\"title\":\"Failed Steps\",\"value\":\"${failed_list}\",\"short\":false},"
+        fields="${fields}{\"title\":\"Failed Steps\",\"value\":\"$(json_escape "$failed_list")\",\"short\":false},"
     fi
 
-    fields="${fields}{\"title\":\"Host\",\"value\":\"${hostname}\",\"short\":true}"
+    fields="${fields}{\"title\":\"Host\",\"value\":\"$(json_escape "$hostname")\",\"short\":true}"
     fields="${fields}]"
 
     # Build Slack payload (log_file already redacted if HOMELAB_NOTIFY_REDACT_PATHS=true)
     local payload=$(
         cat <<EOF
 {
-  "username": "${HOMELAB_NOTIFY_SLACK_USERNAME:-homelab-bot}",
+  "username": "$(json_escape "${HOMELAB_NOTIFY_SLACK_USERNAME:-homelab-bot}")",
   "icon_emoji": ":robot_face:",
   "attachments": [
     {
       "color": "${color}",
-      "title": "${title}",
+      "title": "$(json_escape "$title")",
       "fields": ${fields},
       "footer": "homelab",
       "footer_icon": "https://api.slack.com/img/blocks/bkb_template_images/placeholder.png",
@@ -335,18 +335,18 @@ send_notification_webhook() {
     local payload=$(
         cat <<EOF
 {
-  "workflow": "${workflow}",
-  "status": "${status}",
-  "hostname": "${hostname}",
-  "timestamp": "${timestamp}",
-  "duration": "${duration}",
+  "workflow": "$(json_escape "$workflow")",
+  "status": "$(json_escape "$status")",
+  "hostname": "$(json_escape "$hostname")",
+  "timestamp": "$(json_escape "$timestamp")",
+  "duration": "$(json_escape "$duration")",
   "steps": {
     "completed": ${completed},
     "total": ${total},
     "failed": ${failed_json},
     "skipped": ${skipped_json}
   },
-  "log_file": "${log_file}"
+  "log_file": "$(json_escape "$log_file")"
 }
 EOF
     )
