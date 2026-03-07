@@ -265,6 +265,16 @@ build_rclone_args() {
 # Function to perform dry run
 dry_run() {
     print_section "Performing Dry Run"
+
+    if ! rclone listremotes 2>/dev/null | grep -q "^${REMOTE_NAME}:$"; then
+        print_warning "rclone remote '${REMOTE_NAME}' is not configured — showing config only"
+        print_info "  Source:      $SOURCE_DIR"
+        print_info "  Destination: ${REMOTE_NAME}:${REMOTE_PATH}"
+        print_info "Configure with: rclone config"
+        print_info "Or set REMOTE_NAME environment variable to your remote name"
+        return 0
+    fi
+
     print_info "Checking what would be synced..."
     print_info "This may take a few minutes..."
     echo ""
@@ -566,7 +576,6 @@ case "${1:-}" in
     ;;
 --dry-run)
     check_rclone
-    check_remote
     check_source
     create_default_excludes
     dry_run

@@ -1,1619 +1,1151 @@
-# System Maintenance Scripts
+# Homelab Scripts
 
-Automated scripts for system cleanup and backup operations.
+A production-grade collection of Bash automation scripts for Linux/macOS homelab and server maintenance — covering disk cleanup, monitoring, backups, deployment, security auditing, and network discovery.
+
+All scripts follow a consistent design philosophy: safe defaults, `--dry-run` before you commit, JSON output for integrations, and comprehensive logging.
 
 ---
 
-## Scripts
+## Contents
 
-### 1. `disk-cleanup.sh`
+- [Quick Start](#quick-start)
+- [Script Reference](#script-reference)
+  - [Disk & System Cleanup](#disk--system-cleanup)
+  - [Monitoring & Health](#monitoring--health)
+  - [Backup & Sync](#backup--sync)
+  - [Infrastructure & Deployment](#infrastructure--deployment)
+  - [Security & Audit](#security--audit)
+  - [Development & QA](#development--qa)
+- [Common Patterns](#common-patterns)
+- [Cron Integration](#cron-integration)
+- [Security Model](#security-model)
+- [Troubleshooting](#troubleshooting)
 
-Comprehensive system cleanup script that frees up disk space by cleaning caches and unused files.
+---
 
-#### What it cleans:
-
-- **VS Code** - Cached extensions, user data, workspace storage
-- **Docker** - Unused containers, images, volumes, and build cache
-- **Git** - Runs `git gc --aggressive --prune=now` on all repositories
-- **Homebrew** - Old formula versions and download cache
-- **NPM** - Package cache
-- **Playwright** - Browser binaries (Chromium, Firefox, WebKit)
-- **pnpm** - Unreferenced packages from store
-- **pip/Python** - Package cache and wheels
-- **AWS CLI** - CLI cache and temporary files
-
-#### Usage:
+## Quick Start
 
 ```bash
-# Interactive cleanup with confirmations (default)
+# Clone and enter
+git clone https://github.com/adrianwedd/homelab-scripts.git
+cd homelab-scripts
+chmod +x *.sh
+
+# Always dry-run first
+./disk-cleanup.sh --dry-run --no-gauge --no-fun
+
+# Then run for real
+./disk-cleanup.sh -y --skip-docker --no-gauge --no-fun
+```
+
+Every script supports `--help` and `--dry-run`. Run those first.
+
+---
+
+## Script Reference
+
+### Disk & System Cleanup
+
+---
+
+#### `disk-cleanup.sh`
+
+The main cleanup workhorse. Removes caches and generated files across VS Code, Docker, Git, Homebrew, NPM, pnpm, pip, and Python virtualenvs.
+
+**What it touches:**
+
+| Target | What's removed |
+|--------|----------------|
+| VS Code | Extension cache, user data, workspace storage |
+| Docker | Unused containers, images, volumes, build cache |
+| Git | Runs `git gc` on repos in `~/repos` |
+| Homebrew | Old formula versions, download cache |
+| NPM | Package cache |
+| Playwright | Browser binaries |
+| pnpm | Unreferenced store packages |
+| pip/Python | Wheel cache |
+| AWS CLI | CLI cache |
+| Virtualenvs | Stale `.venv` / `venv` directories (opt-in) |
+
+**Usage:**
+
+```bash
+# Preview — always run this first
+./disk-cleanup.sh --dry-run --no-gauge --no-fun
+
+# Interactive cleanup (asks before each section)
 ./disk-cleanup.sh
 
-# Preview what would be cleaned (dry run)
-./disk-cleanup.sh --dry-run
+# Non-interactive (for cron/automation)
+./disk-cleanup.sh -y --skip-docker --no-gauge --no-fun
 
-# Non-interactive cleanup (auto-confirm all)
-./disk-cleanup.sh -y
+# Quick cleanup — skip slow git gc
+./disk-cleanup.sh -y --skip-git-gc --no-gauge
 
-# Quick cleanup, skip slow git gc
-./disk-cleanup.sh -y --skip-git-gc
+# Deep git gc — only repos with large packs
+./disk-cleanup.sh --smart-gc --gc-threshold 2
 
-# Emit a machine-readable JSON summary alongside the log
-./disk-cleanup.sh --dry-run --json
+# Force git gc on everything
+./disk-cleanup.sh --full-gc -y
 
-# Show help
-./disk-cleanup.sh --help
+# Virtualenv management
+./disk-cleanup.sh --scan-venvs                         # Report sizes/ages only
+./disk-cleanup.sh --clean-venvs --venv-age 60 --venv-min-gb 1  # Remove stale ones
+
+# Machine-readable output
+./disk-cleanup.sh -y --json --no-gauge --no-fun
 ```
 
-#### Features:
+**Key flags:**
 
-- **Dry run mode** - Preview cleanup without making changes
-- **Interactive confirmations** - Review each cleanup operation before proceeding
-- **Non-interactive mode** - Automated cleanup for scripts/cron jobs
-- **Accurate space tracking** - Precise byte-level calculation of freed space
-- **Complete logging** - All operations logged under `./logs/`
-- **JSON summary (optional)** - `--json` writes `./logs/disk_cleanup_summary_YYYYMMDD_HHMMSS.json`
-- **Safe error handling** - Continues cleanup even if individual operations fail
-- **Progress tracking** - Shows current/total for multi-repository operations
-- **Live disk gauge** - Optional real-time header with disk usage, freed space, elapsed time
-- **Desktop notifications** - macOS/Linux notifications at completion
-- **Color-coded output** - Easy-to-read status indicators
-- **Timeout protection** - 30-minute timeout for git gc operations
-- **Cross-platform** - Works on macOS and Linux
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dry-run` / `-d` | off | Preview only, no changes |
+| `--yes` / `-y` | off | Skip all confirmations |
+| `--skip-docker` | off | Skip Docker (use in headless/cron) |
+| `--skip-git-gc` | off | Skip git gc entirely |
+| `--smart-gc` | on | Only gc repos with large/old packs |
+| `--full-gc` | off | Force gc on all repos |
+| `--gc-threshold GB` | 1 | Minimum pack size to trigger gc |
+| `--no-gauge` | auto | Disable live disk gauge (auto off in non-TTY) |
+| `--no-fun` | off | Disable fun facts between sections |
+| `--scan-venvs` | off | Scan and report virtualenv sizes |
+| `--clean-venvs` | off | Remove stale virtualenvs |
+| `--venv-age DAYS` | 30 | Min age threshold for venv removal |
+| `--venv-min-gb GB` | 0.5 | Min size threshold for venv removal |
+| `--docker-wait SECS` | 60 | Seconds to wait for Docker to start |
+| `--json` | off | Write JSON summary to `logs/` |
 
-#### Command Line Options:
+**Bounds validation:**
 
-| Option | Description |
-|--------|-------------|
-| `-d, --dry-run` | Preview cleanup without making changes |
-| `-y, --yes` | Skip confirmation prompts (non-interactive) |
-| `-v, --verbose` | Show detailed output |
-| `--skip-git-gc` | Skip git garbage collection (faster) |
-| `--smart-gc` | Enable smart git gc (default) |
-| `--full-gc` | Force git gc on all repositories |
-| `--gc-threshold <GB>` | Smart GC: minimum pack size to run (default: 1) |
-| `--gauge` / `--no-gauge` | Enable/disable live disk gauge |
-| `--no-fun` | Disable fun facts between sections |
-| `--docker-wait <SECS>` | Wait up to SECS for Docker to start (default: 60) |
-| `--skip-docker` | Skip Docker cleanup entirely |
-| `--scan-venvs` | Scan and report Python virtualenv sizes/ages |
-| `--clean-venvs` | Remove stale virtualenvs (size/age thresholds) |
-| `--venv-roots <PATHS>` | Colon-separated roots to scan (e.g., `$HOME/repos:$HOME/projects`) |
-| `--venv-age <DAYS>` | Minimum age in days to consider stale (default: 30) |
-| `--venv-min-gb <GB>` | Minimum venv size in GB to consider (default: 0.5) |
-| `-h, --help` | Show help message |
+| Parameter | Valid range |
+|-----------|-------------|
+| `--gc-threshold` | 0.1 – 1000 GB |
+| `--venv-age` | 1 – 3650 days |
+| `--venv-min-gb` | 0.01 – 100 GB |
 
-#### Expected Results:
+**Logs:** `logs/disk_cleanup_YYYYMMDD_HHMMSS.log` (mode 600)
 
-Typical cleanup frees 5-10GB depending on your system usage. Dry run mode shows exact amounts before proceeding.
+> **Safety:** Never removes source code or configs. Active virtualenvs are always skipped. System directories (`/usr`, `/etc`, `/var`, `/bin`, `/sbin`) are blocked from venv root scanning.
 
 ---
 
-### 2. `rclone-sync.sh`
+#### `smart-cleanup.sh`
 
-Intelligent backup script that syncs your repositories to Google Drive while excluding dependencies and generated files.
-
-#### What it syncs:
-
-✅ **Included:**
-- Source code files (`.js`, `.ts`, `.py`, `.go`, etc.)
-- Configuration files (`package.json`, `requirements.txt`, etc.)
-- Documentation (`.md`, `.txt`, etc.)
-- Assets (images, fonts, etc.)
-- Build and CI/CD configurations
-
-❌ **Excluded:**
-- `.git/**` - Git history (clone from remote instead)
-- `node_modules/**` - Node.js dependencies (reinstall with `npm install`)
-- `**/.venv/**`, `**/venv/**` - Python virtual environments
-- `**/*.pyc`, `__pycache__/**` - Python compiled files
-- `.cache/**` - Cache directories
-- `.DS_Store` - macOS metadata
-- `*.tmp` - Temporary files
-
-#### Usage:
+An interactive wrapper around `disk-cleanup.sh` with a menu UI and before/after disk comparison. Runs a dry-run analysis first, then lets you choose what to clean.
 
 ```bash
-# Start sync (runs in background)
-./rclone-sync.sh --start
-# or simply
-./rclone-sync.sh
+# Check what can be cleaned, then exit
+./smart-cleanup.sh --status
 
-# Check status with CPU/memory usage
-./rclone-sync.sh --status
+# Run quick cleanup (skip git gc)
+./smart-cleanup.sh --auto-best
 
-# Stop sync (graceful shutdown)
-./rclone-sync.sh --stop
+# Run full cleanup (include git gc)
+./smart-cleanup.sh --auto-full
 
-# Preview what will be synced (dry run)
-./rclone-sync.sh --dry-run
+# Use a named profile
+./smart-cleanup.sh --profile emergency    # Docker only, ~30 sec
+./smart-cleanup.sh --profile quick        # Caches, ~2-3 min
+./smart-cleanup.sh --profile thorough     # Everything, ~3-6 hrs
 
-# View logs
-./rclone-sync.sh --logs      # Last 50 lines
-./rclone-sync.sh --logs 100  # Last 100 lines
-
-# Manage exclude file
-./rclone-sync.sh --create-exclude  # Create default exclude file
-./rclone-sync.sh --edit-exclude    # Edit exclusions
-
-# Show help
-./rclone-sync.sh --help
+# Virtualenv options (passed through to disk-cleanup.sh)
+./smart-cleanup.sh --scan-venvs
+./smart-cleanup.sh --clean-venvs --venv-age 60
 ```
 
-#### Features:
+**Profiles:**
 
-- **Background execution** - Runs independently of terminal with proper daemonization
-- **Progress logging** - All output saved to `~/rclone-sync.log` with automatic rotation
-- **Log rotation** - Automatically archives logs over 50MB
-- **PID tracking** - Prevents multiple instances with atomic PID file operations
-- **Dry run mode** - Preview changes before syncing
-- **Smart filtering** - Customizable exclusions via external file
-- **Memory efficient** - Stats updated every 5 minutes
-- **Configurable transfers** - Adjustable parallel transfer count (default: 8)
-- **Bandwidth limiting** - Optional upload speed limits
-- **Environment variables** - Configure without editing script
-- **Trap handlers** - Proper cleanup on script interruption (Ctrl+C)
-- **Status monitoring** - Shows runtime, CPU, memory usage
-- **Orphan detection** - Finds and reports stray rclone processes
-- **Graceful shutdown** - Waits up to 10 seconds before force kill
-- **Startup verification** - Confirms process started successfully
+| Profile | Runs | Time |
+|---------|------|------|
+| `emergency` | Docker prune only, no confirmations | ~30 sec |
+| `quick` | Caches, skip git gc | ~2-3 min |
+| `thorough` | Everything including git gc | ~3-6 hrs |
 
-#### Configuration via Environment Variables:
-
-Set these before running the script to customize behavior without editing:
-
-```bash
-# Sync a different directory
-SOURCE_DIR=~/projects ./rclone-sync.sh
-
-# Use different remote
-REMOTE_NAME=my_gdrive ./rclone-sync.sh
-
-# Limit bandwidth to 5MB/s
-BANDWIDTH_LIMIT=5M ./rclone-sync.sh
-
-# Use only 4 parallel transfers
-TRANSFERS=4 ./rclone-sync.sh
-
-# Combine multiple settings
-SOURCE_DIR=~/code TRANSFERS=4 BANDWIDTH_LIMIT=10M ./rclone-sync.sh
-```
-
-#### Exclude File:
-
-The script uses `~/.rclone-exclude` for customizable exclusions:
-
-```bash
-# Create default exclude file
-./rclone-sync.sh --create-exclude
-
-# Edit exclusions (uses $EDITOR or nano)
-./rclone-sync.sh --edit-exclude
-```
-
-Default exclusions include:
-- Version control (`.git/`, `.svn/`, `.hg/`)
-- Dependencies (`node_modules/`, `venv/`, `vendor/`)
-- Build outputs (`dist/`, `build/`, `.next/`)
-- IDE files (`.vscode/`, `.idea/`)
-- OS files (`.DS_Store`, `Thumbs.db`)
-- Python files (`*.pyc`, `__pycache__/`)
-- Caches (`.cache/`, `.npm/`, `.pnpm-store/`)
+**Logs:** `logs/cleanup_YYYYMMDD_HHMMSS.log`
 
 ---
 
-### 3. `nmap-scan.sh`
+#### `update-all.sh`
 
-Network discovery and change tracking tool that identifies active hosts on your LAN(s) and monitors changes over time.
+Updates all detected package managers in one shot. Auto-detects what's installed; skips what isn't.
 
-#### What it does:
-
-- **CIDR Auto-detection** - Automatically detects your primary network subnet
-- **Fast Scan Mode** - Quick ping sweep + TCP SYN to ports 22, 80, 443 (default)
-- **Full Scan Mode** - Comprehensive scan of top 1000 TCP ports
-- **Delta Tracking** - Compares current scan with previous to show new/removed hosts
-- **JSON Output** - Structured data for automation and analysis
-- **Table Output** - Human-readable tabular format
-- **Host Exclusions** - Filter out specific IPs or MAC addresses
-- **Rate Limiting** - Prevents network flooding (default: 100 pps)
-
-#### Usage:
+**Update order:** Homebrew → NPM globals → pnpm → pip → RubyGems → macOS Software Update
 
 ```bash
-# Fast scan on auto-detected subnet
-./nmap-scan.sh
+# Preview updates
+./update-all.sh --dry-run
 
-# Scan specific CIDR(s)
-./nmap-scan.sh --cidr "192.168.1.0/24"
+# Run all updates
+./update-all.sh
 
-# Multi-subnet full scan
-./nmap-scan.sh --cidr "192.168.1.0/24,10.0.0.0/24" --full
+# Non-interactive
+./update-all.sh -y
 
-# Exclude specific hosts and limit rate
-./nmap-scan.sh --exclude "192.168.1.10,AA:BB:CC:*" --rate 50
-
-# JSON output only, no delta comparison
-./nmap-scan.sh --output json --no-delta
-
-# Preview scan configuration
-./nmap-scan.sh --cidr "192.168.1.0/24" --dry-run
-
-# Show help
-./nmap-scan.sh --help
+# Override PEP 668 (use with care on Debian/Ubuntu)
+./update-all.sh --pip-system
 ```
 
-#### Command Line Options:
+> **PEP 668:** On Debian/Ubuntu systems with externally-managed Python, `pip` updates are skipped by default to protect the system Python. Use `--pip-system` with `--break-system-packages` semantics, or use a virtualenv.
 
-| Option | Description |
-|--------|-------------|
-| `--cidr CIDR` | Comma-separated CIDRs (auto-detects if not specified) |
-| `--fast` | Fast scan: ping + TCP 22,80,443 (default) |
-| `--full` | Full scan: top 1000 TCP ports (slower) |
-| `--output MODE` | Output mode: json, table, or both (default: both) |
-| `--no-delta` | Skip delta comparison with previous scan |
-| `--exclude LIST` | Comma-separated IPs or MAC patterns to exclude |
-| `--rate NUM` | Max packets per second (default: 100) |
-| `--dry-run` | Show configuration without executing scan |
-| `--help` | Show help message |
-
-#### Features:
-
-- **Non-intrusive defaults** - Ping sweep + 3 common ports only
-- **Auto CIDR detection** - Uses primary interface if not specified
-- **Delta tracking** - Shows new/removed hosts since last scan
-- **JSON storage** - All scans saved to `./logs/nmap/` with timestamps
-- **Secure logs** - Log directory permissions: 700, files: 600
-- **Rate limiting** - Prevents network flooding and DoS
-- **Host exclusions** - Filter noisy or sensitive hosts
-- **Dual output** - Both JSON (automation) and table (human-readable)
-- **Safe exit** - Graceful handling if nmap is not installed
-- **Cross-platform** - Works on macOS and Linux
-
-#### Output Example:
-
-```
-━━━ Scan Results ━━━
-
-IP Address       MAC Address        Vendor                         Open Ports
-──────────────────────────────────────────────────────────────────────────────
-192.168.1.1      AA:BB:CC:DD:EE:FF  NETGEAR                        22,80,443
-192.168.1.10     11:22:33:44:55:66  Apple, Inc.                    22
-192.168.1.50     99:88:77:66:55:44  Raspberry Pi Foundation        22,80
-
-━━━ Delta Analysis ━━━
-
-✓ New hosts detected:
-  + 192.168.1.50
-```
-
-#### Security & Ethics:
-
-- **Non-intrusive by default** - Only ping + 3 common ports
-- **Rate limiting** - Prevents network flooding
-- **Explicit full scan** - Must use `--full` flag for deeper scans
-- **Local use only** - Designed for your own network discovery
-- **No stealth mode** - Scans are intentionally detectable
-- **Secure storage** - All logs protected with umask 077
+**Logs:** `logs/update_YYYYMMDD_HHMMSS.log`
 
 ---
 
-### 4. `cert-renewal-check.sh`
-
-SSL certificate expiry monitoring and renewal tool. Checks domain certificates via HTTPS or inspects local certificate files.
-
-#### What it checks:
-
-- **Domain certificates** - Connects via HTTPS and inspects certificate expiry
-- **Local certificate files** - Reads and validates certificate files
-- **Expiry warnings** - Configurable threshold (default: 30 days)
-- **Auto-renewal** - Optional certbot integration for automatic renewal
-
-#### Usage:
-
-```bash
-# Check domains from file
-./cert-renewal-check.sh --domains examples/domains.txt
-
-# Check specific certificate file
-./cert-renewal-check.sh --cert /etc/ssl/certs/homelab.pem
-
-# Custom warning threshold (14 days)
-./cert-renewal-check.sh --domains domains.txt --warn-days 14
-
-# JSON output for monitoring integration
-./cert-renewal-check.sh --domains domains.txt --json
-
-# Auto-renew with certbot if expiring
-./cert-renewal-check.sh --domains domains.txt --auto-renew
-
-# Dry run (preview without checking)
-./cert-renewal-check.sh --domains domains.txt --dry-run
-
-# Show help
-./cert-renewal-check.sh --help
-```
-
-#### Features:
-
-- **Multiple check types** - Domain HTTPS or local certificate files
-- **Table and JSON output** - Human-readable or machine-parseable
-- **Configurable warnings** - Set expiry threshold in days (1-365)
-- **Optional auto-renewal** - Integrates with certbot for Let's Encrypt
-- **Color-coded status** - OK (green), WARNING (yellow), EXPIRED/ERROR (red)
-- **Secure logging** - All logs protected in `./logs/cert/` (mode 700)
-- **Dry run mode** - Preview checks without executing
-- **Cross-platform** - Works on macOS and Linux
-
-#### Command Line Options:
-
-| Option | Description |
-|--------|-------------|
-| `--domains <file>` | File with domains to check (one per line) |
-| `--cert <file>` | Check specific certificate file (repeatable) |
-| `--warn-days <n>` | Warn if expires within N days (default: 30, range: 1-365) |
-| `--auto-renew` | Attempt certbot renewal if expiring (requires sudo) |
-| `--json` | JSON output format |
-| `--dry-run` | Preview without executing checks |
-| `--help` | Show help message |
-
-#### Domains File Format:
-
-```text
-# One domain per line
-# Lines starting with # are comments
-
-github.com
-google.com
-homelab.local
-192.168.1.100
-```
-
-See `examples/domains.txt` for a complete example.
-
-#### Expected Results:
-
-**Table Output (default):**
-```
-Type       Name                      Status     Days Remaining  Details
-──────────────────────────────────────────────────────────────────────
-domain     github.com                OK         89              Expires: Mar 15 12:00:00 2026 GMT
-domain     homelab.local             WARNING    25              Expires: Dec 7 15:30:00 2025 GMT
-file       /etc/ssl/cert.pem         EXPIRED    -5              Expires: Nov 7 10:00:00 2025 GMT
-```
-
-**JSON Output (--json):**
-```json
-{
-  "timestamp": "2025-11-12T13:45:00+11:00",
-  "warn_days": 30,
-  "certificates": [
-    {
-      "type": "domain",
-      "name": "github.com",
-      "status": "OK",
-      "days_remaining": 89,
-      "message": "Expires: Mar 15 12:00:00 2026 GMT"
-    }
-  ]
-}
-```
-
-#### Dependencies:
-
-- **openssl** (required) - Certificate inspection
-- **certbot** (optional) - For `--auto-renew` functionality
+### Monitoring & Health
 
 ---
 
-### 5. `db-backup.sh`
+#### `service-health-check.sh`
 
-Automated database backup tool with retention policies and optional cloud sync. Supports PostgreSQL and MySQL.
+Config-driven uptime monitoring for HTTP endpoints, TCP ports, processes, and Docker containers. Supports webhooks for alerting.
 
-#### What it does:
-
-- **PostgreSQL backups** - Uses `pg_dump` with compression
-- **MySQL backups** - Uses `mysqldump` with compression
-- **Retention policies** - Configurable daily:weekly:monthly retention
-- **Cloud sync** - Optional rclone upload after backup
-- **Test restore** - Validates backups by restoring to temp database (PostgreSQL only)
-
-#### Usage:
-
-```bash
-# PostgreSQL backup (DSN from environment)
-export DB_DSN="postgres://user:pass@localhost:5432/mydb"
-./db-backup.sh --db pg --out ./backups
-
-# MySQL backup with custom retention
-export DB_DSN="mysql://root:pass@localhost:3306/appdb"
-./db-backup.sh --db mysql --retention 14:8:24
-
-# Backup with cloud sync
-./db-backup.sh --db pg --rclone gdrive:backups
-
-# Backup with test restore
-./db-backup.sh --db pg --test-restore
-
-# JSON output for monitoring
-./db-backup.sh --db pg --json
-
-# Dry run preview
-./db-backup.sh --db pg --dry-run
-
-# Show help
-./db-backup.sh --help
-```
-
-#### Features:
-
-- **Multi-database support** - PostgreSQL and MySQL
-- **Intelligent retention** - Keep daily, weekly, and monthly backups
-- **Compression** - Automatic gzip compression
-- **Cloud backup** - Optional rclone integration
-- **Test restore** - Validates backup integrity (PostgreSQL)
-- **Secure storage** - Backup files chmod 600, logs chmod 700
-- **Password masking** - DSN passwords never appear in logs
-- **JSON output** - Machine-readable backup metadata
-- **Dry-run mode** - Preview without executing
-- **Output path policy** - Output directory must be under `$HOME` (system dirs blocked)
-
-#### Command Line Options:
-
-| Option | Description |
-|--------|-------------|
-| `--db <type>` | Database type: `pg` (PostgreSQL) or `mysql` (MySQL) |
-| `--dsn <url>` | Database DSN (or use `DB_DSN` environment variable) |
-| `--out <dir>` | Output directory (default: `./backups`) |
-| `--retention <d:w:m>` | Retention policy (default: `7:4:12`) |
-| `--rclone <remote>` | Upload to rclone remote (e.g., `gdrive:backups`) |
-| `--test-restore` | Verify backup by test restore (PostgreSQL only) |
-| `--json` | JSON summary output |
-| `--dry-run` | Preview without executing |
-| `--help` | Show help message |
-
-#### Retention Policy Format:
-
-`daily:weekly:monthly` - Number of backups to keep in each category
-
-- **daily**: Keep last N daily backups
-- **weekly**: Keep last N weekly backups (oldest of each week)
-- **monthly**: Keep last N monthly backups (oldest of each month)
-
-Example: `7:4:12` = 7 daily, 4 weekly, 12 monthly
-
-#### DSN Formats:
-
-```
-PostgreSQL:  postgres://username:password@host:port/database
-MySQL:       mysql://username:password@host:port/database
-```
-
-**Security Note**: Use `DB_DSN` environment variable to avoid password exposure in process list.
-
-#### Dependencies:
-
-- **pg_dump** (PostgreSQL backups) - `brew install postgresql` or `apt install postgresql-client`
-- **mysqldump** (MySQL backups) - `brew install mysql-client` or `apt install mysql-client`
-- **gzip** (compression) - Usually pre-installed
-- **rclone** (optional, cloud sync) - `brew install rclone` or `apt install rclone`
-
----
-
-### 6. `service-health-check.sh`
-
-Config-driven service uptime monitoring with support for HTTP, TCP, process, and container checks.
-
-#### What it monitors:
-
-- **HTTP endpoints** - Status code and optional body content validation
-- **TCP ports** - Connection checks for network services
-- **Processes** - Check if system processes are running
-- **Docker containers** - Verify container status
-
-#### Usage:
-
-```bash
-# Run once with JSON output
-./service-health-check.sh --config services.conf --once --json
-
-# Watch mode with continuous monitoring
-./service-health-check.sh --config services.conf --watch --interval 60
-
-# Watch mode with webhook notifications
-./service-health-check.sh --config services.conf --watch \
-    --notify webhook:http://alerts.local/webhook
-
-# Dry run to validate config
-./service-health-check.sh --config services.conf --dry-run
-
-# Show help
-./service-health-check.sh --help
-```
-
-#### Configuration Format:
-
-INI-style configuration file with service definitions:
+**Config format** (`services.conf`):
 
 ```ini
-# HTTP health check
-[api-server]
+[my-api]
 type=http
 url=https://api.example.com/health
 expect_status=200
-expect_body=OK
+expect_body=ok
 timeout=5
 
-# TCP port check
-[database]
+[postgres]
 type=tcp
-host=db.local
+host=localhost
 port=5432
-timeout=3
+timeout=5
 
-# Process check
-[nginx]
+[sshd]
 type=process
-name=nginx
+name=sshd
 
-# Docker container check
-[redis]
+[nginx-container]
 type=container
-name=redis
+name=nginx
 ```
 
-#### Command Line Options:
-
-| Option | Description |
-|--------|-------------|
-| `--config <file>` | Config file with service definitions (required) |
-| `--once` | Run checks once and exit (default) |
-| `--watch` | Continuous monitoring mode |
-| `--interval <secs>` | Check interval in watch mode (default: 60) |
-| `--notify <method>` | Notification method: `webhook:URL` |
-| `--json` | JSON output format |
-| `--dry-run` | Show what would be checked without running |
-| `--help` | Show help message |
-
-#### Check Types:
-
-| Type | Parameters | Description |
-|------|------------|-------------|
-| `http` | `url`, `expect_status`, `expect_body`, `timeout` | HTTP/HTTPS endpoint checks |
-| `tcp` | `host`, `port`, `timeout` | TCP port connectivity checks |
-| `process` | `name` | Process running status via `pgrep` |
-| `container` | `name` | Docker container status |
-
-#### Features:
-
-- **Multiple check types** - HTTP, TCP, process, and container monitoring
-- **Watch mode** - Continuous monitoring with configurable intervals
-- **State tracking** - Detect and notify only on state changes
-- **Webhook notifications** - Send JSON alerts on status changes
-- **JSON output** - Machine-readable format for integration
-- **Dry run mode** - Validate configuration without running checks
-- **Graceful degradation** - Skip unavailable check types (e.g., Docker)
-- **Secure logging** - All logs under `./logs/` with permissions 700
-
-#### Example Output:
+**Usage:**
 
 ```bash
-$ ./service-health-check.sh --config examples/services.conf --once
+# Run once
+./service-health-check.sh --config services.conf
 
-=== Service Health Check ===
+# Continuous watch mode (every 60 seconds)
+./service-health-check.sh --config services.conf --watch --interval 60
 
-✓ google (http): HTTP 200
-✓ github (http): HTTP 200
-✓ ssh-local (tcp): TCP port 22 open
-✓ sshd-process (process): Process running (1 instances)
-⊘ nginx-container (container): Docker not installed
+# With webhook notification on failure
+./service-health-check.sh --config services.conf --notify webhook:https://hooks.example.com/alert
+
+# JSON output for Grafana/monitoring stack
+./service-health-check.sh --config services.conf --json
+
+# Dry run
+./service-health-check.sh --config examples/services.conf --dry-run
 ```
 
-#### JSON Output Format:
+**Exit codes:**
 
-```json
-{
-  "version": "1.0",
-  "timestamp": "2025-11-13T10:30:00Z",
-  "checks": [
-    {"name": "api-server", "type": "http", "status": "pass", "message": "HTTP 200"},
-    {"name": "database", "type": "tcp", "status": "pass", "message": "TCP port 5432 open"},
-    {"name": "nginx", "type": "process", "status": "fail", "message": "Process not found"}
-  ]
-}
-```
+| Code | Meaning |
+|------|---------|
+| 0 | All services healthy |
+| 1 | One or more services down |
+| 2 | Config error |
 
-#### Notification Format:
-
-Webhook notifications send JSON payloads on state changes:
-
-```json
-{
-  "service": "api-server",
-  "type": "http",
-  "status": "fail",
-  "message": "HTTP status 500 (expected 200)",
-  "timestamp": "2025-11-13T10:30:15Z"
-}
-```
-
-#### Dependencies:
-
-- **curl** (HTTP checks) - Usually pre-installed
-- **timeout** command (TCP checks) - Usually pre-installed
-- **pgrep** (process checks) - Usually pre-installed
-- **docker** (container checks, optional) - `brew install docker` or `apt install docker.io`
+**Logs:** `logs/service-health/`
 
 ---
 
-### 7. `compose-redeploy.sh`
+#### `smart-disk-check.sh`
 
-Safe Docker Compose updates with volume backup and automatic rollback.
+S.M.A.R.T. disk health monitoring. Auto-discovers drives, checks health attributes and temperature, and can schedule short/long tests.
 
-#### What it does:
-
-- **Pre-flight validation** - Validates compose file syntax
-- **Volume backup** - Optional backup before deployment
-- **Image updates** - Pulls latest images
-- **Health checks** - Validates service health after deployment
-- **Automatic rollback** - Rolls back on failure
-
-#### Usage:
-
-```bash
-# Basic redeploy
-./compose-redeploy.sh
-
-# Redeploy with volume backup
-./compose-redeploy.sh --backup-volumes
-
-# Custom compose file with extended health timeout
-./compose-redeploy.sh --file production.yml --health-timeout 120
-
-# Dry run to preview
-./compose-redeploy.sh --dry-run
-
-# Show help
-./compose-redeploy.sh --help
-```
-
-#### Command Line Options:
-
-| Option | Description |
-|--------|-------------|
-| `--file <yaml>` | Docker Compose file (default: docker-compose.yml) |
-| `--backup-volumes` | Backup volumes before update |
-| `--backup-image <img>` | Image for volume backups (default: alpine:latest) |
-| `--health-timeout <s>` | Health check timeout in seconds (default: 60, range: 1-3600) |
-| `--no-pull` | Skip image pull (use existing images) |
-| `--dry-run` | Show deployment plan without executing |
-| `--json` | JSON summary output |
-| `--help` | Show help message |
-
-#### Features:
-
-- **Safe updates** - Pre-flight validation prevents invalid deployments
-- **Volume protection** - Optional backup before changes
-- **Health validation** - Waits for services to become healthy
-- **Rollback capability** - Automatic rollback on failure
-- **Progress tracking** - Real-time status updates
-- **Secure logging** - All logs under `./logs/` with permissions 700
-- **Compose v1 & v2 support** - Works with both `docker-compose` and `docker compose`
-
-#### Dependencies:
-
-- **docker** - Docker Engine (`docker --version`)
-- **docker-compose** or **docker compose** - Compose v1 or v2
-- **jq** (optional) - JSON processor for `--json` output (`brew install jq` / `apt install jq`)
-
-#### Example Output:
-
-```bash
-$ ./compose-redeploy.sh --backup-volumes
-
-━━━ Docker Compose Redeploy ━━━
-
-ℹ Compose file: docker-compose.yml
-ℹ Health timeout: 60s
-ℹ Volume backup: enabled
-ℹ Log file: ./logs/compose-redeploy/redeploy_20251113_120000.log
-
-━━━ Pre-flight Checks ━━━
-
-✓ Docker installed
-✓ Docker Compose found (v2)
-✓ Compose file valid
-ℹ Project name: myapp
-ℹ Services: 2 (web, api)
-✓ Pre-flight checks passed
-
-━━━ Backing Up Volumes ━━━
-
-ℹ Backing up volume: web_data
-✓ Volume backed up: ./backups/compose-volumes/myapp_web_data_20251113_120000.tar.gz
-
-━━━ Pulling Images ━━━
-
-✓ Images pulled successfully
-
-━━━ Deploying Services ━━━
-
-✓ Services deployed
-
-━━━ Health Check Validation ━━━
-
-ℹ Waiting up to 60s for services to become healthy...
-✓ All services healthy
-
-━━━ Deployment Complete ━━━
-
-✓ All services deployed and healthy
-```
-
----
-
-### 8. `docker-volume-backup.sh`
-
-Consistent Docker volume snapshots with compression and optional container management.
-
-#### What it does:
-
-- **Volume backup** - Backup individual or all Docker volumes
-- **Container management** - Optional stop/restart for consistency
-- **Compression** - Automatic tar.gz compression
-- **Helper container approach** - No local volume mount required
-- **JSON output** - Machine-readable backup metadata
-
-#### Usage:
-
-```bash
-# Backup single volume
-./docker-volume-backup.sh --volume postgres_data
-
-# Backup all volumes
-./docker-volume-backup.sh --all
-
-# Backup with container stop for consistency
-./docker-volume-backup.sh --all --stop
-
-# Custom output directory
-./docker-volume-backup.sh --volume app_data --out ~/backups
-
-# Dry run to preview
-./docker-volume-backup.sh --all --dry-run
-
-# Show help
-./docker-volume-backup.sh --help
-```
-
-#### Command Line Options:
-
-| Option | Description |
-|--------|-------------|
-| `--volume <name>` | Backup specific volume |
-| `--all` | Backup all Docker volumes |
-| `--out <dir>` | Output directory (default: ./backups/volumes) |
-| `--backup-image <img>` | Image for volume backups (default: alpine:latest) |
-| `--stop` | Stop dependent containers during backup |
-| `--no-stop` | Backup while containers running (default) |
-| `--dry-run` | Show backup plan without executing |
-| `--json` | JSON summary output |
-| `--help` | Show help message |
-
-#### Features:
-
-- **Flexible backup** - Single volume or all volumes
-- **Consistency options** - Stop containers for consistent backups
-- **Compression** - Automatic gzip compression
-- **Helper container** - Uses Alpine container to avoid local mounts
-- **Auto-restart** - Restarts stopped containers after backup
-- **Progress tracking** - Real-time status updates
-- **Secure storage** - Backups chmod 600, logs chmod 700
-
-#### Dependencies:
-
-- **docker** - Docker Engine (`docker --version`)
-
-#### Example Output:
-
-```bash
-$ ./docker-volume-backup.sh --volume postgres_data --stop
-
-━━━ Docker Volume Backup ━━━
-
-ℹ Mode: Backup single volume: postgres_data
-ℹ Output directory: ./backups/volumes
-ℹ Container stop: enabled
-ℹ Log file: ./logs/volume-backup/volume_backup_20251113_120000.log
-
-━━━ Pre-flight Checks ━━━
-
-✓ Docker installed
-✓ Docker daemon running
-✓ Volume exists: postgres_data
-✓ Pre-flight checks passed
-
-━━━ Backing Up: postgres_data ━━━
-
-ℹ Volume used by containers: app_db
-ℹ Stopping containers for consistency...
-✓ Stopped: app_db
-ℹ Creating backup: ./backups/volumes/postgres_data_20251113_120000.tar.gz
-✓ Backup created: ./backups/volumes/postgres_data_20251113_120000.tar.gz (245MB)
-ℹ Restarting containers...
-✓ Restarted: app_db
-
-━━━ Backup Summary ━━━
-
-✓ Backed up 1 volume(s)
-ℹ Total backup size: 245MB
-```
-
----
-
-### 9. `dyndns-update.sh`
-
-Dynamic DNS updates for homelabs with changing public IPs. Keeps your DNS records synchronized with your current IP address.
-
-#### What it does:
-
-- **Public IP detection** - Detects current public IP from multiple sources
-- **DNS updates** - Updates DNS records via Cloudflare API
-- **IP caching** - Avoids unnecessary updates when IP unchanged
-- **Rate limiting** - Prevents excessive API calls (max 1 per 5 minutes)
-- **JSON output** - Machine-readable update status
-
-#### Usage:
-
-```bash
-# Basic Cloudflare update
-export CF_TOKEN="your-cloudflare-api-token"
-./dyndns-update.sh --provider cloudflare --zone example.com \
-    --record home --token env:CF_TOKEN
-
-# Update with custom TTL
-./dyndns-update.sh --provider cloudflare --zone example.com \
-    --record home --token env:CF_TOKEN --ttl 600
-
-# Force update (bypass cache/rate limit)
-./dyndns-update.sh --provider cloudflare --zone example.com \
-    --record home --token env:CF_TOKEN --force
-
-# Dry run to preview
-./dyndns-update.sh --provider cloudflare --zone example.com \
-    --record home --token env:CF_TOKEN --dry-run
-
-# Show help
-./dyndns-update.sh --help
-```
-
-#### Command Line Options:
-
-| Option | Description |
-|--------|-------------|
-| `--provider <name>` | DNS provider (currently: cloudflare) |
-| `--zone <domain>` | DNS zone (e.g., example.com) |
-| `--record <name>` | Record name (e.g., home or @) |
-| `--ttl <seconds>` | DNS TTL (default: 300, range: 60-86400) |
-| `--token <val>` | API token or env:VAR_NAME |
-| `--force` | Force update even if IP unchanged |
-| `--dry-run` | Show update plan without executing |
-| `--json` | JSON summary output |
-| `--help` | Show help message |
-
-#### Features:
-
-- **Multi-source IP detection** - Tries multiple services (ifconfig.me, icanhazip.com, etc.)
-- **Smart caching** - Only updates when IP actually changes
-- **Rate limiting** - Prevents API abuse (5-minute minimum between updates)
-- **Secure token handling** - Supports environment variables, never logged
-- **TTL configuration** - Customizable DNS TTL (60s - 24h)
-- **Detailed logging** - All operations logged with timestamps
-- **JSON output** - Integration-friendly output format
-
-#### Dependencies:
-
-- **curl** - HTTP client (usually pre-installed)
-- **jq** - JSON processor (`brew install jq` / `apt install jq`)
-
-#### Example Output:
-
-```bash
-$ export CF_TOKEN="your-token"
-$ ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:CF_TOKEN
-
-━━━ Dynamic DNS Update ━━━
-
-ℹ Provider: cloudflare
-ℹ Zone: example.com
-ℹ Record: home
-ℹ TTL: 300s
-ℹ Log file: ./logs/dyndns/dyndns_20251113_120000.log
-ℹ Token loaded from environment variable
-
-━━━ Pre-flight Checks ━━━
-
-✓ curl installed
-✓ jq installed
-✓ Pre-flight checks passed
-
-━━━ Detecting Public IP ━━━
-
-ℹ Trying: https://ifconfig.me/ip
-✓ Detected IP: 203.45.67.89
-
-━━━ Updating DNS Record ━━━
-
-ℹ Looking up zone ID for: example.com
-✓ Zone ID: abc123def456
-ℹ Looking up DNS record: home.example.com
-ℹ Updating existing record: xyz789abc123
-✓ DNS record updated: home.example.com -> 203.45.67.89
-
-━━━ Update Complete ━━━
-
-✓ DNS record updated successfully
-ℹ Record: home.example.com
-ℹ IP: 203.45.67.89
-ℹ TTL: 300s
-```
-
-#### Cron Setup:
-
-For automatic updates every 15 minutes:
-
-```bash
-# Add to crontab (crontab -e)
-*/15 * * * * export CF_TOKEN="your-token" && /path/to/dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:CF_TOKEN >> /var/log/dyndns.log 2>&1
-```
-
----
-
-### 10. `smart-disk-check.sh`
-
-S.M.A.R.T. monitoring and disk health alerts for proactive disk failure detection.
-
-#### What it does:
-
-- **Auto-discovery** - Automatically finds all drives via `smartctl --scan`
-- **Health checks** - Monitors overall health status and critical attributes
-- **Temperature monitoring** - Configurable warn/critical thresholds
-- **Test scheduling** - Schedule short/long/conveyance S.M.A.R.T. tests
-- **JSON output** - Machine-readable health status
-
-#### Usage:
+**Requires:** `smartmontools` (`sudo apt install smartmontools`)
 
 ```bash
 # Auto-discover and check all drives
 ./smart-disk-check.sh
 
 # Check specific drives
-./smart-disk-check.sh --devices /dev/sda,/dev/sdb
+./smart-disk-check.sh --devices /dev/sda,/dev/nvme0n1
+
+# Schedule a short SMART test
+./smart-disk-check.sh --test short
 
 # Custom temperature thresholds
 ./smart-disk-check.sh --warn-temp 45 --crit-temp 55
 
-# Schedule short test on all drives
-./smart-disk-check.sh --test short
-
-# JSON output for monitoring integration
+# JSON output
 ./smart-disk-check.sh --json
 
-# Dry run to preview
+# Preview without running
 ./smart-disk-check.sh --dry-run
-
-# Show help
-./smart-disk-check.sh --help
 ```
 
-#### Command Line Options:
+**Monitored attributes:**
 
-| Option | Description |
-|--------|-------------|
-| `--devices <list>` | Comma-separated device list (e.g., /dev/sda,/dev/sdb) |
-| `--test <type>` | Run S.M.A.R.T. test: short, long, conveyance |
-| `--warn-temp <C>` | Warning temperature threshold (default: 50, range: 30-80) |
-| `--crit-temp <C>` | Critical temperature threshold (default: 60, range: 40-90) |
-| `--dry-run` | Show what would be checked without executing |
-| `--json` | JSON summary output |
-| `--help` | Show help message |
+| Attribute ID | Name | Meaning |
+|---|---|---|
+| 5 | Reallocated Sectors | Bad sector remaps (any > 0 = concern) |
+| 187 | Reported Uncorrectable | Unrecoverable errors |
+| 188 | Command Timeout | Commands timing out |
+| 197 | Current Pending | Sectors awaiting reallocation |
+| 198 | Offline Uncorrectable | Uncorrectable during offline scan |
 
-#### Features:
+**Temperature ranges:**
 
-- **Pre-fail attribute monitoring** - Tracks critical attributes (5, 187, 188, 197, 198)
-- **Reallocated sectors** - Detects bad sectors that have been remapped
-- **Pending sectors** - Identifies sectors waiting to be remapped
-- **Temperature alerts** - Warns on high drive temperatures
-- **Exit codes** - 0 (healthy), 1 (warnings), 2 (critical)
+| Threshold | Default | Range |
+|-----------|---------|-------|
+| `--warn-temp` | 50°C | 30–80°C |
+| `--crit-temp` | 60°C | 40–90°C |
 
-#### Critical Attributes Monitored:
-
-| ID | Name | Description |
-|----|------|-------------|
-| 5 | Reallocated_Sector_Ct | Bad sectors remapped (pre-fail indicator) |
-| 187 | Reported_Uncorrect | Uncorrectable errors (pre-fail) |
-| 188 | Command_Timeout | Commands that timed out (pre-fail) |
-| 197 | Current_Pending_Sector | Sectors waiting to be remapped (pre-fail) |
-| 198 | Offline_Uncorrectable | Uncorrectable errors found offline (pre-fail) |
-
-#### Example Output:
-
-```
-━━━ Device Discovery ━━━
-
-✓ Found devices: /dev/sda /dev/nvme0n1
-
-━━━ Health Checks ━━━
-
-ℹ Checking device: /dev/sda
-✓ /dev/sda: HEALTHY (health: PASSED, temp: 38°C)
-
-ℹ Checking device: /dev/nvme0n1
-✓ /dev/nvme0n1: HEALTHY (health: PASSED, temp: 42°C)
-
-━━━ Summary ━━━
-
-Devices checked: 2
-  Healthy: 2
-  Warning: 0
-  Critical: 0
-```
-
-#### Cron Setup:
-
-For daily disk health monitoring:
-
-```bash
-# Add to crontab (crontab -e)
-0 6 * * * /path/to/smart-disk-check.sh --json || mail -s 'Disk Health Alert' admin@example.com
-```
+**Logs:** `logs/smart-check/`
 
 ---
 
-### 11. `new-vm-setup.sh`
+#### `cert-renewal-check.sh`
 
-Bootstrap fresh VMs with standard configuration (hostname, user creation, SSH keys, packages, dotfiles).
-
-**Features:**
-- OS detection (Ubuntu/Debian/RHEL/CentOS/Fedora) via `/etc/os-release`
-- RFC-1123 hostname validation and configuration
-- POSIX-compliant user creation with sudo access
-- SSH public key setup with proper permissions
-- Package installation (apt/dnf/yum)
-- Optional dotfiles cloning from Git
-- Idempotent operations (safe to re-run)
-- Sudo transparency with explicit warnings
-- JSON output for automation
-- Comprehensive dry-run mode
-
-**Options:**
-
-| Flag | Description | Required |
-|------|-------------|----------|
-| `--hostname <name>` | Set hostname (RFC-1123: lowercase, max 63 chars) | Yes |
-| `--user <name>` | Create user (POSIX format, no 'root') | Yes |
-| `--ssh-key <key>` | SSH public key (inline) | * |
-| `--ssh-key-path <file>` | SSH public key file path | * |
-| `--packages "<list>"` | Comma-separated packages to install | No |
-| `--dotfiles <url>` | Git URL for dotfiles (https://, ssh://, git@) | No |
-| `--shell <path>` | Login shell (default: /bin/bash) | No |
-| `--sudo-nopass` | Enable passwordless sudo (security warning) | No |
-| `--no-dotfiles` | Skip dotfiles cloning | No |
-| `--no-sudo` | Skip sudo operations (dry-run only) | No |
-| `-y, --yes` | Skip interactive confirmations | No |
-| `--dry-run` | Preview without changes | No |
-| `--json` | JSON output to logs/new-vm-setup/ | No |
-| `--help` | Show help | No |
-
-\* Either `--ssh-key` or `--ssh-key-path` is required
-
-**Examples:**
+Monitors SSL/TLS certificate expiry for domains and local certificate files. Optionally triggers certbot renewal.
 
 ```bash
-# Dry-run to preview configuration
-./new-vm-setup.sh \
-  --hostname "web-server-01" \
-  --user "deploy" \
-  --ssh-key-path "$HOME/.ssh/id_ed25519.pub" \
-  --packages "curl,git,vim,htop" \
-  --dry-run
+# Check domains from file
+./cert-renewal-check.sh --domains domains.txt
 
-# Full web server setup (interactive)
-./new-vm-setup.sh \
-  --hostname "nginx-server" \
-  --user "webadmin" \
-  --ssh-key-path "$HOME/.ssh/id_ed25519.pub" \
-  --packages "nginx,certbot,ufw,fail2ban" \
-  --dotfiles "https://github.com/yourusername/dotfiles.git"
+# Check a specific local cert
+./cert-renewal-check.sh --cert /etc/ssl/certs/homelab.pem --warn-days 14
 
-# CI/CD runner with passwordless sudo (non-interactive)
-./new-vm-setup.sh \
-  --hostname "gitlab-runner" \
-  --user "ci" \
-  --ssh-key-path "$HOME/.ssh/ci_key.pub" \
-  --packages "docker.io,git,curl" \
-  --sudo-nopass \
-  --yes \
-  --json
-
-# Development VM with custom shell
-./new-vm-setup.sh \
-  --hostname "dev-box" \
-  --user "developer" \
-  --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host" \
-  --packages "build-essential,git,vim,tmux,python3,nodejs" \
-  --dotfiles "https://github.com/yourusername/dotfiles.git" \
-  --shell "/bin/zsh" \
-  --yes
-```
-
-**Output:**
-
-```
-━━━ VM Bootstrap Configuration ━━━
-
-Hostname: web-server-01
-User: deploy
-SSH key: ssh-ed25519 AAAAC3Nz... (truncated)
-Packages: nginx,certbot,ufw
-Dotfiles: https://github.com/user/dotfiles.git
-Shell: /bin/bash
-
-━━━ OS Detection ━━━
-
-✓ Detected OS: ubuntu 22.04 (Ubuntu 22.04.3 LTS)
-✓ Package manager: apt-get
-
-━━━ Hostname Configuration ━━━
-
-ℹ Setting hostname to: web-server-01
-✓ Hostname updated successfully
-
-━━━ User Configuration ━━━
-
-ℹ Creating user: deploy
-✓ User created: deploy
-✓ User added to sudo group
-
-━━━ SSH Key Setup ━━━
-
-ℹ Setting up SSH directory: /home/deploy/.ssh
-✓ SSH key added to authorized_keys
-
-━━━ Package Installation ━━━
-
-ℹ Updating package lists...
-✓ Package lists updated
-ℹ Installing package: nginx
-✓ Installed: nginx
-ℹ Installing package: certbot
-✓ Installed: certbot
-
-━━━ Summary ━━━
-
-Hostname: localhost → web-server-01
-User created: deploy
-SSH key configured: Yes
-Packages installed: 4
-Dotfiles cloned: Yes
-```
-
-**Security Notes:**
-- Never use `--sudo-nopass` in production without understanding the risks
-- Always use SSH keys (no password authentication)
-- Review dry-run output before applying changes
-- Validate hostname and username formats
-- Logs stored securely in `./logs/new-vm-setup/` (mode 700)
-
-**Dependencies:**
-- Linux with `/etc/os-release` (Ubuntu, Debian, RHEL, CentOS, Fedora, Rocky, AlmaLinux)
-- Package manager: `apt-get`, `dnf`, or `yum`
-- `sudo` for privilege escalation
-- `git` (if using `--dotfiles`)
-- `hostnamectl` or `/etc/hostname` (fallback)
-
-**See also:** `examples/new-vm-setup-example.sh` for comprehensive usage patterns
-
----
-
-### 12. `ssh-key-audit.sh`
-
-Audits SSH authorized_keys for security hygiene across users and optional system paths.
-
-#### What it does:
-
-- Key type checks (flags forbidden types like `ssh-rsa` by default)
-- Options checks (flags presence of key options by default)
-- Duplicate detection (normalized by base64 blob)
-- Age checks via comment date or file mtime
-- Permissions audit (`~/.ssh` 700, `authorized_keys` 600)
-- JSON summary and exit codes: 0 (OK), 1 (warnings), 2 (critical)
-
-#### Usage:
-
-```bash
-# Audit specific users
-./ssh-key-audit.sh --users "alice,bob"
-
-# Audit all users under /home and include system paths
-./ssh-key-audit.sh --all-users --system
-
-# Forbid RSA and fail on weak-type
-./ssh-key-audit.sh --users deploy --forbid-types ssh-rsa --fail-on weak-type
-
-# Flag keys older than a year
-./ssh-key-audit.sh --users admin --max-age 365
+# Auto-renew via certbot
+./cert-renewal-check.sh --domains domains.txt --auto-renew
 
 # JSON output
-./ssh-key-audit.sh --all-users --json
+./cert-renewal-check.sh --domains domains.txt --json
 
-# Dry run (no filesystem read)
-./ssh-key-audit.sh --dry-run
-
-# Help
-./ssh-key-audit.sh --help
+# Dry run
+./cert-renewal-check.sh --domains examples/domains.txt --dry-run
 ```
 
-#### Command Line Options:
+**Domains file format:**
 
-| Option | Description |
-|--------|-------------|
-| `--users <list>` | Comma-separated usernames to audit |
-| `--all-users` | Audit all users under `--home-root` (default: `/home`) |
-| `--home-root <path>` | Root for home directories (default: `/home`) |
-| `--system` | Include system-level paths |
-| `--system-paths <list>` | Colon-separated paths (default: `/etc/ssh/authorized_keys:/etc/ssh/authorized_keys.d`) |
-| `--forbid-types <list>` | Comma-separated forbidden key types (default: `ssh-rsa`) |
-| `--max-age <days>` | Flag keys older than N days (0 disables) |
-| `--fail-on <rules>` | Comma list: `weak-type,perms,stale,duplicate,unsafe-options` |
-| `--json` | JSON summary output |
-| `--dry-run` | Preview without reading filesystem |
-| `--help` | Show help |
+```
+# Lines starting with # are ignored
+example.com
+homelab.local
+api.internal.example.com
+```
 
-#### Notes:
+**Exit codes:**
 
-- Duplicate detection compares base64 key blobs; comments/options are ignored.
-- Key age prefers comment date in `YYYY-MM-DD`; falls back to file mtime.
-- System paths default can be overridden with `--system-paths`.
+| Code | Meaning |
+|------|---------|
+| 0 | All certs valid and not expiring soon |
+| 1 | One or more certs expiring within warn threshold |
+| 2 | One or more certs already expired or unreachable |
 
-
-## Setup Instructions
-
-### Prerequisites
-
-#### For `disk-cleanup.sh`:
-
-**Bash Version:**
-- Bash 3.2+ for basic cleanup (VS Code, Docker, Git, Homebrew, NPM, pip, etc.)
-- **Bash 4.0+ required** for virtualenv management (`--scan-venvs`, `--clean-venvs`)
-  - macOS: `brew install bash` (default is Bash 3.2)
-  - Linux: Usually 4.0+ by default
-
-No other special setup required. The script will skip any tools that aren't installed.
-
-#### For `nmap-scan.sh`:
-
-1. **Install nmap:**
-   ```bash
-   # macOS
-   brew install nmap
-
-   # Linux
-   sudo apt install nmap
-   ```
-
-2. **Verify installation:**
-   ```bash
-   nmap --version
-   ```
-
-#### For `rclone-sync.sh`:
-
-1. **Install rclone:**
-   ```bash
-   brew install rclone
-   ```
-
-2. **Configure Google Drive remote:**
-   ```bash
-   rclone config
-   ```
-
-   Follow the prompts to:
-   - Choose "New remote"
-   - Name it `gdrive_new` (or edit the script to match your name)
-   - Select "Google Drive"
-   - Complete the OAuth authentication
-
-3. **Verify setup:**
-   ```bash
-   rclone listremotes
-   # Should show: gdrive_new:
-   ```
+**Logs:** `logs/cert/`
 
 ---
 
-## Recommended Usage
+#### `nmap-scan.sh`
 
-### Weekly Maintenance
+Network discovery with delta tracking. Scans subnets, records results as JSON, and highlights new/removed hosts since the last scan.
+
+**Requires:** `nmap` (`sudo apt install nmap` / `brew install nmap`)
 
 ```bash
-# Clean up system once a week
-./disk-cleanup.sh
+# Auto-detect subnet and scan
+./nmap-scan.sh
 
-# Scan venvs and review candidates (no changes)
-./disk-cleanup.sh --scan-venvs
+# Specific subnet
+./nmap-scan.sh --cidr "192.168.1.0/24"
 
-# Clean venvs older than 60 days and larger than 1GB
-./disk-cleanup.sh --clean-venvs --venv-age 60 --venv-min-gb 1
+# Multiple subnets
+./nmap-scan.sh --cidr "192.168.1.0/24,10.0.0.0/24"
 
-# Start weekly backup
-./rclone-sync.sh --start
+# Full scan (top 1000 ports, slower)
+./nmap-scan.sh --cidr "192.168.1.0/24" --full
+
+# Exclude specific hosts
+./nmap-scan.sh --exclude "192.168.1.1,192.168.1.10"
+
+# Rate-limit for quiet operation
+./nmap-scan.sh --rate 50
+
+# JSON only, skip delta
+./nmap-scan.sh --output json --no-delta
+
+# Dry run — shows nmap commands without executing
+./nmap-scan.sh --cidr "192.168.1.0/24" --dry-run
 ```
 
-### Monthly Deep Clean
+**Scan modes:**
+
+| Mode | Ports | Speed | Use |
+|------|-------|-------|-----|
+| `--fast` (default) | 22, 80, 443 + ping | Fast | Daily discovery |
+| `--full` | Top 1000 TCP | Slow | Weekly/monthly audit |
+
+**Privilege note:** Run with `sudo` for SYN scans and MAC address capture. Without sudo, falls back to TCP connect scans (slower, no MAC).
+
+**Logs:** `logs/nmap/` (mode 600, dir 700)
+
+---
+
+### Backup & Sync
+
+---
+
+#### `rclone-sync.sh`
+
+Background daemon that continuously syncs `~/repos` to Google Drive (or any rclone remote). Handles PID management, log rotation, graceful shutdown, and smart exclusions.
+
+**Setup:**
 
 ```bash
-# Run cleanup script
-./disk-cleanup.sh
+# Configure your rclone remote first
+rclone config
 
-# Check what will be synced
-./rclone-sync.sh --dry-run
-
-# Sync if everything looks good
+# Start syncing
 ./rclone-sync.sh --start
-```
 
-### Monitoring Ongoing Sync
-
-```bash
-# Check if sync is running
+# Check status
 ./rclone-sync.sh --status
 
-# Watch logs in real-time
-tail -f ~/rclone-sync.log
+# Preview what would be synced
+./rclone-sync.sh --dry-run
 
-# Check last 100 lines
+# Stop gracefully
+./rclone-sync.sh --stop
+
+# View recent log entries
 ./rclone-sync.sh --logs 100
 ```
 
+**Environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SOURCE_DIR` | `~/repos` | Source directory to sync |
+| `REMOTE_NAME` | `gdrive_new` | rclone remote name |
+| `REMOTE_PATH` | `repos/` | Destination path on remote |
+| `TRANSFERS` | `8` | Parallel upload streams |
+| `BANDWIDTH_LIMIT` | (none) | e.g. `10M` for 10 MB/s cap |
+
+**Default exclusions** (auto-created at `~/.rclone-exclude`):
+
+```
+.git/**
+node_modules/**
+**/.venv/**
+**/venv/**
+**/*.pyc
+__pycache__/**
+dist/
+build/
+.next/
+.vscode/
+.idea/
+```
+
+Customise: `./rclone-sync.sh --edit-exclude`
+
+**Process management:**
+
+- PID file at `~/.rclone-sync.pid` with atomic write
+- First `Ctrl+C` → graceful shutdown (10 sec timeout)
+- Second `Ctrl+C` → force kill
+- Log rotation at 50 MB
+- Orphan process detection on startup
+
+**Log:** `~/rclone-sync.log`
+
 ---
 
-## Recovery Instructions
+#### `db-backup.sh`
 
-If you need to restore your repositories on a new machine:
+Automated PostgreSQL and MySQL backups with a three-tier retention policy (daily/weekly/monthly) and optional cloud sync via rclone.
 
-### 1. Install rclone and configure remote
-
-```bash
-brew install rclone
-rclone config
-```
-
-### 2. Download repositories
+**Setup:**
 
 ```bash
-rclone sync gdrive_new:repos/ ~/repos/
+# Set DSN (keep out of shell history)
+export DB_DSN="postgres://user:password@localhost:5432/mydb"
+
+# Preview backup plan
+./db-backup.sh --db pg --dry-run
+
+# Run a backup
+./db-backup.sh --db pg
+
+# MySQL
+export DB_DSN="mysql://root:password@localhost:3306/appdb"
+./db-backup.sh --db mysql
+
+# Custom retention: 14 daily, 8 weekly, 24 monthly
+./db-backup.sh --db pg --retention 14:8:24
+
+# Upload to cloud after backup
+./db-backup.sh --db pg --rclone gdrive:db-backups
+
+# Verify backup integrity (PostgreSQL only)
+./db-backup.sh --db pg --test-restore
+
+# JSON output
+./db-backup.sh --db pg --json
 ```
 
-### 3. Reinstall dependencies
+**DSN formats:**
 
-#### Node.js projects:
+```
+# PostgreSQL
+postgres://username:password@host:5432/database
+postgresql://username:password@host:5432/database
+
+# MySQL
+mysql://username:password@host:3306/database
+```
+
+**Retention policy:**
+
+| Format | Meaning |
+|--------|---------|
+| `7:4:12` (default) | 7 daily, 4 weekly, 12 monthly |
+| `14:8:24` | 14 daily, 8 weekly, 24 monthly |
+| `3:0:0` | 3 daily, no weekly/monthly |
+
+**Security:** Passwords are masked in all log output. Backup files are created with mode 600. Use `DB_DSN` env var rather than `--dsn` to avoid credentials in shell history.
+
+**Logs:** `logs/db-backup/`
+
+---
+
+#### `docker-volume-backup.sh`
+
+Creates compressed tar.gz snapshots of Docker volumes using a helper container approach — no local filesystem mount required.
+
 ```bash
-cd project-directory
-npm install      # or: pnpm install, yarn install
+# Backup a specific volume
+./docker-volume-backup.sh --volume postgres_data
+
+# Backup all volumes
+./docker-volume-backup.sh --all
+
+# Stop containers during backup (for consistency)
+./docker-volume-backup.sh --volume postgres_data --stop
+
+# Custom output location
+./docker-volume-backup.sh --all --out /mnt/nas/backups
+
+# Custom helper image
+./docker-volume-backup.sh --all --backup-image busybox:latest
+
+# JSON output
+./docker-volume-backup.sh --all --json
+
+# Dry run
+./docker-volume-backup.sh --all --dry-run
 ```
 
-#### Python projects:
+> **Note:** `--volume` and `--all` are mutually exclusive. At least one must be specified.
+
+**Backup location:** `./backups/volumes/` (files mode 600)
+
+**Logs:** `logs/volume-backup/`
+
+---
+
+### Infrastructure & Deployment
+
+---
+
+#### `compose-redeploy.sh`
+
+Safe Docker Compose updates with pre-flight validation, optional volume backup, health check verification, and automatic rollback on failure.
+
 ```bash
-cd project-directory
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Basic redeploy (uses docker-compose.yml in current dir)
+./compose-redeploy.sh
+
+# Specific compose file
+./compose-redeploy.sh --file app.yml
+
+# Backup volumes before update
+./compose-redeploy.sh --backup-volumes
+
+# Longer health check timeout
+./compose-redeploy.sh --health-timeout 120
+
+# Skip image pull (use cached images)
+./compose-redeploy.sh --no-pull
+
+# JSON output for CI/CD pipelines
+./compose-redeploy.sh --json
+
+# Dry run — shows full plan without changes
+./compose-redeploy.sh --dry-run
 ```
 
-#### Go projects:
+**Deployment flow:**
+
+1. Validate compose file syntax
+2. Backup volumes (if `--backup-volumes`)
+3. Pull latest images
+4. Recreate containers
+5. Wait for health checks (up to `--health-timeout` seconds)
+6. **Rollback automatically** if health checks fail
+
+**Logs:** `logs/compose-redeploy/`  
+**Backups:** `./backups/compose-volumes/`
+
+---
+
+#### `deploy-scripts.sh`
+
+Deploys this script collection to one or more remote hosts. Tries git first (fast, preserves history), falls back to rsync (always works).
+
 ```bash
-cd project-directory
-go mod download
+# Deploy to one host
+./deploy-scripts.sh --hosts "pi@192.168.1.100"
+
+# Deploy to multiple hosts
+./deploy-scripts.sh --hosts "pi@192.168.1.100,pi@192.168.1.101"
+
+# Deploy from a hosts file (one per line)
+./deploy-scripts.sh --hosts-file examples/hosts.txt
+
+# Custom remote path
+./deploy-scripts.sh --hosts "pi@192.168.1.100" --path "$HOME/homelab"
+
+# Force rsync (skip git)
+./deploy-scripts.sh --hosts "pi@192.168.1.100" --rsync-only
+
+# Dry run
+./deploy-scripts.sh --hosts "pi@192.168.1.100" --dry-run
 ```
 
-### 4. Reinitialize git repositories
+**Hosts file format:**
+
+```
+# One host per line, comments supported
+pi@192.168.1.100
+admin@10.0.0.50
+deploy@homelab.local
+```
+
+**Post-deploy sanity check:** Automatically runs `bash -n *.sh` and `--help` on key scripts on the remote to verify the deployment is functional.
+
+---
+
+#### `new-vm-setup.sh`
+
+Bootstraps a fresh Linux VM: sets hostname, creates a sudo user, installs SSH key, installs packages, and optionally clones dotfiles.
 
 ```bash
-cd project-directory
-git clone <your-remote-url> .
+# Minimal setup
+./new-vm-setup.sh \
+  --hostname web-01 \
+  --user deploy \
+  --ssh-key-path ~/.ssh/id_ed25519.pub
+
+# Full setup
+./new-vm-setup.sh \
+  --hostname dev-box \
+  --user admin \
+  --ssh-key "ssh-ed25519 AAAA..." \
+  --packages "git,curl,htop,vim,tmux" \
+  --dotfiles https://github.com/user/dotfiles.git \
+  --shell /bin/zsh
+
+# Non-interactive
+./new-vm-setup.sh \
+  --hostname prod-01 \
+  --user deploy \
+  --ssh-key-path ~/.ssh/deploy.pub \
+  --yes
+
+# Dry run (no sudo required)
+./new-vm-setup.sh \
+  --hostname test-vm \
+  --user testuser \
+  --ssh-key-path ~/.ssh/id_rsa.pub \
+  --dry-run
 ```
+
+**Validation rules:**
+
+| Field | Rules |
+|-------|-------|
+| `--hostname` | RFC-1123: lowercase, digits, hyphens; max 63 chars; no leading hyphen |
+| `--user` | Lowercase, starts with letter; not `root` |
+| `--ssh-key` | Must start with `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-*`, or `sk-*` |
+| `--dotfiles` | Must use `https://` or `git@` scheme |
+
+**Logs:** `logs/new-vm-setup/`
+
+---
+
+#### `dyndns-update.sh`
+
+Updates a DNS A record with your current public IP. Caches the last-known IP to avoid unnecessary API calls. Supports Cloudflare (additional providers can be added).
+
+```bash
+# Set token securely via environment variable
+export CF_TOKEN="your-cloudflare-api-token"
+
+# Update DNS record
+./dyndns-update.sh \
+  --provider cloudflare \
+  --zone example.com \
+  --record home \
+  --token env:CF_TOKEN
+
+# Custom TTL
+./dyndns-update.sh \
+  --provider cloudflare \
+  --zone example.com \
+  --record home \
+  --token env:CF_TOKEN \
+  --ttl 600
+
+# Force update (bypass IP cache)
+./dyndns-update.sh \
+  --provider cloudflare \
+  --zone example.com \
+  --record home \
+  --token env:CF_TOKEN \
+  --force
+
+# Dry run
+./dyndns-update.sh \
+  --provider cloudflare \
+  --zone example.com \
+  --record home \
+  --token env:CF_TOKEN \
+  --dry-run
+```
+
+**TTL range:** 60 – 86400 seconds (Cloudflare minimum: 60)
+
+**Rate limiting:** At most one update per 5 minutes (cached IP prevents redundant calls).
+
+**IP detection:** Tries multiple public IP sources with fallback.
+
+**Logs:** `logs/dyndns/`
+
+---
+
+### Security & Audit
+
+---
+
+#### `ssh-key-audit.sh`
+
+Read-only audit of `authorized_keys` files across all users (or selected users). Flags weak key types, bad permissions, stale keys, duplicates, and unsafe options. Supports risk scoring.
+
+```bash
+# Audit all users
+./ssh-key-audit.sh --all-users
+
+# Audit specific users
+./ssh-key-audit.sh --users "alice,bob,deploy"
+
+# Custom home root (e.g., for fixture testing)
+./ssh-key-audit.sh --users "alice" --home-root /srv/homes
+
+# Include system authorized_keys
+./ssh-key-audit.sh --all-users --system
+
+# Forbid RSA keys, fail if any found
+./ssh-key-audit.sh --all-users \
+  --forbid-types ssh-rsa \
+  --fail-on weak-type
+
+# Flag keys older than 365 days
+./ssh-key-audit.sh --all-users --max-age 365
+
+# Full risk scoring with detail
+./ssh-key-audit.sh --all-users --risk-detail
+
+# JSON output for SIEM/monitoring
+./ssh-key-audit.sh --all-users --json
+
+# Dry run (no filesystem reads)
+./ssh-key-audit.sh --dry-run
+```
+
+**Checks performed:**
+
+| Check | Flagged condition |
+|-------|------------------|
+| Key type | `ssh-rsa` (forbidden by default), DSA |
+| Permissions | `~/.ssh` not 700, `authorized_keys` not 600 |
+| Duplicates | Same key blob present more than once |
+| Stale keys | Older than `--max-age` days |
+| Unsafe options | `no-auth`, command injection patterns |
+
+**Fail-on rules** (exit code 2 if triggered):
+
+| Rule | Triggers on |
+|------|-------------|
+| `weak-type` | Forbidden key type found |
+| `perms` | Bad file permissions |
+| `stale` | Key exceeds max-age |
+| `duplicate` | Duplicate key detected |
+| `unsafe-options` | Dangerous authorized_keys options |
+
+**Note:** This script is read-only. It makes no changes to any files.
+
+**Logs:** `logs/ssh-key-audit/`
+
+---
+
+#### `ci-health-audit.sh`
+
+Scans all Git repositories in `REPOS_DIR` for GitHub Actions workflow problems: YAML syntax errors, scheduled workflows missing branch guards (wasting CI minutes), and Python/JS heredocs needing sed fixes.
+
+```bash
+# Scan all repos
+./ci-health-audit.sh
+
+# Scan repos in a specific directory
+REPOS_DIR=/path/to/repos ./ci-health-audit.sh
+
+# Dry run (scan and report, apply no fixes)
+./ci-health-audit.sh --dry-run
+
+# Auto-fix broken YAML
+./ci-health-audit.sh --fix-broken
+
+# Add branch guards to unguarded schedules
+./ci-health-audit.sh --add-guards
+
+# Fix Python/JS heredocs
+./ci-health-audit.sh --fix-heredocs
+```
+
+**Checks performed:**
+
+| Check | Risk |
+|-------|------|
+| YAML syntax | Workflow never runs; silently broken |
+| Unguarded schedules | Runs on every branch — wastes CI minutes, estimated monthly cost shown |
+| Python/JS heredocs | Potential runtime parse errors in CI |
+
+**Environment:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REPOS_DIR` | `$HOME/repos` | Root directory containing git repos |
+
+---
+
+### Development & QA
+
+---
+
+#### `qa-all.sh`
+
+The unified QA harness. Runs shellcheck, shfmt format checks, bash syntax validation, `--help` smoke tests, `--dry-run` execution tests, JSON contract validation, config precedence tests, and bounds validation — all in one command.
+
+```bash
+# Run all QA checks
+./qa-all.sh
+
+# CI mode (same checks, structured output)
+./qa-all.sh --ci
+```
+
+**Test categories:**
+
+| Category | What's tested |
+|----------|--------------|
+| Static analysis | `shellcheck`, `shfmt` format, `bash -n` syntax |
+| Smoke tests | `--help` on all 17 scripts |
+| Dry-run execution | `--dry-run` on all 17 scripts |
+| JSON contracts | JSON output schema on 5 scripts |
+| Config precedence | Config file overrides env/defaults |
+| Bounds validation | Out-of-range values rejected correctly |
+
+**Requirements:** `shellcheck`, `shfmt`, `jq` (`sudo apt install shellcheck shfmt jq`)
+
+**Artifacts:** `logs/qa/run_YYYYMMDD_HHMMSS/`
+
+---
+
+## Common Patterns
+
+### Always dry-run first
+
+Every script supports `--dry-run`. Use it before any real run:
+
+```bash
+./disk-cleanup.sh --dry-run --no-gauge --no-fun
+./db-backup.sh --db pg --dry-run
+./compose-redeploy.sh --dry-run
+./new-vm-setup.sh --hostname vm01 --user admin --ssh-key-path ~/.ssh/id_ed25519.pub --dry-run
+```
+
+### JSON output for integrations
+
+Scripts that support `--json` write a structured summary to `logs/`. Useful for Grafana, Prometheus pushgateway, SIEM ingestion, or CI artifact uploads.
+
+```bash
+./cert-renewal-check.sh --domains domains.txt --json
+./smart-disk-check.sh --json
+./service-health-check.sh --config services.conf --json
+./db-backup.sh --db pg --json
+./ssh-key-audit.sh --all-users --json
+```
+
+JSON schema (consistent across all scripts):
+
+```json
+{
+  "script": "cert-renewal-check.sh",
+  "version": "1.1.0",
+  "timestamp": "2026-03-07T12:00:00Z",
+  "status": "ok",
+  "duration_ms": 1234,
+  "errors": [],
+  "result": { ... }
+}
+```
+
+### Passing tokens securely
+
+Never pass secrets as CLI arguments (they appear in `ps` output and shell history). Use environment variables:
+
+```bash
+# Good
+export CF_TOKEN="your-token"
+./dyndns-update.sh --token env:CF_TOKEN ...
+
+# Good
+export DB_DSN="postgres://user:pass@host/db"
+./db-backup.sh --db pg
+
+# Bad — token visible in process list
+./dyndns-update.sh --token "your-token-literal" ...
+```
+
+---
+
+## Cron Integration
+
+Recommended cron schedule (`crontab -e`):
+
+```cron
+# SSL certificate check — daily at 8 AM
+0 8 * * * ./cert-renewal-check.sh --domains /etc/ssl/domains.txt --json >> /tmp/cert-check.log 2>&1
+
+# Disk cleanup — weekly Sunday at 3 AM (headless-safe flags)
+0 3 * * 0 cd /home/pi/repos/scripts && ./disk-cleanup.sh -y --skip-docker --no-gauge --no-fun >> /tmp/cleanup.log 2>&1
+
+# Package updates — weekly Sunday at 4 AM
+0 4 * * 0 cd /home/pi/repos/scripts && ./update-all.sh -y >> /tmp/update.log 2>&1
+
+# Database backup — daily at 2 AM
+0 2 * * * cd /home/pi/repos/scripts && DB_DSN="postgres://user:pass@localhost/db" ./db-backup.sh --db pg --json >> /tmp/db-backup.log 2>&1
+
+# Network scan — daily at 6 AM
+0 6 * * * cd /home/pi/repos/scripts && ./nmap-scan.sh --no-gauge >> /tmp/nmap.log 2>&1
+
+# SMART disk check — weekly Monday at 5 AM
+0 5 * * 1 cd /home/pi/repos/scripts && ./smart-disk-check.sh --json >> /tmp/smart.log 2>&1
+
+# Dynamic DNS — every 5 minutes
+*/5 * * * * cd /home/pi/repos/scripts && CF_TOKEN="..." ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:CF_TOKEN >> /tmp/dyndns.log 2>&1
+
+# SSH key audit — weekly
+0 9 * * 1 cd /home/pi/repos/scripts && ./ssh-key-audit.sh --all-users --json >> /tmp/ssh-audit.log 2>&1
+```
+
+> For cron, always use `--no-gauge --no-fun` with `disk-cleanup.sh`, and `--skip-docker` unless Docker is guaranteed running.
+
+---
+
+## Security Model
+
+### Log security
+
+All logs are written with:
+- Log directory: mode `700` (owner only)
+- Log files: mode `600` (owner read/write only)
+
+### Credential handling
+
+- Passwords are masked in all log output
+- `DB_DSN` and API tokens are read from environment variables, not CLI args
+- `--token env:VAR_NAME` pattern avoids credential exposure in process lists
+
+### Path validation
+
+`disk-cleanup.sh` enforces:
+- Virtualenv roots must be under `$HOME`
+- System directories (`/usr`, `/etc`, `/var`, `/bin`, `/sbin`) are blocked
+
+### Sudo transparency
+
+When sudo is required (e.g., Docker on Linux), scripts:
+1. Print a clear warning listing what operations need elevation
+2. Ask for explicit confirmation before proceeding
+
+### Pre-commit hook
+
+The repo includes a pre-commit hook for code quality:
+
+```bash
+# Install once
+ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
+```
+
+**Enforces:**
+- `shellcheck` — blocks on errors
+- `shfmt` — warns on format issues
+- `bc` usage — blocks (use `awk` instead)
+- Unsafe `rm` with unquoted variables — warns
 
 ---
 
 ## Troubleshooting
 
-### disk-cleanup.sh
+### Disk gauge not visible (SSH / cron)
 
-**Issue:** Script fails on Docker cleanup
+The live disk gauge requires a TTY. In non-interactive sessions it auto-disables, but you can be explicit:
+
 ```bash
-# Solution: Make sure Docker Desktop is running
+./disk-cleanup.sh --no-gauge --no-fun
+```
+
+### Docker not starting within wait window
+
+```bash
+# Start Docker Desktop manually (macOS)
 open -a Docker
+
+# Or increase the wait time
+./disk-cleanup.sh --docker-wait 120
+
+# Or skip Docker entirely (recommended for headless/cron)
+./disk-cleanup.sh --skip-docker
 ```
 
-**Issue:** Git gc takes too long
+### Git gc timeout
+
+Git gc has a 30-minute timeout per repo. For large repos:
+
 ```bash
-# Solution: The script will process all repos. For large repos,
-# this is expected and may take hours. Let it complete.
+# Skip git gc
+./disk-cleanup.sh --skip-git-gc
+
+# Use smart GC with higher threshold
+./disk-cleanup.sh --smart-gc --gc-threshold 5
+
+# Run gc manually with no timeout
+git -C ~/repos/myrepo gc --aggressive
 ```
 
-### rclone-sync.sh
+### Stale rclone PID file
 
-**Issue:** "Remote not configured" error
 ```bash
-# Solution: Run rclone config and set up Google Drive
+rm -f ~/.rclone-sync.pid
+pgrep -f "rclone sync" | xargs kill -9
+```
+
+### rclone remote not configured
+
+```bash
 rclone config
+# Follow prompts to add your Google Drive or other remote
+rclone listremotes  # Verify it's listed
 ```
 
-**Issue:** Sync seems stuck
-```bash
-# Check if it's actually running
-./rclone-sync.sh --status
+### Bounds validation errors
 
-# View what it's doing
-tail -f ~/rclone-sync.log
+| Error | Fix |
+|-------|-----|
+| `gc-threshold out of range` | Must be 0.1–1000 GB |
+| `venv-age out of range` | Must be 1–3650 days |
+| `venv-min-gb out of range` | Must be 0.01–100 GB |
+| `warn-temp out of range` | Must be 30–80°C |
+| `crit-temp out of range` | Must be 40–90°C |
+| `TTL out of range` | Must be 60–86400 seconds |
+
+### Virtualenv path validation error
+
+Virtualenv roots must be under `$HOME`:
+
+```bash
+# Good
+./disk-cleanup.sh --venv-roots "$HOME/repos:$HOME/projects"
+
+# Bad — will be rejected
+./disk-cleanup.sh --venv-roots "/var/lib/venvs"
 ```
 
-**Issue:** Want to change what gets excluded
+### `smartctl not found`
+
 ```bash
-# Edit the script and modify the --exclude lines
-nano rclone-sync.sh
+sudo apt install smartmontools   # Debian/Ubuntu
+brew install smartmontools        # macOS
 ```
 
-**Issue:** Out of memory
+### CI health audit shows broken workflows
+
 ```bash
-# The script already uses memory-efficient settings:
-# - Stats updated every 5 minutes
-# - Logging to file
-# - Running in background
-#
-# If still having issues, reduce parallel transfers from 8 to 4
+# See what's broken
+REPOS_DIR=/path/to/repos ./ci-health-audit.sh --dry-run
+
+# Fix YAML syntax errors (review changes first)
+REPOS_DIR=/path/to/repos ./ci-health-audit.sh --fix-broken
+
+# Add branch guards to scheduled workflows
+REPOS_DIR=/path/to/repos ./ci-health-audit.sh --add-guards
 ```
 
 ---
 
-## Safety Notes
+## Prerequisites
 
-### disk-cleanup.sh
-- ✅ Safe to run multiple times
-- ✅ Only removes caches and generated files
-- ✅ Does not delete source code or configurations
-- ⚠️  Git gc is aggressive but safe (doesn't delete committed work)
-- ⚠️  Playwright browsers will need to be reinstalled if you use Playwright
-
-### rclone-sync.sh
-- ✅ Sync operation is safer than copy (doesn't duplicate)
-- ✅ Dry run mode available to preview changes
-- ⚠️  Sync will delete files on remote that don't exist locally
-- ⚠️  Make sure SOURCE_DIR is correct before running
-- 💡 Tip: Always run `--dry-run` first when testing changes
-
----
-
-## Unified QA Harness
-
-Run the full validation suite with one command:
-
-```bash
-./qa-all.sh
-```
-
-CI-friendly mode (deterministic artifact layout):
-
-```bash
-./qa-all.sh --ci
-```
-
-Artifacts are written to `./logs/qa/run_YYYYMMDD_HHMMSS/` and include:
-- Per-check logs
-- `summary.txt`
-- `summary.json` (machine-readable status report)
-
-### Config Precedence
-
-Participating scripts use deterministic precedence:
-
-`defaults < system config < user config < environment < CLI`
-
-Default config paths:
-- System: `/etc/homelab-scripts.conf`
-- Script-specific system: `/etc/homelab-scripts/<script>.conf`
-- User: `~/.config/homelab-scripts/config.conf`
-- Script-specific user: `~/.config/homelab-scripts/<script>.conf`
-
-Testing overrides:
-- `HOMELAB_SYSTEM_CONFIG`, `HOMELAB_USER_CONFIG` can be set to custom file paths.
-- Script environment prefixes (examples): `UPDATE_ALL_`, `DISK_CLEANUP_`, `SMART_CLEANUP_`.
-
-### JSON Contract (v1)
-
-Scripts with JSON output expose a stable top-level envelope:
-
-```json
-{
-  "script": "script-name",
-  "version": "x.y.z",
-  "timestamp": "ISO-8601",
-  "status": "success|warning|error|critical",
-  "duration_ms": 1234,
-  "errors": [],
-  "result": {}
-}
-```
-
-Legacy fields remain available for backward compatibility during migration.
+| Script | Required | Optional |
+|--------|----------|---------|
+| `disk-cleanup.sh` | bash | `coreutils` (macOS, for timeout) |
+| `smart-cleanup.sh` | bash, `disk-cleanup.sh` in same dir | — |
+| `update-all.sh` | bash | `brew`, `npm`, `pnpm`, `pip`, `gem` |
+| `service-health-check.sh` | bash, `curl` | `docker` (for container checks) |
+| `smart-disk-check.sh` | bash, `smartmontools` | — |
+| `cert-renewal-check.sh` | bash, `openssl` | `certbot` (for `--auto-renew`) |
+| `nmap-scan.sh` | bash, `nmap` | `sudo` (for SYN scans and MAC) |
+| `rclone-sync.sh` | bash, `rclone` | — |
+| `db-backup.sh` | bash, `pg_dump` or `mysqldump` | `rclone` (for upload) |
+| `docker-volume-backup.sh` | bash, `docker` | — |
+| `compose-redeploy.sh` | bash, `docker`, `docker compose` | — |
+| `deploy-scripts.sh` | bash, `ssh`, `rsync` | — |
+| `new-vm-setup.sh` | bash, `sudo` on remote | — |
+| `dyndns-update.sh` | bash, `curl` | — |
+| `ssh-key-audit.sh` | bash | — |
+| `ci-health-audit.sh` | bash, `python3 -m yaml` | — |
+| `qa-all.sh` | bash, `shellcheck`, `shfmt`, `jq` | — |
 
 ---
 
-## Dependencies
+## Log File Reference
 
-### Required Dependencies
+| Script | Log Location |
+|--------|-------------|
+| `disk-cleanup.sh` | `logs/disk_cleanup_YYYYMMDD_HHMMSS.log` |
+| `smart-cleanup.sh` | `logs/cleanup_YYYYMMDD_HHMMSS.log` |
+| `update-all.sh` | `logs/update_YYYYMMDD_HHMMSS.log` |
+| `service-health-check.sh` | `logs/service-health/` |
+| `smart-disk-check.sh` | `logs/smart-check/` |
+| `cert-renewal-check.sh` | `logs/cert/` |
+| `nmap-scan.sh` | `logs/nmap/` |
+| `rclone-sync.sh` | `~/rclone-sync.log` |
+| `db-backup.sh` | `logs/db-backup/` |
+| `docker-volume-backup.sh` | `logs/volume-backup/` |
+| `compose-redeploy.sh` | `logs/compose-redeploy/` |
+| `dyndns-update.sh` | `logs/dyndns/` |
+| `new-vm-setup.sh` | `logs/new-vm-setup/` |
+| `ssh-key-audit.sh` | `logs/ssh-key-audit/` |
+| `qa-all.sh` | `logs/qa/run_YYYYMMDD_HHMMSS/` |
 
-All scripts require standard POSIX utilities (available by default on macOS and Linux):
-- `awk` - Used for arithmetic and text processing (replaces bc for calculations)
-- `sed` - Stream editing for text transformations
-- `grep` - Text searching and pattern matching
-- `date` - Date and time formatting
-- `du` - Disk usage calculations
-- `df` - Filesystem statistics
-
-### Optional Dependencies
-
-**For macOS users:**
-- `coreutils` - Provides `gtimeout` for git gc timeout protection
-  ```bash
-  brew install coreutils
-  ```
-  Without this, git gc operations will run without timeout protection (with warning message).
-
-**For script-specific features:**
-- `docker` - Required only if cleaning Docker artifacts (disk-cleanup.sh)
-- `rclone` - Required for backup sync functionality (rclone-sync.sh)
-- `git` - Required for git gc operations (disk-cleanup.sh)
-
-### Notes
-
-- **No bc dependency:** All arithmetic operations use awk for maximum portability
-- **Cross-platform:** Scripts detect platform (macOS vs Linux) and adapt automatically
-- **Graceful degradation:** Scripts warn but continue if optional dependencies are missing
-
----
-
-## Scheduling Automation
-
-### Using cron (macOS/Linux)
-
-```bash
-# Edit crontab
-crontab -e
-
-# Add these lines:
-
-# Run cleanup every Sunday at 2 AM
-0 2 * * 0 /Users/adrian/repos/scripts/disk-cleanup.sh >> /Users/adrian/repos/scripts/logs/cron-disk-cleanup.log 2>&1
-
-# Run backup every day at 3 AM
-0 3 * * * /Users/adrian/repos/scripts/rclone-sync.sh --start >> /Users/adrian/repos/scripts/logs/cron-rclone-sync.log 2>&1
-```
-
-### Using launchd (macOS recommended)
-
-Create a plist file for more reliable scheduling on macOS. See Apple's documentation on launchd.
-
----
-
-## Support
-
-For issues or improvements:
-- Review logs in `~/rclone-sync.log` or `logs/disk_cleanup_*.log` and JSON summaries in `logs/disk_cleanup_summary_*.json`
-- Ensure all prerequisites are installed
-- Check the implementation documentation in the repo
-
----
-
-**Generated by:** Claude Code
-**Last Updated:** November 9, 2025
+All log directories: mode `700`. All log files: mode `600`.

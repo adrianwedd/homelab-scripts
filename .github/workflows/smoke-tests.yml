@@ -189,13 +189,7 @@ jobs:
           ./compose-redeploy.sh --help
 
           # Create minimal test compose file
-          cat > test-compose.yml << 'COMPOSE'
-version: '3.8'
-services:
-  test:
-    image: alpine:latest
-    command: sleep 3600
-COMPOSE
+          printf "version: '3.8'\nservices:\n  test:\n    image: alpine:latest\n    command: sleep 3600\n" > test-compose.yml
 
           # Test dry-run with test compose file
           ./compose-redeploy.sh --file test-compose.yml --dry-run

@@ -2,7 +2,7 @@
 
 # CI Health Audit Script
 # Comprehensive analysis of all GitHub Actions workflows across repositories
-# Usage: ./ci-health-audit.sh [--fix-broken] [--add-guards] [--fix-heredocs]
+# Usage: ./ci-health-audit.sh [--fix-broken] [--add-guards] [--fix-heredocs] [--dry-run]
 
 set -euo pipefail
 
@@ -14,10 +14,11 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPOS_DIR="${REPOS_DIR:-/Users/adrian/repos}"
+REPOS_DIR="${REPOS_DIR:-$HOME/repos}"
 FIX_BROKEN=false
 ADD_GUARDS=false
 FIX_HEREDOCS=false
+DRY_RUN=false
 
 # Parse arguments
 for arg in "$@"; do
@@ -25,6 +26,7 @@ for arg in "$@"; do
     --fix-broken) FIX_BROKEN=true ;;
     --add-guards) ADD_GUARDS=true ;;
     --fix-heredocs) FIX_HEREDOCS=true ;;
+    --dry-run) DRY_RUN=true ;;
     --help)
         echo "Usage: $0 [OPTIONS]"
         echo ""
@@ -32,6 +34,7 @@ for arg in "$@"; do
         echo "  --fix-broken    Fix workflows with YAML syntax errors"
         echo "  --add-guards    Add branch guards to scheduled workflows"
         echo "  --fix-heredocs  Add sed fixes for Python/JS heredocs"
+        echo "  --dry-run       Scan and report only; skip all fixes"
         echo "  --help          Show this help message"
         exit 0
         ;;
@@ -128,7 +131,7 @@ echo -e "${YELLOW}Unguarded Schedules (cost waste):${NC} $unguarded_schedules"
 echo -e "${YELLOW}Heredocs Needing Fix (runtime errors):${NC} $heredocs_need_fix"
 echo ""
 
-health_pct=$((100 * (total_workflows - broken_workflows) / total_workflows))
+health_pct=$([ "$total_workflows" -gt 0 ] && echo $((100 * (total_workflows - broken_workflows) / total_workflows)) || echo 100)
 if [ $health_pct -ge 95 ]; then
     health_color=$GREEN
 elif [ $health_pct -ge 85 ]; then
@@ -175,4 +178,8 @@ echo "1. Fix $broken_workflows broken workflows (YAML syntax errors)"
 echo "2. Add branch guards to $unguarded_schedules scheduled workflows"
 echo "3. Fix $heredocs_need_fix Python/JS heredocs with sed commands"
 echo ""
-echo "Run with --fix-broken, --add-guards, or --fix-heredocs to auto-fix"
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${YELLOW}[DRY RUN] No fixes applied. Re-run without --dry-run to enable fixes.${NC}"
+else
+    echo "Run with --fix-broken, --add-guards, or --fix-heredocs to auto-fix"
+fi

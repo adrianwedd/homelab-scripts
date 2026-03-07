@@ -1,288 +1,193 @@
-# Getting Started with Homelab Scripts
+# Getting Started
 
-Welcome! This guide will help you get up and running with the homelab automation scripts in under 10 minutes.
-
----
-
-## 📋 Prerequisites
-
-### Required
-- **macOS** or **Linux** operating system
-- **Bash 3.2+** (comes pre-installed on macOS/Linux)
-- **Git** for cloning the repository
-
-### Optional (installed automatically when needed)
-- **Docker** - For container management (disk-cleanup.sh, service-health-check.sh)
-- **nmap** - For network scanning (nmap-scan.sh)
-- **rclone** - For cloud backups (rclone-sync.sh, db-backup.sh)
-- **PostgreSQL/MySQL clients** - For database backups (db-backup.sh)
+Get up and running with the homelab scripts in under 5 minutes.
 
 ---
 
-## 🚀 Quick Start (3 steps)
+## Prerequisites
 
-### Step 1: Clone the Repository
+**Required:**
+- Linux or macOS
+- Bash 3.2+ (comes pre-installed)
+- Git
+
+**Per-script (only needed when you use that script):**
+
+```bash
+# Network scanning
+sudo apt install nmap
+
+# Cloud sync
+sudo apt install rclone && rclone config
+
+# SMART disk monitoring
+sudo apt install smartmontools
+
+# Database backups
+sudo apt install postgresql-client   # for pg_dump
+sudo apt install mysql-client        # for mysqldump
+
+# QA harness
+sudo apt install shellcheck shfmt jq
+```
+
+---
+
+## Install
 
 ```bash
 git clone https://github.com/adrianwedd/homelab-scripts.git
 cd homelab-scripts
-```
-
-### Step 2: Make Scripts Executable
-
-```bash
 chmod +x *.sh
 ```
 
-### Step 3: Run Your First Script
+---
 
-Let's check for SSL certificates expiring soon:
+## Your First Run
+
+**Rule #1:** Always `--dry-run` before you do anything real.
 
 ```bash
-# Create a simple test file with a domain
-echo "google.com" > test-domains.txt
+# What would disk-cleanup.sh remove?
+./disk-cleanup.sh --dry-run --no-gauge --no-fun
 
-# Check certificate expiry
-./cert-renewal-check.sh --domains test-domains.txt --warn-days 30
+# What services are down?
+./service-health-check.sh --config examples/services.conf --dry-run
 
-# Expected output:
-# ✓ google.com: Valid (expires in X days)
+# Which SSL certs are about to expire?
+./cert-renewal-check.sh --domains examples/domains.txt --dry-run
+
+# What's on my network?
+./nmap-scan.sh --dry-run
 ```
-
-**🎉 Success!** You've run your first homelab script.
 
 ---
 
-## 📚 Common Use Cases
+## Five Common Tasks
 
-### Use Case 1: Free Up Disk Space
-
-The most popular script - clean up caches and free disk space:
+### 1. Free up disk space
 
 ```bash
-# Preview what will be cleaned (safe, no changes)
-./disk-cleanup.sh --dry-run
+# See what would be removed
+./disk-cleanup.sh --dry-run --no-gauge --no-fun
 
-# Run actual cleanup with confirmations
+# Clean caches (skip Docker, safe for headless)
+./disk-cleanup.sh -y --skip-docker --no-gauge --no-fun
+
+# Interactive with live disk gauge
 ./disk-cleanup.sh
-
-# Non-interactive cleanup (for automation)
-./disk-cleanup.sh -y --skip-docker
 ```
 
-**Typical results:** 5-10GB freed in 2-5 minutes
+### 2. Monitor your services
 
----
-
-### Use Case 2: Monitor Service Uptime
-
-Check if your services are running properly:
+Create a config file:
 
 ```bash
-# Use the example config
-./service-health-check.sh --config examples/services.conf --once
+cat > services.conf << 'EOF'
+[my-app]
+type=http
+url=http://localhost:8080/health
+expect_status=200
 
-# Watch mode (continuous monitoring every 60 seconds)
-./service-health-check.sh --config examples/services.conf --watch --interval 60
+[ssh]
+type=tcp
+host=localhost
+port=22
 
-# JSON output for integration with monitoring tools
-./service-health-check.sh --config examples/services.conf --once --json
+[sshd]
+type=process
+name=sshd
+EOF
+
+./service-health-check.sh --config services.conf
 ```
 
-**Configuration:** Edit `examples/services.conf` to add your services.
-
----
-
-### Use Case 3: Backup Your Database
-
-Automated PostgreSQL/MySQL backups with retention:
+### 3. Back up your database
 
 ```bash
-# Set database connection (never use CLI args for passwords!)
-export DB_DSN="postgres://username:password@localhost:5432/mydb"
+export DB_DSN="postgres://myuser:mypass@localhost/mydb"
 
-# Preview backup plan
+# Dry run first
 ./db-backup.sh --db pg --dry-run
 
-# Run backup with 7 daily, 4 weekly, 12 monthly retention
-./db-backup.sh --db pg --out ./backups --retention 7:4:12
-
-# Backup with cloud sync
-./db-backup.sh --db pg --out ./backups --rclone gdrive:database-backups
+# Real backup
+./db-backup.sh --db pg
 ```
 
-**Security Note:** Always use environment variables for credentials, never CLI arguments.
-
----
-
-### Use Case 4: Monitor SSL Certificates
-
-Never let certificates expire unexpectedly:
+### 4. Sync repos to Google Drive
 
 ```bash
-# Check multiple domains from a file
-cat > my-domains.txt << 'DOMAINS'
-example.com
-api.example.com
-admin.example.com
-DOMAINS
-
-# Check expiry with 30-day warning
-./cert-renewal-check.sh --domains my-domains.txt --warn-days 30
-
-# JSON output for automation
-./cert-renewal-check.sh --domains my-domains.txt --warn-days 30 --json
-
-# Check local certificate file
-./cert-renewal-check.sh --cert /etc/ssl/certs/my-cert.pem --warn-days 21
-```
-
----
-
-## 🛠️ Installation of Optional Tools
-
-### Install nmap (network scanning)
-
-```bash
-# macOS
-brew install nmap
-
-# Ubuntu/Debian
-sudo apt install nmap
-
-# Verify
-nmap --version
-```
-
-### Install rclone (cloud sync)
-
-```bash
-# macOS
-brew install rclone
-
-# Ubuntu/Debian
-curl https://rclone.org/install.sh | sudo bash
-
-# Configure Google Drive
+# Set up rclone first (one-time)
 rclone config
-# Choose: New remote → Google Drive → Follow OAuth flow
+
+# Preview what would be synced
+./rclone-sync.sh --dry-run
+
+# Start background sync
+./rclone-sync.sh --start
+./rclone-sync.sh --status
 ```
 
-### Install Database Clients
+### 5. Audit SSH keys
 
 ```bash
-# PostgreSQL client
-brew install postgresql       # macOS
-sudo apt install postgresql-client  # Linux
+./ssh-key-audit.sh --all-users
 
-# MySQL client
-brew install mysql-client     # macOS
-sudo apt install mysql-client       # Linux
+# Fail if any RSA keys found
+./ssh-key-audit.sh --all-users --forbid-types ssh-rsa --fail-on weak-type
 ```
 
 ---
 
-## 🔧 Configuration Tips
-
-### 1. Create a Config Directory
-
-Keep your configurations organized:
+## Set Up Automation (Cron)
 
 ```bash
-mkdir -p ~/.homelab-scripts
-cp examples/*.conf ~/.homelab-scripts/
-cp examples/*.txt ~/.homelab-scripts/
+crontab -e
 ```
 
-### 2. Set Up Environment Variables
-
-Add to your `~/.bashrc` or `~/.zshrc`:
-
-```bash
-# Database credentials (example - use your actual credentials)
-export DB_DSN="postgres://user:pass@localhost:5432/mydb"
-
-# Rclone remote name
-export RCLONE_REMOTE="gdrive:homelab-backups"
-```
-
-### 3. Schedule Automated Runs
-
-Add to crontab (`crontab -e`):
+Add:
 
 ```cron
-# Daily cleanup at 2 AM (non-interactive, skip Docker)
-0 2 * * * cd /path/to/homelab-scripts && ./disk-cleanup.sh -y --skip-docker --no-gauge --no-fun
+# Daily: check SSL certs at 8 AM
+0 8 * * * ./cert-renewal-check.sh --domains /etc/ssl/domains.txt >> /tmp/cert.log 2>&1
 
-# Check certificates weekly on Monday at 9 AM
-0 9 * * 1 cd /path/to/homelab-scripts && ./cert-renewal-check.sh --domains ~/.homelab-scripts/domains.txt --warn-days 30
+# Weekly: disk cleanup Sunday 3 AM
+0 3 * * 0 cd /home/pi/repos/scripts && ./disk-cleanup.sh -y --skip-docker --no-gauge --no-fun >> /tmp/cleanup.log 2>&1
 
-# Database backup daily at 1 AM
-0 1 * * * cd /path/to/homelab-scripts && ./db-backup.sh --db pg --out ~/backups/db --retention 7:4:12
-
-# Service health check every hour
-0 * * * * cd /path/to/homelab-scripts && ./service-health-check.sh --config ~/.homelab-scripts/services.conf --once --json
+# Daily: DB backup at 2 AM
+0 2 * * * cd /home/pi/repos/scripts && DB_DSN="postgres://user:pass@localhost/mydb" ./db-backup.sh --db pg >> /tmp/db-backup.log 2>&1
 ```
 
 ---
 
-## 🎯 Next Steps
+## Set Up the Pre-commit Hook
 
-### Explore More Scripts
+Catches shellcheck errors, shfmt formatting issues, and unsafe `bc` usage before you commit:
 
 ```bash
-# List all available scripts
-ls -1 *.sh
-
-# Get help for any script
-./disk-cleanup.sh --help
-./service-health-check.sh --help
-./db-backup.sh --help
-./cert-renewal-check.sh --help
+ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
 ```
 
-### Read Detailed Documentation
-
-- **[README.md](../README.md)** - Complete feature reference
-- **[CHANGELOG.md](../CHANGELOG.md)** - Version history and changes
-- **[ROADMAP.md](../ROADMAP.md)** - Upcoming features
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
-
-### Join the Community
-
-- **Report bugs:** [GitHub Issues](https://github.com/adrianwedd/homelab-scripts/issues)
-- **Request features:** [GitHub Discussions](https://github.com/adrianwedd/homelab-scripts/discussions)
-- **Contribute:** See [CONTRIBUTING.md](../CONTRIBUTING.md)
+Requires: `shellcheck`, `shfmt` (`sudo apt install shellcheck shfmt`)
 
 ---
 
-## ❓ Quick FAQ
+## Run the QA Suite
 
-**Q: Are these scripts safe to run?**  
-A: Yes! All scripts support `--dry-run` mode to preview changes before executing. The scripts never modify source code, only clean caches and generated files.
-
-**Q: Will disk-cleanup.sh delete my files?**  
-A: No. It only removes caches, build artifacts, and temporary files. Your source code, documents, and configurations are never touched.
-
-**Q: Do I need to install all dependencies?**  
-A: No. Scripts gracefully skip unavailable tools. For example, if Docker isn't installed, disk-cleanup.sh will skip Docker cleanup.
-
-**Q: Can I use these on a production server?**  
-A: Yes, but test in `--dry-run` mode first. Many scripts are designed for automation (cron jobs).
-
-**Q: How do I update to the latest version?**  
-A: Pull the latest changes:
 ```bash
-cd homelab-scripts
-git pull origin main
+# Install dependencies
+sudo apt install shellcheck shfmt jq
+
+# Run all checks
+./qa-all.sh
+
+# Expected: 31/31 PASS
 ```
 
 ---
 
-## 🆘 Need Help?
+## Next Steps
 
-- **Troubleshooting:** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **Issues:** [GitHub Issues](https://github.com/adrianwedd/homelab-scripts/issues)
-- **Security:** See [SECURITY.md](../SECURITY.md) for reporting vulnerabilities
-
-**Happy automation! 🎉**
+- **Full reference:** [README.md](../README.md) — every flag for every script
+- **Troubleshooting:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — common issues and fixes
+- **Examples:** `examples/` directory — sample config files and scripts
