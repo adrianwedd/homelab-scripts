@@ -19,7 +19,7 @@ SCAN_DIR="${HOME}/repos"
 DRY_RUN=false
 OUTPUT_JSON=false
 SCAN_HISTORY=false
-SEVERITY_FILTER=""  # empty = all
+SEVERITY_FILTER="" # empty = all
 
 # Results
 FINDINGS_CRITICAL=0
@@ -37,11 +37,28 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-print_error()   { echo -e "${RED}✗ Error:${NC} $1" >&2; echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"; }
-print_success() { echo -e "${GREEN}✓${NC} $1"; echo "[$(get_iso8601_timestamp)] OK: $1" >>"$LOG_FILE"; }
-print_warning() { echo -e "${YELLOW}⚠${NC} $1"; echo "[$(get_iso8601_timestamp)] WARN: $1" >>"$LOG_FILE"; }
-print_info()    { echo -e "${BLUE}ℹ${NC} $1"; echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"; }
-print_section() { echo ""; echo -e "${CYAN}━━━ $1 ━━━${NC}"; echo ""; echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"; }
+print_error() {
+    echo -e "${RED}✗ Error:${NC} $1" >&2
+    echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
+}
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+    echo "[$(get_iso8601_timestamp)] OK: $1" >>"$LOG_FILE"
+}
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+    echo "[$(get_iso8601_timestamp)] WARN: $1" >>"$LOG_FILE"
+}
+print_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+    echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
+}
+print_section() {
+    echo ""
+    echo -e "${CYAN}━━━ $1 ━━━${NC}"
+    echo ""
+    echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
+}
 
 show_help() {
     cat <<'HELP'
@@ -127,26 +144,26 @@ record_finding() {
     if [ -n "$SEVERITY_FILTER" ]; then
         case "$SEVERITY_FILTER" in
         critical) [[ "$severity" != "CRITICAL" ]] && return ;;
-        high)     [[ "$severity" != "CRITICAL" && "$severity" != "HIGH" ]] && return ;;
-        medium)   [[ "$severity" == "LOW" ]] && return ;;
+        high) [[ "$severity" != "CRITICAL" && "$severity" != "HIGH" ]] && return ;;
+        medium) [[ "$severity" == "LOW" ]] && return ;;
         esac
     fi
 
     # Increment counters
     case "$severity" in
     CRITICAL) FINDINGS_CRITICAL=$((FINDINGS_CRITICAL + 1)) ;;
-    HIGH)     FINDINGS_HIGH=$((FINDINGS_HIGH + 1)) ;;
-    MEDIUM)   FINDINGS_MEDIUM=$((FINDINGS_MEDIUM + 1)) ;;
-    LOW)      FINDINGS_LOW=$((FINDINGS_LOW + 1)) ;;
+    HIGH) FINDINGS_HIGH=$((FINDINGS_HIGH + 1)) ;;
+    MEDIUM) FINDINGS_MEDIUM=$((FINDINGS_MEDIUM + 1)) ;;
+    LOW) FINDINGS_LOW=$((FINDINGS_LOW + 1)) ;;
     esac
 
     # Color by severity
     local color="$NC"
     case "$severity" in
     CRITICAL) color="$RED" ;;
-    HIGH)     color="$YELLOW" ;;
-    MEDIUM)   color="$BLUE" ;;
-    LOW)      color="$NC" ;;
+    HIGH) color="$YELLOW" ;;
+    MEDIUM) color="$BLUE" ;;
+    LOW) color="$NC" ;;
     esac
 
     printf "  ${color}[%s]${NC} ${BOLD}%s${NC}  %s:%s\n" \
@@ -189,7 +206,7 @@ scan_file() {
         local severity="$1"
         local pattern_name="$2"
         local pattern="$3"
-        local mask_group="${4:-0}"  # which grep group to mask (0 = whole match)
+        local mask_group="${4:-0}" # which grep group to mask (0 = whole match)
 
         while IFS=: read -r lineno match; do
             [ -z "$lineno" ] && continue
@@ -278,9 +295,9 @@ scan_history() {
     trap 'rm -f "$tmp_patch"' RETURN
 
     # Get all added lines from all commits
-    git -C "$repo_path" log --all --diff-filter=A -p --no-color 2>/dev/null \
-        | grep '^+[^+]' \
-        | sed 's/^+//' > "$tmp_patch"
+    git -C "$repo_path" log --all --diff-filter=A -p --no-color 2>/dev/null |
+        grep '^+[^+]' |
+        sed 's/^+//' >"$tmp_patch"
 
     # Patterns in history (simplified — just the critical ones)
     local patterns=(
@@ -315,13 +332,35 @@ SKIP_EXTENSIONS="png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|mp3|mp4|mov|avi|mkv
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    --dir)        SCAN_DIR="$2"; shift 2 ;;
-    --severity)   SEVERITY_FILTER="$2"; shift 2 ;;
-    --history)    SCAN_HISTORY=true; shift ;;
-    --dry-run)    DRY_RUN=true; shift ;;
-    --json)       OUTPUT_JSON=true; shift ;;
-    --help|-h)    show_help; exit 0 ;;
-    *) echo "Unknown option: $1" >&2; show_help; exit 2 ;;
+    --dir)
+        SCAN_DIR="$2"
+        shift 2
+        ;;
+    --severity)
+        SEVERITY_FILTER="$2"
+        shift 2
+        ;;
+    --history)
+        SCAN_HISTORY=true
+        shift
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --json)
+        OUTPUT_JSON=true
+        shift
+        ;;
+    --help | -h)
+        show_help
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        show_help
+        exit 2
+        ;;
     esac
 done
 
@@ -420,7 +459,7 @@ done
 
 total_findings=$((FINDINGS_CRITICAL + FINDINGS_HIGH + FINDINGS_MEDIUM + FINDINGS_LOW))
 RUN_END_TS=$(date +%s)
-DURATION_MS=$(( (RUN_END_TS - RUN_START_TS) * 1000 ))
+DURATION_MS=$(((RUN_END_TS - RUN_START_TS) * 1000))
 
 echo ""
 echo -e "${BOLD}━━━ Summary ━━━${NC}"
@@ -478,7 +517,7 @@ if [ "$OUTPUT_JSON" = true ]; then
                 findings_low: $low,
                 findings: $findings
             }
-        }' > "$JSON_FILE"
+        }' >"$JSON_FILE"
     chmod 600 "$JSON_FILE"
     print_info "JSON: $JSON_FILE"
 fi

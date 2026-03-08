@@ -16,7 +16,7 @@ JSON_FILE="${LOG_DIR}/plex_cleanup_${TIMESTAMP}.json"
 
 # Defaults
 PLEX_DIR="/home/plex"
-PLEX_DATA_DIR=""        # auto-detected
+PLEX_DATA_DIR="" # auto-detected
 DRY_RUN=false
 OUTPUT_JSON=false
 SKIP_TRANSCODER=false
@@ -42,12 +42,30 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-print_error()   { echo -e "${RED}✗ Error:${NC} $1" >&2; log_line "ERROR" "$1"; ERRORS=$((ERRORS+1)); }
-print_success() { echo -e "${GREEN}✓${NC} $1"; log_line "OK" "$1"; }
-print_warning() { echo -e "${YELLOW}⚠${NC} $1"; log_line "WARN" "$1"; }
-print_info()    { echo -e "${BLUE}ℹ${NC} $1"; log_line "INFO" "$1"; }
-print_section() { echo ""; echo -e "${CYAN}━━━ $1 ━━━${NC}"; echo ""; log_line "SECTION" "$1"; }
-log_line()      { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
+print_error() {
+    echo -e "${RED}✗ Error:${NC} $1" >&2
+    log_line "ERROR" "$1"
+    ERRORS=$((ERRORS + 1))
+}
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+    log_line "OK" "$1"
+}
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+    log_line "WARN" "$1"
+}
+print_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+    log_line "INFO" "$1"
+}
+print_section() {
+    echo ""
+    echo -e "${CYAN}━━━ $1 ━━━${NC}"
+    echo ""
+    log_line "SECTION" "$1"
+}
+log_line() { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
 
 show_help() {
     cat <<'HELP'
@@ -101,7 +119,7 @@ HELP
 
 bytes_to_human() {
     local bytes="$1"
-    if   [ "$bytes" -ge 1073741824 ]; then
+    if [ "$bytes" -ge 1073741824 ]; then
         awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"
     elif [ "$bytes" -ge 1048576 ]; then
         awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"
@@ -290,8 +308,8 @@ clean_transcoder_cache() {
 clean_thumbnails() {
     print_section "System Junk Files"
 
-    local junk_patterns=( ".DS_Store" "Thumbs.db" "desktop.ini" ".Spotlight-V100" ".Trashes" ".fseventsd" )
-    local hidden_patterns=( "._*" ".AppleDouble" ".AppleDB" )
+    local junk_patterns=(".DS_Store" "Thumbs.db" "desktop.ini" ".Spotlight-V100" ".Trashes" ".fseventsd")
+    local hidden_patterns=("._*" ".AppleDouble" ".AppleDB")
 
     local total_junk=0
     local junk_files=()
@@ -396,7 +414,7 @@ clean_duplicates() {
         local sz
         sz=$(get_size_bytes "$f")
         echo "$sz $f"
-    done > "$tmp_size_index"
+    done >"$tmp_size_index"
 
     # Find sizes that appear more than once
     local dup_sizes
@@ -433,7 +451,7 @@ clean_duplicates() {
             fi
         done
         unset md5_groups
-    done <<< "$dup_sizes"
+    done <<<"$dup_sizes"
 
     if [ ${#dup_list[@]} -eq 0 ]; then
         print_success "No exact duplicates found (files with same size have different content)"
@@ -464,16 +482,47 @@ clean_duplicates() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    --plex-dir)       PLEX_DIR="$2"; shift 2 ;;
-    --skip-transcoder) SKIP_TRANSCODER=true; shift ;;
-    --skip-thumbnails) SKIP_THUMBNAILS=true; shift ;;
-    --skip-duplicates) SKIP_DUPLICATES=true; shift ;;
-    --skip-empties)   SKIP_EMPTIES=true; shift ;;
-    -y|--yes)         FORCE_YES=true; shift ;;
-    --dry-run)        DRY_RUN=true; shift ;;
-    --json)           OUTPUT_JSON=true; shift ;;
-    --help|-h)        show_help; exit 0 ;;
-    *) echo "Unknown option: $1" >&2; show_help; exit 2 ;;
+    --plex-dir)
+        PLEX_DIR="$2"
+        shift 2
+        ;;
+    --skip-transcoder)
+        SKIP_TRANSCODER=true
+        shift
+        ;;
+    --skip-thumbnails)
+        SKIP_THUMBNAILS=true
+        shift
+        ;;
+    --skip-duplicates)
+        SKIP_DUPLICATES=true
+        shift
+        ;;
+    --skip-empties)
+        SKIP_EMPTIES=true
+        shift
+        ;;
+    -y | --yes)
+        FORCE_YES=true
+        shift
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --json)
+        OUTPUT_JSON=true
+        shift
+        ;;
+    --help | -h)
+        show_help
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        show_help
+        exit 2
+        ;;
     esac
 done
 
@@ -509,15 +558,15 @@ fi
 
 # ── Run sections ──────────────────────────────────────────────────────────────
 
-[ "$SKIP_TRANSCODER" = false ]  && clean_transcoder_cache
-[ "$SKIP_THUMBNAILS" = false ]  && clean_thumbnails
-[ "$SKIP_EMPTIES"    = false ]  && clean_empty_dirs
-[ "$SKIP_DUPLICATES" = false ]  && clean_duplicates
+[ "$SKIP_TRANSCODER" = false ] && clean_transcoder_cache
+[ "$SKIP_THUMBNAILS" = false ] && clean_thumbnails
+[ "$SKIP_EMPTIES" = false ] && clean_empty_dirs
+[ "$SKIP_DUPLICATES" = false ] && clean_duplicates
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 RUN_END_TS=$(date +%s)
-DURATION_MS=$(( (RUN_END_TS - RUN_START_TS) * 1000 ))
+DURATION_MS=$(((RUN_END_TS - RUN_START_TS) * 1000))
 
 echo ""
 echo -e "${BOLD}━━━ Summary ━━━${NC}"
@@ -566,7 +615,7 @@ if [ "$OUTPUT_JSON" = true ]; then
                 errors: $errors,
                 actions: $actions
             }
-        }' > "$JSON_FILE"
+        }' >"$JSON_FILE"
     chmod 600 "$JSON_FILE"
     print_info "JSON: $JSON_FILE"
 fi

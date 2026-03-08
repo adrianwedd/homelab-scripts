@@ -10,11 +10,11 @@ All scripts follow a consistent design philosophy: safe defaults, `--dry-run` be
 
 - [Quick Start](#quick-start)
 - [Script Reference](#script-reference)
-  - [Disk & System Cleanup](#disk--system-cleanup) — `disk-cleanup.sh`, `smart-cleanup.sh`, `plex-cleanup.sh`, `update-all.sh`
-  - [Monitoring & Health](#monitoring--health) — `service-health-check.sh`, `smart-disk-check.sh`, `nmap-scan.sh`, `docker-health.sh`
-  - [Backup & Sync](#backup--sync) — `rclone-sync.sh`, `db-backup.sh`, `docker-volume-backup.sh`
-  - [Infrastructure & Deployment](#infrastructure--deployment) — `new-vm-setup.sh`, `deploy-scripts.sh`, `compose-redeploy.sh`, `dyndns-update.sh`
-  - [Security & Audit](#security--audit) — `ssh-key-audit.sh`, `ci-health-audit.sh`, `secrets-scan.sh`
+  - [Disk & System Cleanup](#disk--system-cleanup) — `disk-cleanup.sh`, `smart-cleanup.sh`, `plex-cleanup.sh`, `update-all.sh`, `log-manager.sh`
+  - [Monitoring & Health](#monitoring--health) — `service-health-check.sh`, `smart-disk-check.sh`, `nmap-scan.sh`, `docker-health.sh`, `system-monitor.sh`, `network-monitor.sh`, `media-stats.sh`
+  - [Backup & Sync](#backup--sync) — `rclone-sync.sh`, `db-backup.sh`, `docker-volume-backup.sh`, `backup-verify.sh`
+  - [Infrastructure & Deployment](#infrastructure--deployment) — `new-vm-setup.sh`, `deploy-scripts.sh`, `compose-redeploy.sh`, `dyndns-update.sh`, `minecraft-manager.sh`
+  - [Security & Audit](#security--audit) — `ssh-key-audit.sh`, `ci-health-audit.sh`, `secrets-scan.sh`, `auth-log-audit.sh`, `cron-audit.sh`, `firewall-audit.sh`, `package-cve-check.sh`
   - [Development & QA](#development--qa) — `qa-all.sh`
 - [Common Patterns](#common-patterns)
 - [Cron Integration](#cron-integration)
@@ -232,6 +232,48 @@ Updates all detected package managers in one shot. Auto-detects what's installed
 > **PEP 668:** On Debian/Ubuntu systems with externally-managed Python, `pip` updates are skipped by default to protect the system Python. Use `--pip-system` with `--break-system-packages` semantics, or use a virtualenv.
 
 **Logs:** `logs/update_YYYYMMDD_HHMMSS.log`
+
+---
+
+#### `log-manager.sh`
+
+Compresses old log files, enforces retention policies, vacuums the systemd journal, and rotates large rclone logs. Keeps `logs/` directories from growing unbounded.
+
+```bash
+# Preview what would be compressed/deleted
+./log-manager.sh --dry-run
+
+# Run with defaults (compress >7 days, delete >30 days)
+./log-manager.sh
+
+# Custom retention
+./log-manager.sh --compress-days 3 --retention-days 14
+
+# Include additional directories
+./log-manager.sh --dirs "/var/log/myapp:/opt/service/logs"
+
+# JSON summary output
+./log-manager.sh --json
+```
+
+**What it manages:**
+
+| Action | Default threshold | Scope |
+|--------|-----------------|-------|
+| Compress `.log` → `.log.gz` | Older than 7 days | `logs/` subdirs + `--dirs` |
+| Delete `.log` / `.log.gz` | Older than 30 days | Same |
+| Journal vacuum | Older than 30 days | `journalctl --vacuum-time` |
+| Rotate rclone log | > 50 MB | `~/rclone-sync.log` |
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--compress-days N` | 7 | Compress logs older than N days |
+| `--retention-days N` | 30 | Delete logs older than N days |
+| `--dirs PATHS` | (auto) | Colon-separated extra directories |
+
+**Logs:** `logs/log-manager/`
 
 ---
 
@@ -480,6 +522,155 @@ Docker container health dashboard, image inventory, orphaned resource detector, 
 
 ---
 
+#### `system-monitor.sh`
+
+Real-time CPU, memory, disk, and process monitoring for Linux systems. Includes Raspberry Pi temperature, configurable alert thresholds, watch mode, and optional webhook notifications.
+
+```bash
+# One-shot snapshot
+./system-monitor.sh
+
+# Continuous watch mode (refresh every 10s)
+./system-monitor.sh --watch --interval 10
+
+# Custom alert thresholds
+./system-monitor.sh --cpu-threshold 70 --mem-threshold 80 --disk-threshold 85
+
+# POST alerts to a webhook URL
+./system-monitor.sh --webhook https://hooks.example.com/alert
+
+# Show top 5 processes instead of 10
+./system-monitor.sh --top 5
+
+# JSON output
+./system-monitor.sh --json
+
+# Dry run (show thresholds, exit without checking)
+./system-monitor.sh --dry-run
+```
+
+**Sections:**
+
+| Section | What's shown |
+|---------|-------------|
+| CPU & Load | 1-second CPU sample, load averages (1/5/15m), Pi temperature |
+| Memory | MemTotal, used, available, swap usage |
+| Disk | All non-tmpfs mounts, used% color-coded by threshold |
+| Processes | Top N by CPU%, top N by MEM% |
+
+**Alert thresholds:**
+
+| Flag | Default | Triggers on |
+|------|---------|------------|
+| `--cpu-threshold` | 80% | 1-second CPU usage |
+| `--mem-threshold` | 85% | Memory used% |
+| `--disk-threshold` | 90% | Any mount point used% |
+| `--load-threshold` | 4.0 | 1-minute load average |
+
+**Exit codes:** 0 = all within thresholds, 1 = threshold exceeded
+
+**Logs:** `logs/system-monitor/`
+
+---
+
+#### `network-monitor.sh`
+
+Pings targets, measures DNS resolution times, logs latency history to a `.jsonl` timeseries file, and alerts on packet loss or slow response.
+
+```bash
+# Check defaults (1.1.1.1 and 8.8.8.8)
+./network-monitor.sh
+
+# Custom targets
+./network-monitor.sh --targets "192.168.1.1,8.8.8.8,1.0.0.1"
+
+# Continuous watch mode
+./network-monitor.sh --watch --interval 30
+
+# Alert thresholds
+./network-monitor.sh --latency-threshold 100 --loss-threshold 5 --dns-threshold 500
+
+# JSON output (current run)
+./network-monitor.sh --json
+
+# Dry run
+./network-monitor.sh --dry-run
+```
+
+**What it checks:**
+
+| Check | How |
+|-------|-----|
+| Ping latency | `ping -c 5` per target, avg/min/max/loss |
+| DNS resolution | `host google.com` timing |
+| History | Appended to `logs/network-monitor/timeseries.jsonl` |
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--targets LIST` | `1.1.1.1,8.8.8.8` | Comma-separated IPs/hostnames |
+| `--latency-threshold N` | 200ms | Alert if avg latency exceeds |
+| `--loss-threshold N` | 10% | Alert if packet loss exceeds |
+| `--dns-threshold N` | 1000ms | Alert if DNS resolution exceeds |
+
+**Exit codes:** 0 = all OK, 1 = threshold exceeded, 2 = fatal error
+
+**Logs:** `logs/network-monitor/` (timeseries at `timeseries.jsonl`)
+
+---
+
+#### `media-stats.sh`
+
+Scans a Plex (or any media) library and reports codec breakdown, total size and duration, largest files, and H.265 re-encode candidates with estimated savings.
+
+**Requires:** `ffprobe` (part of `ffmpeg`) or `mediainfo` as fallback.
+
+```bash
+# Full library scan (Plex default dir)
+./media-stats.sh
+
+# Scan a specific directory
+./media-stats.sh --plex-dir /mnt/media/TV
+
+# Flag files above 15 Mbps as re-encode candidates
+./media-stats.sh --bitrate-threshold 15000
+
+# Scan only first 100 files (for testing)
+./media-stats.sh --limit 100
+
+# JSON output
+./media-stats.sh --json
+
+# Dry run
+./media-stats.sh --plex-dir /mnt/media --dry-run
+```
+
+**Reports:**
+
+| Section | Content |
+|---------|---------|
+| Codec breakdown | H.264, H.265/HEVC, AV1, VP9, MPEG-2, etc. — file count, %, storage |
+| Library overview | Total files, total size, total duration |
+| Largest files | Top 15 by size |
+| Re-encode candidates | H.264 files above bitrate threshold, estimated 50% savings with H.265 |
+
+**Re-encode tools:**
+
+```bash
+# HandBrakeCLI
+HandBrakeCLI -i input.mkv -o output.mkv --preset "H.265 MKV 1080p30"
+
+# ffmpeg
+ffmpeg -i input.mkv -c:v libx265 -crf 23 -c:a copy output.mkv
+```
+
+**Exit codes:** 0 = scan complete, 1 = no media tool found, 2 = fatal error
+
+**Logs:** `logs/media-stats/`
+
+---
+
 ### Backup & Sync
 
 ---
@@ -640,6 +831,41 @@ Creates compressed tar.gz snapshots of Docker volumes using a helper container a
 **Backup location:** `./backups/volumes/` (files mode 600)
 
 **Logs:** `logs/volume-backup/`
+
+---
+
+#### `backup-verify.sh`
+
+Verifies that backups created by companion scripts actually exist and are healthy. Checks db-backup files, rclone remote reachability and recency, and docker-volume-backup archive integrity.
+
+```bash
+# Full verification (all backup types)
+./backup-verify.sh
+
+# Dry run (show what would be checked)
+./backup-verify.sh --dry-run
+
+# JSON output for monitoring
+./backup-verify.sh --json
+```
+
+**Checks performed:**
+
+| Backup type | Checks |
+|-------------|--------|
+| Database backups | Recent file exists, size > 0, SQLite integrity or SQL keyword check |
+| rclone remote | Remote reachable via `rclone lsd`, files present within 24 hours |
+| Docker volume backups | Recent `.tar.gz` exists, archive readable by `tar -tzf` |
+
+**Auto-detected locations:**
+
+- DB backups: `logs/db-backup/`, `/var/backups/db/`
+- Volume backups: `./backups/volumes/`, `/var/backups/docker-volumes/`
+- rclone remote: from `~/.rclone.conf` or env `RCLONE_REMOTE`
+
+**Exit codes:** 0 = all verified, 1 = verification failures, 2 = fatal error
+
+**Logs:** `logs/backup-verify/`
 
 ---
 
@@ -823,6 +1049,62 @@ export CF_TOKEN="your-cloudflare-api-token"
 
 ---
 
+#### `minecraft-manager.sh`
+
+Full lifecycle management for a Minecraft Java Edition server: start/stop/restart, status monitoring, world backups, log tailing, player listing, and console access via `screen`.
+
+```bash
+# Start the server
+./minecraft-manager.sh start
+
+# Check status (players, uptime, memory)
+./minecraft-manager.sh status
+
+# Stop gracefully (sends "stop" to console)
+./minecraft-manager.sh stop
+
+# Restart
+./minecraft-manager.sh restart
+
+# Backup worlds (tar.gz with timestamp)
+./minecraft-manager.sh backup
+
+# Tail server log
+./minecraft-manager.sh logs
+
+# List online players
+./minecraft-manager.sh players
+
+# Send command to server console
+./minecraft-manager.sh console "say Hello"
+
+# Check for server JAR updates
+./minecraft-manager.sh update
+
+# Dry run (show config without starting)
+./minecraft-manager.sh status --dry-run
+```
+
+**Configuration via environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MC_DIR` | `~/minecraft` | Server directory |
+| `MC_JAR` | auto-detect | Server JAR filename |
+| `MC_PORT` | `25565` | Server port |
+| `MC_MEM_MAX` | `2G` | JVM max heap (`-Xmx`) |
+| `MC_BACKUP_DIR` | `~/minecraft/backups` | Backup output directory |
+
+**Auto-detects JARs:** `server.jar`, `paper*.jar`, `fabric*.jar`, `spigot*.jar`
+
+**Screen session:** Server runs in a `screen` session named `minecraft`. Falls back to `nohup` if `screen` is unavailable.
+
+**Backup retention:** Configurable with `--retain-days` (default: 14). Backs up `world/`, `world_nether/`, `world_the_end/`.
+
+**Logs:** `logs/minecraft-manager/`
+
+---
+
 ### Security & Audit
 
 ---
@@ -971,6 +1253,180 @@ Scans git repositories for accidentally committed secrets. Detects API keys, pri
 
 ---
 
+#### `auth-log-audit.sh`
+
+Parses SSH authentication logs to surface brute-force attacks, successful logins, sudo usage, and new user creation. Alerts on high-volume attackers.
+
+```bash
+# Audit last 7 days (default)
+./auth-log-audit.sh
+
+# Longer history
+./auth-log-audit.sh --days 30
+
+# Alert if any IP has 20+ failures (default: 50)
+./auth-log-audit.sh --alert-threshold 20
+
+# Show top 20 attacking IPs
+./auth-log-audit.sh --top 20
+
+# JSON output for SIEM
+sudo ./auth-log-audit.sh --json
+
+# Dry run
+./auth-log-audit.sh --dry-run
+```
+
+> **Note:** Requires read access to `/var/log/auth.log`. Run with `sudo` for full access on systems with restricted log permissions.
+
+**Sections:**
+
+| Section | What's shown |
+|---------|-------------|
+| Failed SSH attempts | Total count, top N attacking IPs, most-tried invalid usernames |
+| Successful logins | Method (password/publickey), user, source IP, timestamp |
+| Sudo usage | Last 30 sudo commands with user and command |
+| User/group changes | `useradd`, `userdel`, `groupadd`, `groupdel` events |
+
+**Reads:** `/var/log/auth.log`, `/var/log/secure`, plus rotated `.gz` variants
+
+**Exit codes:** 0 = no alerts, 1 = high-volume attack detected, 2 = no readable logs
+
+**Logs:** `logs/auth-audit/`
+
+---
+
+#### `cron-audit.sh`
+
+Audits all cron jobs and systemd timers for common misconfigurations: missing executables, wildcard schedules, missing output redirection, and non-executable drop-in scripts.
+
+```bash
+# Full audit
+./cron-audit.sh
+
+# Dry run
+./cron-audit.sh --dry-run
+
+# JSON output
+./cron-audit.sh --json
+```
+
+**Sources checked:**
+
+| Source | Path |
+|--------|------|
+| System crontab | `/etc/crontab` |
+| Cron drop-ins | `/etc/cron.d/*` |
+| User crontabs | `/var/spool/cron/*` |
+| Periodic scripts | `/etc/cron.{hourly,daily,weekly,monthly}/*` |
+| Systemd timers | `systemctl list-timers` |
+
+**Findings flagged:**
+
+| Finding | Severity |
+|---------|---------|
+| Command path not found | ERROR |
+| Command not executable | WARN |
+| `* * * * *` wildcard schedule | WARN |
+| No output redirection | INFO |
+| Drop-in script not executable | WARN |
+
+**Exit codes:** 0 = no issues, 1 = findings detected, 2 = fatal error
+
+**Logs:** `logs/cron-audit/`
+
+---
+
+#### `firewall-audit.sh`
+
+Audits UFW status, iptables INPUT chain policy, all listening ports, and optionally runs a localhost nmap scan. Compares listening ports against a configurable baseline to flag unexpected open ports.
+
+```bash
+# Basic audit (no sudo = limited iptables view)
+./firewall-audit.sh
+
+# Full audit with nmap
+sudo ./firewall-audit.sh
+
+# Compare against a port baseline
+sudo ./firewall-audit.sh --baseline config/firewall-baseline.conf
+
+# Skip nmap (faster)
+./firewall-audit.sh --skip-nmap
+
+# JSON output
+sudo ./firewall-audit.sh --json
+
+# Dry run
+./firewall-audit.sh --dry-run
+```
+
+**Baseline file format** (`config/firewall-baseline.conf`):
+
+```
+# port/proto  description
+22/tcp        SSH
+80/tcp        HTTP
+443/tcp       HTTPS
+25565/tcp     Minecraft
+```
+
+**Checks:**
+
+| Check | What's flagged |
+|-------|---------------|
+| UFW status | Inactive/disabled — host unprotected |
+| iptables INPUT | Default policy `ACCEPT` — all traffic allowed |
+| Listening ports | Ports not in baseline marked `[UNEXPECTED]` |
+| nmap localhost | Open ports from outside perspective |
+
+**Exit codes:** 0 = no issues, 1 = unexpected ports or firewall issues, 2 = fatal error
+
+**Logs:** `logs/firewall-audit/`
+
+---
+
+#### `package-cve-check.sh`
+
+Checks installed packages for available security updates using `apt`, optionally runs `debsecan` for CVE database lookups, verifies `unattended-upgrades` is configured, and checks if a reboot is needed for a new kernel.
+
+```bash
+# Check with existing package lists
+./package-cve-check.sh
+
+# Update package lists first (requires sudo)
+sudo ./package-cve-check.sh --update-lists
+
+# JSON output for monitoring
+sudo ./package-cve-check.sh --json
+
+# Dry run
+./package-cve-check.sh --dry-run
+```
+
+**Checks performed:**
+
+| Check | How |
+|-------|-----|
+| Security package upgrades | `apt-get --simulate upgrade` filtered to `security.*` sources |
+| CVE database | `debsecan` (optional — install with `sudo apt install debsecan`) |
+| Auto-updates | `unattended-upgrades` config present and enabled |
+| Kernel reboot | Installed kernel version vs running kernel |
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | No critical security issues |
+| 1 | Security updates available or CVEs found |
+| 2 | Fatal error |
+
+> **Note:** This script is read-only — it never installs anything.
+
+**Logs:** `logs/package-cve/`
+
+---
+
 ### Development & QA
 
 ---
@@ -992,8 +1448,8 @@ The unified QA harness. Runs shellcheck, shfmt format checks, bash syntax valida
 | Category | What's tested |
 |----------|--------------|
 | Static analysis | `shellcheck`, `shfmt` format, `bash -n` syntax |
-| Smoke tests | `--help` on all 17 scripts |
-| Dry-run execution | `--dry-run` on all 17 scripts |
+| Smoke tests | `--help` on all scripts |
+| Dry-run execution | `--dry-run` on all scripts (44 total tests) |
 | JSON contracts | JSON output schema on 5 scripts |
 | Config precedence | Config file overrides env/defaults |
 | Bounds validation | Out-of-range values rejected correctly |

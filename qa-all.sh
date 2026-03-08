@@ -140,6 +140,16 @@ run_expect_success "deploy_scripts_dry_run" ./deploy-scripts.sh --hosts "fakeuse
 run_expect_success "secrets_scan_dry_run" ./secrets-scan.sh --dir /home/pi/repos --dry-run
 run_expect_success "plex_cleanup_dry_run" ./plex-cleanup.sh --plex-dir /home/plex --dry-run
 run_expect_success "docker_health_dry_run" ./docker-health.sh --dry-run
+run_expect_success "log_manager_dry_run" ./log-manager.sh --dry-run
+run_expect_success "system_monitor_dry_run" ./system-monitor.sh --dry-run
+run_expect_success "auth_log_audit_dry_run" ./auth-log-audit.sh --dry-run
+run_expect_success "cron_audit_dry_run" ./cron-audit.sh --dry-run
+run_expect_success "backup_verify_dry_run" ./backup-verify.sh --dry-run
+run_expect_success "network_monitor_dry_run" ./network-monitor.sh --dry-run
+run_expect_success "minecraft_manager_dry_run" ./minecraft-manager.sh status --dry-run
+run_expect_success "firewall_audit_dry_run" ./firewall-audit.sh --dry-run
+run_expect_success "package_cve_dry_run" ./package-cve-check.sh --dry-run
+run_expect_success "media_stats_dry_run" ./media-stats.sh --plex-dir /home/plex --limit 5 --dry-run
 
 run_expect_success "json_contract_cert_renewal" bash -c '
     ./cert-renewal-check.sh --domains examples/domains.txt --json --dry-run >/dev/null 2>&1

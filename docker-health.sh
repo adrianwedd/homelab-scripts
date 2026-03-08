@@ -20,7 +20,7 @@ WATCH_INTERVAL=30
 DRY_RUN=false
 OUTPUT_JSON=false
 PRUNE_DANGLING=false
-RESTART_THRESHOLD=5   # alert if container has restarted more than this many times
+RESTART_THRESHOLD=5 # alert if container has restarted more than this many times
 
 # Result accumulators
 CONTAINERS_HEALTHY=0
@@ -42,12 +42,31 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-print_error()   { echo -e "${RED}✗ Error:${NC} $1" >&2; log_line "ERROR" "$1"; ERRORS=$((ERRORS+1)); STATUS="errors"; }
-print_success() { echo -e "${GREEN}✓${NC} $1"; log_line "OK" "$1"; }
-print_warning() { echo -e "${YELLOW}⚠${NC} $1"; log_line "WARN" "$1"; }
-print_info()    { echo -e "${BLUE}ℹ${NC} $1"; log_line "INFO" "$1"; }
-print_section() { echo ""; echo -e "${CYAN}━━━ $1 ━━━${NC}"; echo ""; log_line "SECTION" "$1"; }
-log_line()      { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
+print_error() {
+    echo -e "${RED}✗ Error:${NC} $1" >&2
+    log_line "ERROR" "$1"
+    ERRORS=$((ERRORS + 1))
+    STATUS="errors"
+}
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+    log_line "OK" "$1"
+}
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+    log_line "WARN" "$1"
+}
+print_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+    log_line "INFO" "$1"
+}
+print_section() {
+    echo ""
+    echo -e "${CYAN}━━━ $1 ━━━${NC}"
+    echo ""
+    log_line "SECTION" "$1"
+}
+log_line() { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
 
 show_help() {
     cat <<'HELP'
@@ -101,7 +120,7 @@ HELP
 
 bytes_to_human() {
     local bytes="$1"
-    if   [ "$bytes" -ge 1073741824 ]; then
+    if [ "$bytes" -ge 1073741824 ]; then
         awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"
     elif [ "$bytes" -ge 1048576 ]; then
         awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"
@@ -197,7 +216,7 @@ check_containers() {
             CONTAINERS_RESTARTING=$((CONTAINERS_RESTARTING + 1))
             STATUS="unhealthy"
             ;;
-        exited|dead)
+        exited | dead)
             state_color="$RED"
             CONTAINERS_STOPPED=$((CONTAINERS_STOPPED + 1))
             STATUS="unhealthy"
@@ -215,7 +234,7 @@ check_containers() {
             "$name" "$state" "$cpu" "$mem" "${restarts}${restart_flag}" "$short_image"
 
         log_line "CONTAINER" "name=$name state=$state restarts=$restarts"
-    done <<< "$containers"
+    done <<<"$containers"
 
     echo ""
     printf "  Running: ${GREEN}%d${NC}  Stopped: ${RED}%d${NC}  Restarting: ${YELLOW}%d${NC}  Unhealthy: ${RED}%d${NC}\n" \
@@ -351,7 +370,7 @@ check_networks() {
         fi
 
         printf "  %-30s %-12s %-8s  %s%b\n" "$net_name" "$driver" "$scope" "$container_count" "$flag"
-    done <<< "$all_nets"
+    done <<<"$all_nets"
 
     echo ""
     NETWORKS_ORPHANED=$orphaned_count
@@ -426,14 +445,39 @@ run_checks() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    --watch)              WATCH_MODE=true; shift ;;
-    --interval)           WATCH_INTERVAL="$2"; shift 2 ;;
-    --restart-threshold)  RESTART_THRESHOLD="$2"; shift 2 ;;
-    --prune-dangling)     PRUNE_DANGLING=true; shift ;;
-    --dry-run)            DRY_RUN=true; shift ;;
-    --json)               OUTPUT_JSON=true; shift ;;
-    --help|-h)            show_help; exit 0 ;;
-    *) echo "Unknown option: $1" >&2; show_help; exit 2 ;;
+    --watch)
+        WATCH_MODE=true
+        shift
+        ;;
+    --interval)
+        WATCH_INTERVAL="$2"
+        shift 2
+        ;;
+    --restart-threshold)
+        RESTART_THRESHOLD="$2"
+        shift 2
+        ;;
+    --prune-dangling)
+        PRUNE_DANGLING=true
+        shift
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --json)
+        OUTPUT_JSON=true
+        shift
+        ;;
+    --help | -h)
+        show_help
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        show_help
+        exit 2
+        ;;
     esac
 done
 
@@ -476,7 +520,7 @@ fi
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 RUN_END_TS=$(date +%s)
-DURATION_MS=$(( (RUN_END_TS - RUN_START_TS) * 1000 ))
+DURATION_MS=$(((RUN_END_TS - RUN_START_TS) * 1000))
 
 echo ""
 echo -e "${BOLD}━━━ Health Summary ━━━${NC}"
@@ -529,7 +573,7 @@ if [ "$OUTPUT_JSON" = true ]; then
                 networks_orphaned: $networks_orphaned,
                 errors: $errors
             }
-        }' > "$JSON_FILE"
+        }' >"$JSON_FILE"
     chmod 600 "$JSON_FILE"
     print_info "JSON: $JSON_FILE"
 fi
