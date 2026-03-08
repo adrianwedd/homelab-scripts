@@ -137,6 +137,9 @@ run_expect_success "new_vm_setup_dry_run" ./new-vm-setup.sh --hostname qa-vm --u
 run_expect_success "ci_health_audit_dry_run" env REPOS_DIR=/home/pi/repos ./ci-health-audit.sh --dry-run
 run_expect_success "rclone_sync_dry_run" ./rclone-sync.sh --dry-run
 run_expect_success "deploy_scripts_dry_run" ./deploy-scripts.sh --hosts "fakeuser@192.0.2.1" --dry-run
+run_expect_success "secrets_scan_dry_run" ./secrets-scan.sh --dir /home/pi/repos --dry-run
+run_expect_success "plex_cleanup_dry_run" ./plex-cleanup.sh --plex-dir /home/plex --dry-run
+run_expect_success "docker_health_dry_run" ./docker-health.sh --dry-run
 
 run_expect_success "json_contract_cert_renewal" bash -c '
     ./cert-renewal-check.sh --domains examples/domains.txt --json --dry-run >/dev/null 2>&1

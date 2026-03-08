@@ -10,12 +10,12 @@ All scripts follow a consistent design philosophy: safe defaults, `--dry-run` be
 
 - [Quick Start](#quick-start)
 - [Script Reference](#script-reference)
-  - [Disk & System Cleanup](#disk--system-cleanup)
-  - [Monitoring & Health](#monitoring--health)
-  - [Backup & Sync](#backup--sync)
-  - [Infrastructure & Deployment](#infrastructure--deployment)
-  - [Security & Audit](#security--audit)
-  - [Development & QA](#development--qa)
+  - [Disk & System Cleanup](#disk--system-cleanup) — `disk-cleanup.sh`, `smart-cleanup.sh`, `plex-cleanup.sh`, `update-all.sh`
+  - [Monitoring & Health](#monitoring--health) — `service-health-check.sh`, `smart-disk-check.sh`, `nmap-scan.sh`, `docker-health.sh`
+  - [Backup & Sync](#backup--sync) — `rclone-sync.sh`, `db-backup.sh`, `docker-volume-backup.sh`
+  - [Infrastructure & Deployment](#infrastructure--deployment) — `new-vm-setup.sh`, `deploy-scripts.sh`, `compose-redeploy.sh`, `dyndns-update.sh`
+  - [Security & Audit](#security--audit) — `ssh-key-audit.sh`, `ci-health-audit.sh`, `secrets-scan.sh`
+  - [Development & QA](#development--qa) — `qa-all.sh`
 - [Common Patterns](#common-patterns)
 - [Cron Integration](#cron-integration)
 - [Security Model](#security-model)
@@ -163,6 +163,49 @@ An interactive wrapper around `disk-cleanup.sh` with a menu UI and before/after 
 | `thorough` | Everything including git gc | ~3-6 hrs |
 
 **Logs:** `logs/cleanup_YYYYMMDD_HHMMSS.log`
+
+---
+
+#### `plex-cleanup.sh`
+
+Cleans up Plex Media Server junk, cache, and duplicate files. Auto-detects the Plex data directory. Safe to run with Plex running — caches are always regenerated.
+
+```bash
+# Dry run — see what would be cleaned
+./plex-cleanup.sh --dry-run
+
+# Clean everything (with confirmation prompts)
+./plex-cleanup.sh
+
+# Clean everything, no prompts
+./plex-cleanup.sh -y
+
+# Only clean Plex cache and transcoder (skip duplicate scan)
+./plex-cleanup.sh --skip-duplicates --skip-thumbnails --skip-empties
+
+# Target a different Plex root
+./plex-cleanup.sh --plex-dir /mnt/media
+
+# JSON output
+./plex-cleanup.sh --dry-run --json
+```
+
+**What it cleans:**
+
+| Section | What's removed |
+|---------|----------------|
+| Plex cache/logs | `Cache/`, `Codecs/`, `Crash Reports/`, `Logs/`, `.db-wal`, `.db-shm` temp files |
+| Plex Versions | Transcoded versions of originals (saves space; Plex regenerates if needed) |
+| System junk | `.DS_Store`, `Thumbs.db`, `desktop.ini`, `._*`, `.AppleDouble` |
+| Empty directories | Leftover directories after moves/deletions |
+| Duplicate media | Same-size + MD5 match; keeps first occurrence |
+
+**Auto-detected Plex data paths:**
+- `/var/lib/plexmediaserver/Library/Application Support/Plex Media Server`
+- `~/.local/share/Plex Media Server`
+- `<plex-dir>/.local/share/Plex Media Server`
+
+**Logs:** `logs/plex-cleanup/`
 
 ---
 
@@ -387,6 +430,53 @@ Network discovery with delta tracking. Scans subnets, records results as JSON, a
 **Privilege note:** Run with `sudo` for SYN scans and MAC address capture. Without sudo, falls back to TCP connect scans (slower, no MAC).
 
 **Logs:** `logs/nmap/` (mode 600, dir 700)
+
+---
+
+#### `docker-health.sh`
+
+Docker container health dashboard, image inventory, orphaned resource detector, and disk summary in one command. Supports continuous watch mode.
+
+```bash
+# One-shot health check
+./docker-health.sh
+
+# Watch mode, refresh every 15 seconds
+./docker-health.sh --watch --interval 15
+
+# Alert if a container has restarted more than 3 times
+./docker-health.sh --restart-threshold 3
+
+# Clean up dangling images and orphaned volumes
+./docker-health.sh --prune-dangling
+
+# JSON output for monitoring integrations
+./docker-health.sh --json
+
+# Dry run (show current state, no changes)
+./docker-health.sh --dry-run
+```
+
+**Sections:**
+
+| Section | What's shown |
+|---------|-------------|
+| Container status | Name, state, CPU%, memory, restart count, health check status |
+| Image inventory | All images sorted by size; dangling images flagged |
+| Volumes | All volumes, orphaned (unused) ones highlighted |
+| Networks | Custom networks, orphaned ones flagged |
+| Disk summary | `docker system df` — total space used by images/containers/volumes/cache |
+
+**Alerts:**
+- Container in `restarting` state (restart loop)
+- Container `exited`/`dead` unexpectedly
+- `HEALTHCHECK` status = `unhealthy`
+- Restart count exceeds `--restart-threshold`
+- Dangling images / orphaned volumes present
+
+**Exit codes:** 0 = all healthy, 1 = issues found, 2 = Docker unavailable
+
+**Logs:** `logs/docker-health/`
 
 ---
 
@@ -835,6 +925,49 @@ REPOS_DIR=/path/to/repos ./ci-health-audit.sh
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REPOS_DIR` | `$HOME/repos` | Root directory containing git repos |
+
+---
+
+#### `secrets-scan.sh`
+
+Scans git repositories for accidentally committed secrets. Detects API keys, private keys, database DSNs, JWTs, and more across four severity levels. Values are always masked in output — never printed in full.
+
+```bash
+# Scan all repos (dry run first to see scope)
+./secrets-scan.sh --dry-run
+
+# Scan all repos
+./secrets-scan.sh
+
+# Scan a specific directory
+./secrets-scan.sh --dir ~/projects
+
+# Only report critical and high severity
+./secrets-scan.sh --severity high
+
+# Also scan git commit history (slow but thorough)
+./secrets-scan.sh --history
+
+# JSON output for integrations
+./secrets-scan.sh --json
+```
+
+**Severity levels:**
+
+| Level | Examples |
+|-------|---------|
+| CRITICAL | Private keys (`BEGIN RSA PRIVATE KEY`), AWS access keys, database DSNs with passwords |
+| HIGH | GitHub PATs, Google API keys, Stripe live keys, JWTs, Anthropic/OpenAI keys |
+| MEDIUM | Slack tokens, Bearer tokens, generic API key assignments |
+| LOW | Hardcoded passwords, private key file paths |
+
+**Safe by design:**
+- Secret values are masked (`sk-ant-****...`) — never printed in full
+- Binary files skipped automatically
+- Noise directories skipped: `.git`, `node_modules`, `.venv`, `dist`, `build`
+- Exit 0 = clean, 1 = findings, 2 = error
+
+**Logs:** `logs/secrets-scan/`
 
 ---
 
