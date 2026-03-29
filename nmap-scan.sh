@@ -220,31 +220,23 @@ detect_cidr() {
             local ip=$(ifconfig "$primary_if" 2>/dev/null | awk '/inet / {print $2}' | head -n1)
             local netmask=$(ifconfig "$primary_if" 2>/dev/null | awk '/inet / {print $4}' | head -n1)
             if [ -n "$ip" ] && [ -n "$netmask" ]; then
-                # Convert netmask to CIDR bits
-                local cidr_bits=$(echo "$netmask" | awk -F. '{
-                    split($0, octets, ".")
-                    bits = 0
-                    for (i = 1; i <= 4; i++) {
-                        mask = octets[i]
-                        while (mask > 0) {
-                            bits += mask % 2
-                            mask = int(mask / 2)
-                        }
-                    }
-                    print bits
-                }')
-                # Calculate network address
-                local net=$(echo "$ip $netmask" | awk '{
-                    split($1, ip, ".")
-                    split($2, mask, ".")
-                    printf "%d.%d.%d.%d", \
-                        and(ip[1], mask[1]), \
-                        and(ip[2], mask[2]), \
-                        and(ip[3], mask[3]), \
-                        and(ip[4], mask[4])
-                }')
-                echo "$net/$cidr_bits"
-                return 0
+                # Use python3 to compute network address (handles hex netmasks from macOS ifconfig)
+                if command -v python3 >/dev/null 2>&1; then
+                    local cidr=$(python3 -c "
+import ipaddress, sys
+ip, mask = sys.argv[1], sys.argv[2]
+if mask.startswith('0x'):
+    prefix_len = bin(int(mask, 16)).count('1')
+else:
+    prefix_len = sum(bin(int(o)).count('1') for o in mask.split('.'))
+net = ipaddress.IPv4Network(f'{ip}/{prefix_len}', strict=False)
+print(net)
+" "$ip" "$netmask" 2>/dev/null)
+                    if [ -n "$cidr" ]; then
+                        echo "$cidr"
+                        return 0
+                    fi
+                fi
             fi
         fi
     fi
