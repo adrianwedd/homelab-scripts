@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 # homelab - Unified DevOps orchestrator for system maintenance scripts
 # Version: 1.0.0

@@ -364,14 +364,39 @@ if [ "$DEPLOYMENT_FAILED" = true ]; then
     print_section "Rolling Back"
     print_warning "Deployment failed - attempting rollback"
 
-    # Note: Full rollback with volume restore would go here
-    # For now, we just try to restart the old containers
     if $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>&1 | tee -a "$LOG_FILE"; then
         print_info "Stopped failed deployment"
     fi
 
+    # Restore backed-up volumes if any
+    if [ ${#BACKED_UP_VOLUMES[@]} -gt 0 ]; then
+        print_info "Restoring ${#BACKED_UP_VOLUMES[@]} volume backup(s)..."
+        for entry in "${BACKED_UP_VOLUMES[@]}"; do
+            vol_name="${entry%%:*}"
+            vol_backup="${entry#*:}"
+            if [ -f "$vol_backup" ]; then
+                print_info "Restoring volume: $vol_name from $vol_backup"
+                if docker run --rm \
+                    -v "${PROJECT_NAME}_${vol_name}:/data" \
+                    -v "$(dirname "$vol_backup"):/backup:ro" \
+                    "$BACKUP_IMAGE" sh -c "rm -rf /data/* && tar xzf /backup/$(basename "$vol_backup") -C /" 2>>"$LOG_FILE"; then
+                    print_success "Volume restored: $vol_name"
+                else
+                    print_error "Failed to restore volume: $vol_name"
+                fi
+            else
+                print_warning "Backup file not found for volume: $vol_name"
+            fi
+        done
+    fi
+
+    # Restart with previous state
+    if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1 | tee -a "$LOG_FILE"; then
+        print_info "Restarted services after rollback"
+    fi
+
     ROLLBACK_PERFORMED=true
-    print_error "Rollback performed - please check logs"
+    print_error "Rollback performed - please check logs and service state"
     exit 1
 fi
 
@@ -395,8 +420,8 @@ if [ "$OUTPUT_JSON" = true ]; then
     "deployment_failed": false,
     "rollback_performed": false
   },
-  "compose_file": "$COMPOSE_FILE",
-  "project_name": "$PROJECT_NAME",
+  "compose_file": "$(json_escape "$COMPOSE_FILE")",
+  "project_name": "$(json_escape "$PROJECT_NAME")",
   "services": $(echo "$SERVICES" | jq -R . | jq -s .),
   "service_count": $SERVICE_COUNT,
   "backup_performed": $BACKUP_VOLUMES,
@@ -404,7 +429,7 @@ if [ "$OUTPUT_JSON" = true ]; then
   "deployment_failed": false,
   "rollback_performed": false,
   "health_timeout": $HEALTH_TIMEOUT,
-  "log_file": "$LOG_FILE"
+  "log_file": "$(json_escape "$LOG_FILE")"
 }
 EOF
     chmod 600 "$JSON_FILE"

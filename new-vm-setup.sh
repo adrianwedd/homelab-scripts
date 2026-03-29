@@ -488,7 +488,7 @@ if [ "$DRY_RUN" = true ]; then
             echo "  \"status\": \"success\","
             echo "  \"duration_ms\": $DURATION_MS,"
             echo "  \"errors\": [],"
-            echo "  \"result\": {\"dry_run\": true, \"user\": \"${USERNAME:-}\", \"hostname\": \"${HOSTNAME:-}\"}"
+            echo "  \"result\": {\"dry_run\": true, \"user\": \"$(json_escape "${USERNAME:-}")\", \"hostname\": \"$(json_escape "${HOSTNAME:-}")\"}"
             echo "}"
         } >"$JSON_FILE"
         chmod 600 "$JSON_FILE"
@@ -765,12 +765,12 @@ if [ "$OUTPUT_JSON" = true ]; then
         echo "  \"status\": \"$JSON_STATUS\","
         echo "  \"duration_ms\": $DURATION_MS,"
         echo "  \"errors\": [],"
-        echo "  \"result\": {\"user\": \"${USERNAME:-}\", \"warnings\": ${#WARNINGS[@]}},"
-        echo "  \"distro\": \"$OS_DISTRO\","
-        echo "  \"package_manager\": \"$PKG_MANAGER\","
-        echo "  \"hostname_before\": \"${HOSTNAME_BEFORE:-}\","
-        echo "  \"hostname_after\": \"${HOSTNAME_AFTER:-$HOSTNAME_BEFORE}\","
-        echo "  \"user\": \"${USERNAME:-}\","
+        echo "  \"result\": {\"user\": \"$(json_escape "${USERNAME:-}")\", \"warnings\": ${#WARNINGS[@]}},"
+        echo "  \"distro\": \"$(json_escape "$OS_DISTRO")\","
+        echo "  \"package_manager\": \"$(json_escape "$PKG_MANAGER")\","
+        echo "  \"hostname_before\": \"$(json_escape "${HOSTNAME_BEFORE:-}")\","
+        echo "  \"hostname_after\": \"$(json_escape "${HOSTNAME_AFTER:-$HOSTNAME_BEFORE}")\","
+        echo "  \"user\": \"$(json_escape "${USERNAME:-}")\","
         echo "  \"user_created\": $USER_CREATED,"
         echo "  \"ssh_key_added\": $SSH_KEY_ADDED,"
         echo "  \"packages_installed\": ["
@@ -781,13 +781,13 @@ if [ "$OUTPUT_JSON" = true ]; then
                 echo "    ,"
             fi
             FIRST=false
-            echo -n "    \"$pkg\""
+            echo -n "    \"$(json_escape "$pkg")\""
         done
         echo ""
         echo "  ],"
 
         echo "  \"dotfiles_cloned\": ${DOTFILES_CLONED:-false},"
-        echo "  \"dotfiles_url\": \"${DOTFILES_URL:-}\","
+        echo "  \"dotfiles_url\": \"$(json_escape "${DOTFILES_URL:-}")\","
         echo "  \"warnings\": ["
 
         FIRST=true
@@ -796,14 +796,12 @@ if [ "$OUTPUT_JSON" = true ]; then
                 echo "    ,"
             fi
             FIRST=false
-            # Escape double quotes in warning message
-            ESC_WARNING=$(echo "$warning" | sed 's/"/\\"/g')
-            echo -n "    \"$ESC_WARNING\""
+            echo -n "    \"$(json_escape "$warning")\""
         done
         echo ""
         echo "  ],"
 
-        echo "  \"log_file\": \"$LOG_FILE\""
+        echo "  \"log_file\": \"$(json_escape "$LOG_FILE")\""
         echo "}"
     } >"$JSON_FILE"
     chmod 600 "$JSON_FILE"

@@ -316,6 +316,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate jq availability for JSON output
+require_jq_if_json "$OUTPUT_JSON" || exit 1
+
 # Validate
 if [ -n "$USERS" ] && [ "$ALL_USERS" = true ]; then
     print_error "--users and --all-users are mutually exclusive"
@@ -330,8 +333,12 @@ if [ "$MAX_AGE_DAYS" -gt 3650 ]; then
     exit 1
 fi
 
-# Load risk config if enabled (v1.5.0+)
+# Risk scoring requires Bash 4.3+ for associative arrays and namerefs
 if [ "$ENABLE_RISK" = true ]; then
+    if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 3 ]; }; then
+        print_error "Risk scoring requires Bash 4.3+ (current: $BASH_VERSION)"
+        exit 1
+    fi
     load_risk_config
 fi
 

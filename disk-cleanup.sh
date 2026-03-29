@@ -269,7 +269,7 @@ scan_virtualenvs() {
 
             # Deduplicate: get canonical path and skip if already seen
             local canonical_path
-            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os; print(os.path.realpath('$vdir'))" 2>/dev/null || echo "$vdir")
+            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$vdir" 2>/dev/null || echo "$vdir")
             if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
                 continue
             fi
@@ -332,7 +332,7 @@ clean_virtualenvs() {
 
             # Deduplicate: get canonical path and skip if already seen
             local canonical_path
-            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os; print(os.path.realpath('$vdir'))" 2>/dev/null || echo "$vdir")
+            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$vdir" 2>/dev/null || echo "$vdir")
             if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
                 continue
             fi
@@ -559,7 +559,7 @@ create_manifest() {
 {
     "version": "1.0",
     "timestamp": "$timestamp",
-    "log_file": "$LOG_FILE",
+    "log_file": "$(json_escape "$LOG_FILE")",
     "operations": [
 EOF
 
@@ -572,10 +572,10 @@ EOF
 
         cat >>"$MANIFEST_FILE" <<EOF
         {
-            "type": "$type",
-            "description": "$desc",
+            "type": "$(json_escape "$type")",
+            "description": "$(json_escape "$desc")",
             "can_rollback": $can_rollback,
-            "rollback_data": "$data"
+            "rollback_data": "$(json_escape "$data")"
         }
 EOF
     done
@@ -783,7 +783,7 @@ while [[ $# -gt 0 ]]; do
             abs_root=""
             if command -v realpath >/dev/null 2>&1; then
                 abs_root=$(realpath -m -- "$root" 2>/dev/null || echo "")
-            elif command -v readlink >/dev/null 2>&1; then
+            elif readlink -f / >/dev/null 2>&1; then
                 abs_root=$(readlink -f -- "$root" 2>/dev/null || echo "")
             elif command -v python3 >/dev/null 2>&1; then
                 abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" -- "$root" 2>/dev/null || echo "")
@@ -856,6 +856,9 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# Validate jq availability for JSON output
+require_jq_if_json "$JSON_MODE" || exit 1
 
 if [ "$SHOW_CONFIG" = true ]; then
     echo "DRY_RUN=$DRY_RUN"
@@ -1421,7 +1424,7 @@ if [ "$JSON_MODE" = true ]; then
         echo "  \"version\": \"1.0\","
         echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
         if [ "$DRY_RUN" = true ]; then echo '  "dry_run": true,'; else echo '  "dry_run": false,'; fi
-        echo "  \"log_file\": \"$LOG_FILE\","
+        echo "  \"log_file\": \"$(json_escape "$LOG_FILE")\","
         echo "  \"start_ts\": $RUN_START_TS,"
         echo "  \"end_ts\": $RUN_END_TS,"
         echo "  \"total_freed_bytes\": $TOTAL_FREED_BYTES,"

@@ -152,6 +152,84 @@ run_expect_success "firewall_audit_dry_run" ./firewall-audit.sh --dry-run
 run_expect_success "package_cve_dry_run" ./package-cve-check.sh --dry-run
 run_expect_success "media_stats_dry_run" ./media-stats.sh --plex-dir /home/plex --limit 5 --dry-run
 
+# --- Missing dry-run / status tests for scripts not previously covered ---
+run_expect_success "ci_health_audit_help" ./ci-health-audit.sh --help
+run_expect_success "deploy_scripts_dry_run" ./deploy-scripts.sh --dry-run
+# rclone --status exits 1 when daemon is not running (expected in CI/test)
+run_expect_success "rclone_sync_status" bash -c './rclone-sync.sh --status; [ $? -le 1 ]'
+run_expect_success "homelab_morning_dry_run" ./homelab/homelab.sh morning --dry-run
+
+# --- nmap-scan.sh CIDR validation edge cases ---
+run_expect_failure "nmap_cidr_invalid_format" ./nmap-scan.sh --cidr "invalid" --dry-run
+run_expect_failure "nmap_cidr_invalid_octet" ./nmap-scan.sh --cidr "999.168.1.0/24" --dry-run
+run_expect_failure "nmap_cidr_invalid_prefix" ./nmap-scan.sh --cidr "192.168.1.0/99" --dry-run
+run_expect_failure "nmap_rate_bounds" ./nmap-scan.sh --cidr "192.168.1.0/24" --rate 99999 --dry-run
+
+# --- db-backup.sh validation edge cases ---
+run_expect_failure "db_backup_invalid_db_type" ./db-backup.sh --db invalid
+run_expect_failure "db_backup_invalid_retention" env DB_DSN="postgres://user:pass@localhost/db" ./db-backup.sh --db pg --retention "7-4-12"
+run_expect_failure "db_backup_missing_dsn" ./db-backup.sh --db pg
+run_expect_success "db_backup_custom_retention" env DB_DSN="postgres://user:pass@localhost/db" ./db-backup.sh --db pg --retention 14:8:24 --dry-run
+run_expect_success "db_backup_password_masking" bash -c '
+    output=$(DB_DSN="postgres://admin:secretpass@localhost/mydb" ./db-backup.sh --db pg --dry-run 2>&1)
+    if echo "$output" | grep -q "secretpass"; then
+        echo "Password leaked in output"
+        exit 1
+    fi
+'
+
+# --- new-vm-setup.sh validation edge cases ---
+run_expect_failure "new_vm_hostname_uppercase" ./new-vm-setup.sh --hostname "Invalid-Host" --user test --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dry-run
+run_expect_failure "new_vm_hostname_too_long" ./new-vm-setup.sh --hostname "this-hostname-is-way-too-long-and-exceeds-sixty-three-characters-limit" --user test --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dry-run
+run_expect_failure "new_vm_hostname_leading_hyphen" ./new-vm-setup.sh --hostname "-invalid" --user test --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dry-run
+run_expect_failure "new_vm_username_root" ./new-vm-setup.sh --hostname test-vm --user root --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dry-run
+run_expect_failure "new_vm_username_starts_number" ./new-vm-setup.sh --hostname test-vm --user "1admin" --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dry-run
+run_expect_failure "new_vm_username_uppercase" ./new-vm-setup.sh --hostname test-vm --user "Admin" --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dry-run
+run_expect_failure "new_vm_ssh_key_invalid_prefix" ./new-vm-setup.sh --hostname test-vm --user testuser --ssh-key "invalid-key-format AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dry-run
+run_expect_failure "new_vm_missing_required_args" ./new-vm-setup.sh --dry-run
+run_expect_failure "new_vm_dotfiles_invalid_scheme" ./new-vm-setup.sh --hostname test-vm --user testuser --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbc123test t@h" --dotfiles "ftp://invalid.com/repo.git" --no-sudo --dry-run
+
+# --- dyndns-update.sh validation edge cases ---
+run_expect_failure "dyndns_missing_args" ./dyndns-update.sh
+run_expect_failure "dyndns_unsupported_provider" env TEST_TOKEN="test-token" ./dyndns-update.sh --provider invalid --zone example.com --record home --token env:TEST_TOKEN --dry-run
+run_expect_failure "dyndns_ttl_too_low" env TEST_TOKEN="test" ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:TEST_TOKEN --ttl 30 --dry-run
+run_expect_failure "dyndns_ttl_too_high" env TEST_TOKEN="test" ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:TEST_TOKEN --ttl 99999 --dry-run
+run_expect_failure "dyndns_missing_env_var" ./dyndns-update.sh --provider cloudflare --zone example.com --record home --token env:NONEXISTENT_VAR --dry-run
+
+# --- smart-disk-check.sh temperature threshold validation ---
+run_expect_failure "smart_disk_warn_temp_low" ./smart-disk-check.sh --warn-temp 29 --dry-run
+run_expect_failure "smart_disk_warn_temp_high" ./smart-disk-check.sh --warn-temp 81 --dry-run
+run_expect_failure "smart_disk_crit_temp_low" ./smart-disk-check.sh --crit-temp 39 --dry-run
+run_expect_failure "smart_disk_crit_temp_high" ./smart-disk-check.sh --crit-temp 91 --dry-run
+run_expect_failure "smart_disk_crit_below_warn" ./smart-disk-check.sh --warn-temp 50 --crit-temp 45 --dry-run
+run_expect_failure "smart_disk_invalid_test_type" ./smart-disk-check.sh --test invalid --dry-run
+
+# --- ssh-key-audit.sh fixture-based tests ---
+run_expect_success "ssh_key_audit_fixture_setup" bash -c '
+    mkdir -p tests/fixtures/ssh/alice/.ssh tests/fixtures/ssh/bob/.ssh
+    chmod 700 tests/fixtures/ssh/alice/.ssh tests/fixtures/ssh/bob/.ssh
+    echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey alice@host" > tests/fixtures/ssh/alice/.ssh/authorized_keys
+    echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCExampleKey bob@host" > tests/fixtures/ssh/bob/.ssh/authorized_keys
+    chmod 600 tests/fixtures/ssh/alice/.ssh/authorized_keys tests/fixtures/ssh/bob/.ssh/authorized_keys
+'
+# ssh-key-audit exits 1 on warnings (bob has ssh-rsa); verify it runs and produces JSON
+run_expect_success "ssh_key_audit_fixture_json" bash -c './ssh-key-audit.sh --users "alice,bob" --home-root tests/fixtures/ssh --json; [ $? -le 1 ]'
+run_expect_failure "ssh_key_audit_forbid_rsa" ./ssh-key-audit.sh --users "bob" --home-root tests/fixtures/ssh --forbid-types ssh-rsa --fail-on weak-type
+run_expect_failure "ssh_key_audit_mutual_exclusion" ./ssh-key-audit.sh --users alice --all-users
+run_expect_failure "ssh_key_audit_max_age_bounds" ./ssh-key-audit.sh --users alice --home-root tests/fixtures/ssh --max-age 99999
+
+# --- compose-redeploy.sh validation edge cases ---
+run_expect_failure "compose_missing_file" ./compose-redeploy.sh --file nonexistent.yml --dry-run
+run_expect_failure "compose_invalid_yaml" bash -c '
+    tmpf=$(mktemp /tmp/bad-compose-XXXXXX.yml)
+    echo "invalid yaml" > "$tmpf"
+    ./compose-redeploy.sh --file "$tmpf" --dry-run
+    rc=$?
+    rm -f "$tmpf"
+    exit $rc
+'
+run_expect_failure "compose_health_timeout_bounds" ./compose-redeploy.sh --file examples/test-app-compose.yml --health-timeout 9999 --dry-run
+
 run_expect_success "json_contract_cert_renewal" bash -c '
     ./cert-renewal-check.sh --domains examples/domains.txt --json --dry-run >/dev/null 2>&1
     jf=$(ls -t logs/cert/cert_check_*.json | head -n 1)

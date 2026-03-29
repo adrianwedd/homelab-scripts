@@ -208,7 +208,7 @@ detect_cidr() {
                 local mask_bits=$(echo "$detected" | cut -d'/' -f2)
 
                 # Convert to network address
-                local net=$(python3 -c "import ipaddress; print(ipaddress.IPv4Network('$detected', strict=False).network_address)" 2>/dev/null || echo "$ip_part")
+                local net=$(python3 -c "import ipaddress,sys; print(ipaddress.IPv4Network(sys.argv[1], strict=False).network_address)" "$detected" 2>/dev/null || echo "$ip_part")
                 echo "$net/$mask_bits"
                 return 0
             fi
@@ -408,6 +408,13 @@ fi
 # Parse nmap XML output to JSON with schema versioning
 parse_nmap_xml() {
     awk '
+    function extract_attr(line, name,    start, rest, val) {
+        start = index(line, name "=\"")
+        if (start == 0) return ""
+        rest = substr(line, start + length(name) + 2)
+        val = substr(rest, 1, index(rest, "\"") - 1)
+        return val
+    }
     BEGIN {
         print "{"
         print "  \"version\": \"1.0\","
@@ -429,29 +436,23 @@ parse_nmap_xml() {
         status = ""
         ports = ""
     }
-    /<address addr="([^"]+)" addrtype="ipv4"/ {
-        match($0, /addr="([^"]+)"/, arr)
-        ip = arr[1]
+    /<address addr="[^"]+" addrtype="ipv4"/ {
+        ip = extract_attr($0, "addr")
     }
-    /<address addr="([^"]+)" addrtype="mac"/ {
-        match($0, /addr="([^"]+)"/, arr)
-        mac = arr[1]
-        match($0, /vendor="([^"]+)"/, arr)
-        vendor = arr[1]
+    /<address addr="[^"]+" addrtype="mac"/ {
+        mac = extract_attr($0, "addr")
+        vendor = extract_attr($0, "vendor")
         # Sanitize vendor name for JSON safety
         gsub(/\\/, "\\\\", vendor)             # Escape backslashes
         gsub(/"/, "\\\"", vendor)              # Escape quotes
         gsub(/[\x00-\x1F\x7F]/, "", vendor)    # Remove control characters
     }
-    /<status state="([^"]+)"/ {
-        match($0, /state="([^"]+)"/, arr)
-        status = arr[1]
+    /<status state="[^"]+"/ {
+        status = extract_attr($0, "state")
     }
-    /<port protocol="([^"]+)" portid="([^"]+)"><state state="open"/ {
-        match($0, /portid="([^"]+)"/, arr)
-        port_num = arr[1]
-        match($0, /protocol="([^"]+)"/, arr)
-        protocol = arr[1]
+    /<port protocol="[^"]+" portid="[^"]+"><state state="open"/ {
+        port_num = extract_attr($0, "portid")
+        protocol = extract_attr($0, "protocol")
         # Store as array for better structure
         if (ports == "") {
             ports = port_num

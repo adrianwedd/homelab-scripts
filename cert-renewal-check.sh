@@ -152,6 +152,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate jq availability for JSON output
+if [ "$OUTPUT_JSON" = true ]; then
+    if ! command -v jq >/dev/null 2>&1; then
+        print_error "jq not found. Install jq for --json output (brew install jq / apt install jq)"
+        exit 1
+    fi
+fi
+
 # Check for openssl
 if ! command -v openssl >/dev/null 2>&1; then
     print_error "openssl is not installed"

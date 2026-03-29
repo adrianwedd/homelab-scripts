@@ -4,7 +4,7 @@
 # Comprehensive analysis of all GitHub Actions workflows across repositories
 # Usage: ./ci-health-audit.sh [--fix-broken] [--add-guards] [--fix-heredocs] [--dry-run]
 
-set -euo pipefail
+set -uo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -66,7 +66,7 @@ for repo_path in "$REPOS_DIR"/* "$REPOS_DIR"/orchestrix-worktrees/*; do
     [ -d "$repo_path/.github/workflows" ] || continue
     repos_with_workflows=$((repos_with_workflows + 1))
 
-    cd "$repo_path"
+    cd "$repo_path" || continue
 
     repo_workflows=0
     repo_broken=0
@@ -81,7 +81,7 @@ for repo_path in "$REPOS_DIR"/* "$REPOS_DIR"/orchestrix-worktrees/*; do
         total_workflows=$((total_workflows + 1))
 
         # Check 1: YAML validity
-        if ! python3 -c "import yaml; yaml.safe_load(open('$workflow'))" 2>/dev/null; then
+        if ! python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$workflow" 2>/dev/null; then
             repo_broken=$((repo_broken + 1))
             broken_workflows=$((broken_workflows + 1))
             broken_list+=("$repo:$(basename $workflow)")

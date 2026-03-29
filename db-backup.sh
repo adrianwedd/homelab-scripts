@@ -218,6 +218,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate jq availability for JSON output
+require_jq_if_json "$OUTPUT_JSON" || exit 1
+
 # Validation
 if [ -z "$DB_TYPE" ]; then
     echo "Error: --db is required"
@@ -234,52 +237,7 @@ if [ -z "$DB_DSN" ]; then
     exit 1
 fi
 
-# Validate output directory path (security)
-validate_output_dir() {
-    local dir="$1"
-
-    # Attempt to get canonical path (multiple fallbacks for cross-platform)
-    local canonical=""
-    if command -v realpath >/dev/null 2>&1; then
-        canonical=$(realpath -m "$dir" 2>/dev/null) || canonical=""
-    elif command -v readlink >/dev/null 2>&1; then
-        canonical=$(readlink -f "$dir" 2>/dev/null) || canonical=""
-    elif command -v python3 >/dev/null 2>&1; then
-        canonical=$(python3 -c "import os; print(os.path.realpath('$dir'))" 2>/dev/null) || canonical=""
-    fi
-
-    # If no canonicalization available, check for traversal sequences
-    if [ -z "$canonical" ]; then
-        if [[ "$dir" == *"/../"* ]] || [[ "$dir" == *"/.."* ]] || [[ "$dir" == *"../"* ]]; then
-            echo "Error: Path contains traversal sequences and cannot be validated"
-            echo "       Rejecting for safety: $dir"
-            exit 1
-        fi
-        canonical="$dir"
-    fi
-
-    # Block system directories
-    local blocked_prefixes=("/usr" "/etc" "/var" "/bin" "/sbin" "/boot" "/sys" "/proc" "/dev")
-    for prefix in "${blocked_prefixes[@]}"; do
-        if [[ "$canonical" == "$prefix"* ]]; then
-            echo "Error: Output directory cannot be in system directory: $prefix"
-            echo "       Use a directory under \$HOME instead"
-            echo "       Example: $HOME/backups/db"
-            exit 1
-        fi
-    done
-
-    # Require path to be under $HOME
-    if [[ "$canonical" != "$HOME"* ]] && [[ "$canonical" != "."* ]] && [[ "$canonical" != "./"* ]]; then
-        echo "Error: Output directory must be under \$HOME for safety"
-        echo "       Provided: $canonical"
-        echo "       Required: Under $HOME"
-        echo "       Example: $HOME/backups/db"
-        exit 1
-    fi
-}
-
-# Validate output directory
+# Validate output directory (uses validate_output_dir from lib/common.sh)
 validate_output_dir "$OUTPUT_DIR"
 
 # URL decode helper
@@ -442,100 +400,103 @@ EOF
     fi
 }
 
-# Apply retention policy
-apply_retention() {
-    local backup_dir="$1"
-    local pattern="${DB_TYPE}_${DB_NAME}_*.sql.gz"
+# Apply retention policy (requires Bash 4+ for associative arrays)
+# Guard the function definition so Bash 3.2 does not choke on declare -A
+if [ "${BASH_VERSINFO[0]}" -ge 4 ]; then
+    apply_retention() {
+        local backup_dir="$1"
+        local pattern="${DB_TYPE}_${DB_NAME}_*.sql.gz"
 
-    print_section "Applying Retention Policy"
-    print_info "Policy: Keep $DAILY_KEEP daily, $WEEKLY_KEEP weekly, $MONTHLY_KEEP monthly"
+        print_section "Applying Retention Policy"
+        print_info "Policy: Keep $DAILY_KEEP daily, $WEEKLY_KEEP weekly, $MONTHLY_KEEP monthly"
 
-    # Get all backups sorted by date (newest first)
-    local all_backups=()
-    while IFS= read -r backup; do
-        all_backups+=("$backup")
-    done < <(find "$backup_dir" -name "$pattern" -type f 2>/dev/null | sort -r)
+        # Get all backups sorted by date (newest first)
+        local all_backups=()
+        while IFS= read -r backup; do
+            all_backups+=("$backup")
+        done < <(find "$backup_dir" -name "$pattern" -type f 2>/dev/null | sort -r)
 
-    if [ "${#all_backups[@]}" -eq 0 ]; then
-        print_info "No existing backups found"
-        return 0
-    fi
-
-    print_info "Found ${#all_backups[@]} existing backup(s)"
-
-    # Track which backups to keep
-    declare -A keep_backups
-
-    # Keep daily backups (last N days)
-    local daily_count=0
-    for backup in "${all_backups[@]}"; do
-        if [ $daily_count -lt "$DAILY_KEEP" ]; then
-            keep_backups["$backup"]=1
-            daily_count=$((daily_count + 1))
+        if [ "${#all_backups[@]}" -eq 0 ]; then
+            print_info "No existing backups found"
+            return 0
         fi
-    done
 
-    # Keep weekly backups (oldest of each week for last N weeks)
-    declare -A weeks_seen
-    for backup in "${all_backups[@]}"; do
-        # Extract date from filename
-        local backup_date=$(basename "$backup" | grep -oE '[0-9]{8}' | head -1)
-        if [ -n "$backup_date" ]; then
-            # Get week number (YYYYWW format)
-            local week_num=$(date -j -f "%Y%m%d" "$backup_date" "+%Y%U" 2>/dev/null || date -d "$backup_date" "+%Y%U" 2>/dev/null)
+        print_info "Found ${#all_backups[@]} existing backup(s)"
 
-            if [ -n "$week_num" ] && [ -z "${weeks_seen[$week_num]:-}" ]; then
+        # Track which backups to keep
+        declare -A keep_backups
+
+        # Keep daily backups (last N days)
+        local daily_count=0
+        for backup in "${all_backups[@]}"; do
+            if [ $daily_count -lt "$DAILY_KEEP" ]; then
                 keep_backups["$backup"]=1
-                weeks_seen["$week_num"]=1
+                daily_count=$((daily_count + 1))
+            fi
+        done
 
-                if [ "${#weeks_seen[@]}" -ge "$WEEKLY_KEEP" ]; then
-                    break
+        # Keep weekly backups (oldest of each week for last N weeks)
+        declare -A weeks_seen
+        for backup in "${all_backups[@]}"; do
+            # Extract date from filename
+            local backup_date=$(basename "$backup" | grep -oE '[0-9]{8}' | head -1)
+            if [ -n "$backup_date" ]; then
+                # Get week number (YYYYWW format)
+                local week_num=$(date -j -f "%Y%m%d" "$backup_date" "+%Y%U" 2>/dev/null || date -d "$backup_date" "+%Y%U" 2>/dev/null)
+
+                if [ -n "$week_num" ] && [ -z "${weeks_seen[$week_num]:-}" ]; then
+                    keep_backups["$backup"]=1
+                    weeks_seen["$week_num"]=1
+
+                    if [ "${#weeks_seen[@]}" -ge "$WEEKLY_KEEP" ]; then
+                        break
+                    fi
                 fi
             fi
-        fi
-    done
+        done
 
-    # Keep monthly backups (oldest of each month for last N months)
-    declare -A months_seen
-    for backup in "${all_backups[@]}"; do
-        local backup_date=$(basename "$backup" | grep -oE '[0-9]{8}' | head -1)
-        if [ -n "$backup_date" ]; then
-            # Get month (YYYYMM format)
-            local month_num="${backup_date:0:6}"
+        # Keep monthly backups (oldest of each month for last N months)
+        declare -A months_seen
+        for backup in "${all_backups[@]}"; do
+            local backup_date=$(basename "$backup" | grep -oE '[0-9]{8}' | head -1)
+            if [ -n "$backup_date" ]; then
+                # Get month (YYYYMM format)
+                local month_num="${backup_date:0:6}"
 
-            if [ -n "$month_num" ] && [ -z "${months_seen[$month_num]:-}" ]; then
-                keep_backups["$backup"]=1
-                months_seen["$month_num"]=1
+                if [ -n "$month_num" ] && [ -z "${months_seen[$month_num]:-}" ]; then
+                    keep_backups["$backup"]=1
+                    months_seen["$month_num"]=1
 
-                if [ "${#months_seen[@]}" -ge "$MONTHLY_KEEP" ]; then
-                    break
+                    if [ "${#months_seen[@]}" -ge "$MONTHLY_KEEP" ]; then
+                        break
+                    fi
                 fi
             fi
-        fi
-    done
+        done
 
-    # Remove backups not in keep list
-    local removed_count=0
-    for backup in "${all_backups[@]}"; do
-        if [ -z "${keep_backups[$backup]:-}" ]; then
-            if [ "$DRY_RUN" = true ]; then
-                print_info "[DRY RUN] Would remove: $(basename "$backup")"
-            else
-                rm -f "$backup"
-                print_info "Removed old backup: $(basename "$backup")"
+        # Remove backups not in keep list
+        local removed_count=0
+        for backup in "${all_backups[@]}"; do
+            if [ -z "${keep_backups[$backup]:-}" ]; then
+                if [ "$DRY_RUN" = true ]; then
+                    print_info "[DRY RUN] Would remove: $(basename "$backup")"
+                else
+                    rm -f "$backup"
+                    print_info "Removed old backup: $(basename "$backup")"
+                fi
+                removed_count=$((removed_count + 1))
             fi
-            removed_count=$((removed_count + 1))
+        done
+
+        if [ $removed_count -eq 0 ]; then
+            print_info "No backups removed (all within retention policy)"
+        else
+            print_success "Removed $removed_count old backup(s)"
         fi
-    done
 
-    if [ $removed_count -eq 0 ]; then
-        print_info "No backups removed (all within retention policy)"
-    else
-        print_success "Removed $removed_count old backup(s)"
-    fi
-
-    print_info "Kept ${#keep_backups[@]} backup(s) per retention policy"
-}
+        print_info "Kept ${#keep_backups[@]} backup(s) per retention policy"
+    }
+fi # end Bash 4+ guard for apply_retention
 
 # Upload to rclone
 upload_to_rclone() {
@@ -623,8 +584,8 @@ if [ "$DRY_RUN" = true ]; then
   "errors": [],
   "result": {
     "dry_run": true,
-    "database_type": "$DB_TYPE",
-    "database_name": "$DB_NAME"
+    "database_type": "$(json_escape "$DB_TYPE")",
+    "database_name": "$(json_escape "$DB_NAME")"
   }
 }
 EOF
@@ -653,10 +614,10 @@ if ! backup_path=$(perform_backup "$BACKUP_FILE"); then
 fi
 
 # Apply retention (requires Bash 4+ for associative arrays)
-if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-    print_warning "Retention policy requires Bash 4+ (current: $BASH_VERSION). Skipping retention."
-else
+if declare -F apply_retention >/dev/null 2>&1; then
     apply_retention "$OUTPUT_DIR"
+else
+    print_warning "Retention policy requires Bash 4+ (current: $BASH_VERSION). Skipping retention."
 fi
 
 # Upload to rclone if specified
@@ -681,18 +642,18 @@ if [ "$OUTPUT_JSON" = true ]; then
   "duration_ms": $DURATION_MS,
   "errors": [],
   "result": {
-    "backup_file": "$BACKUP_FILE",
-    "database_type": "$DB_TYPE",
-    "database_name": "$DB_NAME"
+    "backup_file": "$(json_escape "$BACKUP_FILE")",
+    "database_type": "$(json_escape "$DB_TYPE")",
+    "database_name": "$(json_escape "$DB_NAME")"
   },
   "database": {
-    "type": "$DB_TYPE",
-    "name": "$DB_NAME",
-    "host": "$DB_HOST",
+    "type": "$(json_escape "$DB_TYPE")",
+    "name": "$(json_escape "$DB_NAME")",
+    "host": "$(json_escape "$DB_HOST")",
     "port": $DB_PORT
   },
   "backup": {
-    "file": "$BACKUP_FILE",
+    "file": "$(json_escape "$BACKUP_FILE")",
     "size": "$(du -sh "$BACKUP_FILE" | awk '{print $1}')",
     "compressed": true
   },
@@ -703,7 +664,7 @@ if [ "$OUTPUT_JSON" = true ]; then
   },
   "rclone": {
     "enabled": $([ -n "$RCLONE_REMOTE" ] && echo "true" || echo "false"),
-    "remote": "$RCLONE_REMOTE"
+    "remote": "$(json_escape "$RCLONE_REMOTE")"
   },
   "test_restore": $TEST_RESTORE
 }

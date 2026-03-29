@@ -3,6 +3,13 @@
 # Version: 1.2.1
 # Source this file: source "${SCRIPT_DIR}/lib/common.sh"
 
+# Escape a string for safe embedding in a JSON value.
+# Handles backslashes, double quotes, and common control characters.
+# Usage: escaped=$(json_escape "$value")
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+}
+
 # Get ISO8601 timestamp (BSD/GNU compatible)
 # Usage: timestamp=$(get_iso8601_timestamp)
 get_iso8601_timestamp() {
@@ -33,36 +40,6 @@ require_jq_if_json() {
     return 0
 }
 
-# Print colored status messages
-# Usage: print_status "success" "Message" or print_status "error" "Message"
-print_status() {
-    local status="$1"
-    local message="$2"
-    local RED='\033[0;31m'
-    local GREEN='\033[0;32m'
-    local YELLOW='\033[1;33m'
-    local BLUE='\033[0;34m'
-    local NC='\033[0m'
-
-    case "$status" in
-    success)
-        echo -e "${GREEN}✓${NC} $message"
-        ;;
-    error)
-        echo -e "${RED}✗ Error:${NC} $message" >&2
-        ;;
-    warning)
-        echo -e "${YELLOW}⚠${NC} $message"
-        ;;
-    info)
-        echo -e "${BLUE}ℹ${NC} $message"
-        ;;
-    *)
-        echo "$message"
-        ;;
-    esac
-}
-
 # Validate output directory path (security)
 # Usage: validate_output_dir "/path/to/dir"
 # Returns: 0 if valid, exits with error if invalid
@@ -73,10 +50,10 @@ validate_output_dir() {
     local canonical=""
     if command -v realpath >/dev/null 2>&1; then
         canonical=$(realpath -m "$dir" 2>/dev/null) || canonical=""
-    elif command -v readlink >/dev/null 2>&1; then
+    elif readlink -f / >/dev/null 2>&1; then
         canonical=$(readlink -f "$dir" 2>/dev/null) || canonical=""
     elif command -v python3 >/dev/null 2>&1; then
-        canonical=$(python3 -c "import os; print(os.path.realpath('$dir'))" 2>/dev/null) || canonical=""
+        canonical=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$dir" 2>/dev/null) || canonical=""
     fi
 
     # If no canonicalization available, check for traversal sequences

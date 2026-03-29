@@ -168,6 +168,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate jq availability for JSON output
+require_jq_if_json "$OUTPUT_JSON" || exit 1
+
 # Validate required arguments
 if [ -z "$PROVIDER" ] || [ -z "$ZONE" ] || [ -z "$RECORD" ] || [ -z "$TOKEN" ]; then
     echo "Error: Missing required arguments"

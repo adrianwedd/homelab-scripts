@@ -101,6 +101,19 @@ if [ ${#HOSTS[@]} -eq 0 ]; then
     HOSTS=("pi@192.168.1.100" "pi@192.168.1.250")
 fi
 
+# Validate REMOTE_PATH: block dangerous characters and system directories
+if [[ "$REMOTE_PATH" == *"'"* ]] || [[ "$REMOTE_PATH" == *'"'* ]] || [[ "$REMOTE_PATH" == *'`'* ]] || [[ "$REMOTE_PATH" == *'$('* ]] || [[ "$REMOTE_PATH" == *';'* ]]; then
+    print_error "Remote path contains unsafe characters: $REMOTE_PATH"
+    exit 1
+fi
+# Block obvious system directories
+case "$REMOTE_PATH" in
+/ | /usr* | /etc* | /var* | /bin* | /sbin* | /boot* | /sys* | /proc* | /dev*)
+    print_error "Remote path cannot be a system directory: $REMOTE_PATH"
+    exit 1
+    ;;
+esac
+
 print_section "Deploying to ${#HOSTS[@]} host(s)"
 print_info "Remote path: $REMOTE_PATH"
 print_info "Mode: $([ "$RSYNC_ONLY" = true ] && echo rsync-only || echo git-first)"
@@ -113,8 +126,10 @@ sync_rsync() {
         print_info "[DRY RUN][$host] rsync -az --delete (excluding .git/, logs/, .claude/) to $REMOTE_PATH"
         return 0
     fi
+    local escaped_path
+    escaped_path=$(printf '%q' "$REMOTE_PATH")
     rsync -az --delete \
-        --rsync-path="mkdir -p '$REMOTE_PATH' && rsync" \
+        --rsync-path="mkdir -p ${escaped_path} && rsync" \
         --exclude '.git/' --exclude 'logs/' --exclude '.claude/' \
         "$SCRIPT_DIR/" "$host":"$REMOTE_PATH/"
 }
