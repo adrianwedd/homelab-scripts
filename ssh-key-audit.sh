@@ -197,9 +197,9 @@ load_risk_config() {
     # Skip if risk scoring disabled
     [ "$ENABLE_RISK" != "true" ] && return 0
 
-    # Check bash version (requires 4+ for associative arrays)
-    if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-        print_error "Risk scoring requires bash 4.0 or higher (current: ${BASH_VERSION})"
+    # Check bash version (requires 4.3+ for associative arrays and namerefs)
+    if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 3 ]; }; then
+        print_error "Risk scoring requires Bash 4.3+ (current: ${BASH_VERSION})"
         print_error "Risk scoring disabled for this run"
         ENABLE_RISK=false
         return 1
@@ -229,13 +229,12 @@ load_risk_config() {
     if [ -n "$config_file" ]; then
         print_info "Loading risk config: $config_file"
 
-        # shellcheck disable=SC1090
-        if source "$config_file" 2>/dev/null; then
+        if load_simple_config_file "$config_file"; then
             # Validate loaded weights
             validate_risk_config
             return 0
         else
-            print_error "Failed to load risk config: $config_file (syntax error)"
+            print_error "Failed to load risk config: $config_file (parse error)"
             print_error "Risk scoring disabled for this run"
             ENABLE_RISK=false
             return 1

@@ -133,9 +133,17 @@ bytes_to_human() {
 get_size_bytes() {
     local path="$1"
     if [ -f "$path" ]; then
-        stat -c%s "$path" 2>/dev/null || echo 0
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            stat -f%z "$path" 2>/dev/null || echo 0
+        else
+            stat -c%s "$path" 2>/dev/null || echo 0
+        fi
     elif [ -d "$path" ]; then
-        du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            du -sk "$path" 2>/dev/null | awk '{print $1 * 1024}' || echo 0
+        else
+            du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0
+        fi
     else
         echo 0
     fi
@@ -182,7 +190,7 @@ record_action() {
     local path="$2"
     local bytes="${3:-0}"
     local escaped_path
-    escaped_path=$(echo "$path" | sed 's/"/\\"/g')
+    escaped_path=$(json_escape "$path")
     local entry
     entry=$(printf '{"action":"%s","path":"%s","bytes":%s}' "$action" "$escaped_path" "$bytes")
     if [ "$ACTIONS_JSON" = "[]" ]; then
@@ -436,11 +444,19 @@ clean_duplicates() {
             files_of_size+=("$f")
         done < <(grep "^${dup_size} " "$tmp_size_index" | cut -d' ' -f2-)
 
-        # Group by MD5
+        # Group by MD5 (requires Bash 4+ for associative arrays)
+        if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+            print_warning "Duplicate detection requires Bash 4.0+ (current: $BASH_VERSION) — skipping"
+            return
+        fi
         declare -A md5_groups
         for f in "${files_of_size[@]}"; do
             local md5
-            md5=$(md5sum "$f" 2>/dev/null | awk '{print $1}') || continue
+            if command -v md5sum >/dev/null 2>&1; then
+                md5=$(md5sum "$f" 2>/dev/null | awk '{print $1}') || continue
+            else
+                md5=$(md5 -r "$f" 2>/dev/null | awk '{print $1}') || continue
+            fi
             if [ -n "${md5_groups[$md5]+_}" ]; then
                 # Duplicate — keep first, mark this one
                 dup_list+=("$f")
@@ -526,6 +542,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ── Validate user-supplied paths ─────────────────────────────────────────────
+
+validate_output_dir "$PLEX_DIR" || exit 1
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 umask 077
@@ -535,6 +555,15 @@ touch "$LOG_FILE"
 chmod 600 "$LOG_FILE"
 
 require_jq_if_json "$OUTPUT_JSON" || exit 2
+
+# Validate PLEX_DIR: block system directories
+case "$(realpath "$PLEX_DIR" 2>/dev/null || echo "$PLEX_DIR")" in
+/usr | /usr/* | /etc | /etc/* | /var | /var/* | /bin | /bin/* | /sbin | /sbin/* | \
+    /boot | /boot/* | /sys | /sys/* | /proc | /proc/* | /dev | /dev/*)
+    print_error "Refusing to operate on system directory: $PLEX_DIR"
+    exit 2
+    ;;
+esac
 
 if [ ! -d "$PLEX_DIR" ]; then
     print_error "Plex directory not found: $PLEX_DIR"

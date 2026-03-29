@@ -377,11 +377,11 @@ if [ "$OUTPUT_JSON" = true ]; then
 
         cat >>"$JSON_FILE" <<EOF
     {
-      "type": "$type",
-      "name": "$name",
-      "status": "$status",
+      "type": "$(json_escape "$type")",
+      "name": "$(json_escape "$name")",
+      "status": "$(json_escape "$status")",
       "days_remaining": $days,
-      "message": "$message"
+      "message": "$(json_escape "$message")"
     }
 EOF
     done

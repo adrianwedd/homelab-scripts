@@ -78,14 +78,14 @@ gather_context() {
     local top_dirs=""
     if [ "$SKIP_SCAN" = false ]; then
         top_dirs=$(du -sh "${HOME}"/* 2>/dev/null |
-            sort -rh |
+            sort -rn |
             head -10 |
             awk '{printf "  %-10s %s\n", $1, $2}' ||
             true)
         # Also check /var/log and /tmp if accessible
         local extra
         extra=$(du -sh /var/log /tmp /var/cache 2>/dev/null |
-            sort -rh |
+            sort -rn |
             awk '{printf "  %-10s %s\n", $1, $2}' ||
             true)
         [ -n "$extra" ] && top_dirs="${top_dirs}

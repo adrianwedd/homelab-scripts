@@ -124,9 +124,17 @@ bytes_to_human() {
 get_size_bytes() {
     local path="$1"
     if [ -f "$path" ]; then
-        stat -c%s "$path" 2>/dev/null || echo 0
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            stat -f%z "$path" 2>/dev/null || echo 0
+        else
+            stat -c%s "$path" 2>/dev/null || echo 0
+        fi
     elif [ -d "$path" ]; then
-        du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            du -sk "$path" 2>/dev/null | awk '{print $1 * 1024}' || echo 0
+        else
+            du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0
+        fi
     else
         echo 0
     fi
@@ -135,7 +143,7 @@ get_size_bytes() {
 record_action() {
     local action="$1" path="$2" bytes="${3:-0}"
     local escaped_path
-    escaped_path=$(echo "$path" | sed 's/"/\\"/g')
+    escaped_path=$(json_escape "$path")
     local entry
     entry=$(printf '{"action":"%s","path":"%s","bytes":%s}' "$action" "$escaped_path" "$bytes")
     if [ "$ACTIONS_JSON" = "[]" ]; then
@@ -360,6 +368,16 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# ── Validate user-supplied paths ─────────────────────────────────────────────
+
+if [ -n "$CUSTOM_DIRS" ]; then
+    IFS=':' read -ra _validate_dirs <<<"$CUSTOM_DIRS"
+    for _vdir in "${_validate_dirs[@]}"; do
+        validate_output_dir "$_vdir" || exit 1
+    done
+    unset _validate_dirs _vdir
+fi
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 

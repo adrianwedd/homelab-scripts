@@ -404,10 +404,10 @@ notify_webhook() {
     payload=$(
         cat <<EOF
 {
-  "service": "$name",
-  "type": "$type",
-  "status": "$status",
-  "message": "$message",
+  "service": "$(json_escape "$name")",
+  "type": "$(json_escape "$type")",
+  "status": "$(json_escape "$status")",
+  "message": "$(json_escape "$message")",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF

@@ -120,7 +120,7 @@ record_finding() {
     printf "  ${color}[%s]${NC} %s\n" "$severity" "$description"
     log_line "$severity" "$description"
     local escaped
-    escaped=$(echo "$description" | sed 's/"/\\"/g')
+    escaped=$(json_escape "$description")
     local entry
     entry=$(printf '{"severity":"%s","description":"%s"}' "$severity" "$escaped")
     [ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
@@ -129,7 +129,7 @@ record_finding() {
 # ── Load baseline ─────────────────────────────────────────────────────────────
 
 load_baseline() {
-    declare -ga BASELINE_PORTS=()
+    BASELINE_PORTS=()
     local file="${BASELINE_FILE:-$DEFAULT_BASELINE}"
 
     if [ ! -f "$file" ]; then
@@ -231,7 +231,8 @@ check_listening_ports() {
     printf "  %s\n" "$(printf '─%.0s' {1..70})"
 
     local baseline_loaded=false
-    declare -ga BASELINE_PORTS 2>/dev/null || true
+    # Ensure BASELINE_PORTS is set (may not be if load_baseline was not called)
+    if [ -z "${BASELINE_PORTS+x}" ]; then BASELINE_PORTS=(); fi
     [ "${#BASELINE_PORTS[@]}" -gt 0 ] && baseline_loaded=true
 
     echo "$listening" | while IFS= read -r line; do

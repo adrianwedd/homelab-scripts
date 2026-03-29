@@ -401,8 +401,8 @@ fi
 # Update cache
 cat >"$CACHE_FILE" <<EOF
 {
-  "ip": "$CURRENT_IP",
-  "record": "${ZONE}:${RECORD}",
+  "ip": "$(json_escape "$CURRENT_IP")",
+  "record": "$(json_escape "${ZONE}:${RECORD}")",
   "timestamp": $CURRENT_TIME,
   "updated_at": "$(get_iso8601_timestamp)"
 }
@@ -427,19 +427,19 @@ if [ "$OUTPUT_JSON" = true ]; then
   "duration_ms": $DURATION_MS,
   "errors": [],
   "result": {
-    "provider": "$PROVIDER",
-    "full_record": "$FULL_RECORD",
-    "ip": "$CURRENT_IP"
+    "provider": "$(json_escape "$PROVIDER")",
+    "full_record": "$(json_escape "$FULL_RECORD")",
+    "ip": "$(json_escape "$CURRENT_IP")"
   },
-  "provider": "$PROVIDER",
-  "zone": "$ZONE",
-  "record": "$RECORD",
-  "full_record": "$FULL_RECORD",
-  "ip": "$CURRENT_IP",
-  "previous_ip": "${CACHED_IP:-null}",
+  "provider": "$(json_escape "$PROVIDER")",
+  "zone": "$(json_escape "$ZONE")",
+  "record": "$(json_escape "$RECORD")",
+  "full_record": "$(json_escape "$FULL_RECORD")",
+  "ip": "$(json_escape "$CURRENT_IP")",
+  "previous_ip": "$(json_escape "${CACHED_IP:-null}")",
   "ttl": $TTL,
   "success": true,
-  "log_file": "$LOG_FILE"
+  "log_file": "$(json_escape "$LOG_FILE")"
 }
 EOF
     chmod 600 "$JSON_FILE"

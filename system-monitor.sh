@@ -120,7 +120,7 @@ add_alert() {
     ALERTS+=("$msg")
     STATUS="alert"
     local escaped
-    escaped=$(echo "$msg" | sed 's/"/\\"/g')
+    escaped=$(json_escape "$msg")
     if [ "$ALERTS_JSON" = "[]" ]; then
         ALERTS_JSON="[\"$escaped\"]"
     else
@@ -130,17 +130,25 @@ add_alert() {
     log_line "ALERT" "$msg"
 }
 
+mask_url() {
+    # Show only scheme+host, replace path/query with ***
+    local url="$1"
+    echo "$url" | sed -E 's|(https?://[^/]+).*|\1/***|'
+}
+
 send_webhook() {
     local url="$1"
     local payload="$2"
+    local masked_url
+    masked_url=$(mask_url "$url")
     [ -z "$url" ] && return
     [ "$DRY_RUN" = true ] && {
-        print_info "[DRY RUN] would POST to webhook: $url"
+        print_info "[DRY RUN] would POST to webhook: $masked_url"
         return
     }
     curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$url" >/dev/null 2>&1 &&
-        log_line "WEBHOOK" "Sent alert to $url" ||
-        print_warning "Failed to send webhook to $url"
+        log_line "WEBHOOK" "Sent alert to $masked_url" ||
+        print_warning "Failed to send webhook to $masked_url"
 }
 
 # ── CPU ───────────────────────────────────────────────────────────────────────
@@ -298,7 +306,11 @@ check_processes() {
     printf "  ${BOLD}By CPU%%:${NC}\n"
     printf "  %-8s %-10s %-6s %-6s  %s\n" "PID" "USER" "CPU%" "MEM%" "COMMAND"
     printf "  %s\n" "$(printf '─%.0s' {1..60})"
-    ps aux --sort=-%cpu 2>/dev/null | tail -n +2 | head -"$TOP_N" |
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        ps aux -r 2>/dev/null
+    else
+        ps aux --sort=-%cpu 2>/dev/null
+    fi | tail -n +2 | head -"$TOP_N" |
         while read -r user pid cpu mem _ _ _ _ _ _ cmd; do
             local short_cmd="${cmd:0:40}"
             printf "  %-8s %-10s %-6s %-6s  %s\n" "$pid" "${user:0:10}" "$cpu" "$mem" "$short_cmd"
@@ -308,7 +320,11 @@ check_processes() {
     printf "  ${BOLD}By MEM%%:${NC}\n"
     printf "  %-8s %-10s %-6s %-6s  %s\n" "PID" "USER" "CPU%" "MEM%" "COMMAND"
     printf "  %s\n" "$(printf '─%.0s' {1..60})"
-    ps aux --sort=-%mem 2>/dev/null | tail -n +2 | head -"$TOP_N" |
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        ps aux -m 2>/dev/null
+    else
+        ps aux --sort=-%mem 2>/dev/null
+    fi | tail -n +2 | head -"$TOP_N" |
         while read -r user pid cpu mem _ _ _ _ _ _ cmd; do
             local short_cmd="${cmd:0:40}"
             printf "  %-8s %-10s %-6s %-6s  %s\n" "$pid" "${user:0:10}" "$cpu" "$mem" "$short_cmd"
@@ -402,6 +418,10 @@ touch "$LOG_FILE"
 chmod 600 "$LOG_FILE"
 
 require_jq_if_json "$OUTPUT_JSON" || exit 2
+
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    print_warning "Some features require Linux (/proc filesystem)"
+fi
 
 if [ "$DRY_RUN" = true ]; then
     echo -e "${BOLD}━━━ System Monitor ━━━${NC}"

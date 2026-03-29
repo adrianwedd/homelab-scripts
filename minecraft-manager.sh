@@ -183,7 +183,11 @@ cmd_status() {
 
     # Uptime
     local start_time now_ts uptime_secs uptime_h uptime_m
-    start_time=$(stat -c%Y "/proc/${pid}" 2>/dev/null || echo 0)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        start_time=$(stat -f%m "/proc/${pid}" 2>/dev/null || echo 0)
+    else
+        start_time=$(stat -c%Y "/proc/${pid}" 2>/dev/null || echo 0)
+    fi
     now_ts=$(date +%s)
     uptime_secs=$((now_ts - start_time))
     uptime_h=$((uptime_secs / 3600))
@@ -237,7 +241,10 @@ cmd_start() {
     print_info "JAR: $MC_JAR  Mem: ${MC_MEM_MIN}-${MC_MEM_MAX}"
 
     if command -v screen >/dev/null 2>&1; then
-        screen -dmS "$SCREEN_NAME" bash -c "cd '${MC_DIR}' && java -Xms${MC_MEM_MIN} -Xmx${MC_MEM_MAX} -jar '${MC_JAR}' nogui"
+        local escaped_mc_dir escaped_mc_jar
+        escaped_mc_dir=$(printf '%q' "${MC_DIR}")
+        escaped_mc_jar=$(printf '%q' "${MC_JAR}")
+        screen -dmS "$SCREEN_NAME" bash -c "cd ${escaped_mc_dir} && java -Xms${MC_MEM_MIN} -Xmx${MC_MEM_MAX} -jar ${escaped_mc_jar} nogui"
         sleep 3
         local new_pid
         new_pid=$(get_server_pid)
@@ -340,7 +347,11 @@ cmd_backup() {
     print_info "Backing up: ${world_dirs[*]}"
     tar -czf "$backup_path" -C "$MC_DIR" "${world_dirs[@]}" 2>/dev/null && {
         local sz
-        sz=$(stat -c%s "$backup_path" 2>/dev/null || echo 0)
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sz=$(stat -f%z "$backup_path" 2>/dev/null || echo 0)
+        else
+            sz=$(stat -c%s "$backup_path" 2>/dev/null || echo 0)
+        fi
         print_success "Backup created: $backup_name ($(numfmt --to=iec "$sz" 2>/dev/null || echo "${sz}B"))"
         log_line "BACKUP" "$backup_path"
     } || {
@@ -424,9 +435,17 @@ cmd_update() {
 
     local current_jar="${MC_DIR}/${MC_JAR}"
     local current_size
-    current_size=$(stat -c%s "$current_jar" 2>/dev/null || echo 0)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        current_size=$(stat -f%z "$current_jar" 2>/dev/null || echo 0)
+    else
+        current_size=$(stat -c%s "$current_jar" 2>/dev/null || echo 0)
+    fi
     local current_modified
-    current_modified=$(stat -c%y "$current_jar" 2>/dev/null | cut -d' ' -f1)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        current_modified=$(stat -f "%Sm" -t "%Y-%m-%d" "$current_jar" 2>/dev/null)
+    else
+        current_modified=$(stat -c%y "$current_jar" 2>/dev/null | cut -d' ' -f1)
+    fi
 
     print_info "Current JAR: $MC_JAR"
     print_info "Size: $(numfmt --to=iec "$current_size" 2>/dev/null || echo "${current_size}B")"
@@ -479,6 +498,11 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# ── Validate user-supplied paths ─────────────────────────────────────────────
+
+validate_output_dir "$MC_DIR" || exit 1
+validate_output_dir "$BACKUP_DIR" || exit 1
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 

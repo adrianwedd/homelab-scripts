@@ -65,6 +65,17 @@ print_section() {
 }
 log_line() { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
 
+_get_epoch_ms() {
+    local ts
+    ts=$(date +%s%3N 2>/dev/null)
+    # On macOS/BSD, %3N is literal — detect and fall back to seconds * 1000
+    if echo "$ts" | grep -q '[^0-9]'; then
+        echo $(($(date +%s) * 1000))
+    else
+        echo "$ts"
+    fi
+}
+
 show_help() {
     cat <<'HELP'
 network-monitor.sh - Latency, packet loss, and DNS monitoring with timeseries
@@ -163,7 +174,7 @@ check_ping() {
     # Append to timeseries
     local entry
     entry=$(printf '{"ts":"%s","target":"%s","label":"%s","avg_ms":%s,"loss_pct":%s}' \
-        "$(get_iso8601_timestamp)" "$target" "$label" "${avg_ms:-0}" "${loss:-0}")
+        "$(get_iso8601_timestamp)" "$(json_escape "$target")" "$(json_escape "$label")" "${avg_ms:-0}" "${loss:-0}")
     echo "$entry" >>"$TIMESERIES_FILE"
 
     # Append to results JSON
@@ -186,9 +197,9 @@ check_dns() {
     for host in "${dns_list[@]}"; do
         host=$(echo "$host" | xargs)
         local start_ts end_ts elapsed_ms
-        start_ts=$(date +%s%3N 2>/dev/null || date +%s)
+        start_ts=$(_get_epoch_ms)
         host "$host" >/dev/null 2>&1
-        end_ts=$(date +%s%3N 2>/dev/null || date +%s)
+        end_ts=$(_get_epoch_ms)
         elapsed_ms=$((end_ts - start_ts))
 
         local color="$GREEN" sym="✓"

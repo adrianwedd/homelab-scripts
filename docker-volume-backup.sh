@@ -404,8 +404,8 @@ EOF
 
         cat >>"$JSON_FILE" <<ENTRY
     {
-      "volume": "$VOLUME",
-      "file": "$FILE",
+      "volume": "$(json_escape "$VOLUME")",
+      "file": "$(json_escape "$FILE")",
       "size_bytes": $SIZE
     }
 ENTRY
@@ -414,7 +414,7 @@ ENTRY
     cat >>"$JSON_FILE" <<EOF
 
   ],
-  "log_file": "$LOG_FILE"
+  "log_file": "$(json_escape "$LOG_FILE")"
 }
 EOF
     chmod 600 "$JSON_FILE"

@@ -177,7 +177,7 @@ analyze_failures() {
         echo ""
         printf "  %-8s  %s\n" "COUNT" "IP ADDRESS"
         printf "  %s\n" "$(printf '─%.0s' {1..40})"
-        echo "$ip_counts" | while read -r count ip; do
+        while read -r count ip; do
             local color="$NC"
             [ "$count" -ge "$ALERT_THRESHOLD" ] && {
                 color="$RED"
@@ -185,14 +185,14 @@ analyze_failures() {
             }
             [ "$count" -ge "$((ALERT_THRESHOLD / 2))" ] && [ "$count" -lt "$ALERT_THRESHOLD" ] && color="$YELLOW"
             printf "  ${color}%-8s  %s${NC}\n" "$count" "$ip"
-        done
+        done < <(echo "$ip_counts")
     fi
 
     # Invalid usernames
     local invalid_users
     invalid_users=$(echo "$content" |
         grep "Invalid user" |
-        grep -oP "Invalid user \K\S+" |
+        grep -oE "Invalid user [^ ]+" | awk '{print $3}' |
         sort | uniq -c | sort -rn | head -10)
 
     if [ -n "$invalid_users" ]; then
@@ -229,7 +229,7 @@ analyze_successes() {
             local method user ip ts
             ts=$(echo "$line" | awk '{print $1, $2, $3}')
             method=$(echo "$line" | grep -oE 'Accepted \S+' | awk '{print $2}')
-            user=$(echo "$line" | grep -oP 'for \K\S+')
+            user=$(echo "$line" | grep -oE 'for [^ ]+' | awk '{print $2}')
             ip=$(echo "$line" | grep -oE 'from ([0-9]{1,3}\.){3}[0-9]{1,3}' | awk '{print $2}')
             printf "  %-12s %-16s %-15s  %s\n" "${method:-?}" "${user:-?}" "${ip:-?}" "${ts:-?}"
         done | tail -20
@@ -259,8 +259,8 @@ analyze_sudo() {
         echo "$sudo_events" | while read -r line; do
             local user ts cmd
             ts=$(echo "$line" | awk '{print $1, $2, $3}')
-            user=$(echo "$line" | grep -oP '^\S+ \S+ \S+ \K\S+(?=\s*:)')
-            cmd=$(echo "$line" | grep -oP 'COMMAND=\K.*')
+            user=$(echo "$line" | awk '{print $4}' | sed 's/:$//')
+            cmd=$(echo "$line" | sed -n 's/.*COMMAND=//p')
             printf "  [%s] %s → %s\n" "${ts:-?}" "${user:-?}" "${cmd:0:60}"
         done
     fi

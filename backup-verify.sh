@@ -120,7 +120,7 @@ pass_check() {
     print_success "$name${detail:+: $detail}"
     log_line "PASS" "$name${detail:+ | $detail}"
     local escaped
-    escaped=$(echo "$name${detail:+: $detail}" | sed 's/"/\\"/g')
+    escaped=$(json_escape "$name${detail:+: $detail}")
     local entry
     entry=$(printf '{"check":"%s","result":"pass"}' "$escaped")
     [ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
@@ -133,7 +133,7 @@ fail_check() {
     print_warning "FAIL: $name${detail:+ — $detail}"
     log_line "FAIL" "$name${detail:+ | $detail}"
     local escaped
-    escaped=$(echo "$name${detail:+: $detail}" | sed 's/"/\\"/g')
+    escaped=$(json_escape "$name${detail:+: $detail}")
     local entry
     entry=$(printf '{"check":"%s","result":"fail","detail":"%s"}' "$name" "$escaped")
     [ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
@@ -149,7 +149,11 @@ skip_check() {
 file_age_hours() {
     local file="$1"
     local mod_ts
-    mod_ts=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        mod_ts=$(stat -f%m "$file" 2>/dev/null || echo 0)
+    else
+        mod_ts=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+    fi
     local now_ts
     now_ts=$(date +%s)
     echo $(((now_ts - mod_ts) / 3600))
@@ -203,7 +207,11 @@ verify_db_backups() {
 
     # Size check
     local sz
-    sz=$(stat -c%s "$newest" 2>/dev/null || echo 0)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sz=$(stat -f%z "$newest" 2>/dev/null || echo 0)
+    else
+        sz=$(stat -c%s "$newest" 2>/dev/null || echo 0)
+    fi
     if [ "$sz" -eq 0 ]; then
         fail_check "db-backup-size" "backup file is empty: $newest"
     else
@@ -346,10 +354,12 @@ while [[ $# -gt 0 ]]; do
         ;;
     --db-backup-dir)
         DB_BACKUP_DIR="$2"
+        _USER_SET_DB_BACKUP_DIR=true
         shift 2
         ;;
     --docker-backup-dir)
         DOCKER_BACKUP_DIR="$2"
+        _USER_SET_DOCKER_BACKUP_DIR=true
         shift 2
         ;;
     --rclone-remote)
@@ -375,6 +385,15 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# ── Validate user-supplied paths ─────────────────────────────────────────────
+
+if [ "${_USER_SET_DB_BACKUP_DIR:-false}" = true ]; then
+    validate_output_dir "$DB_BACKUP_DIR" || exit 1
+fi
+if [ "${_USER_SET_DOCKER_BACKUP_DIR:-false}" = true ]; then
+    validate_output_dir "$DOCKER_BACKUP_DIR" || exit 1
+fi
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 

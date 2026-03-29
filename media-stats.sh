@@ -21,9 +21,29 @@ FILE_LIMIT=0           # 0 = no limit
 DRY_RUN=false
 OUTPUT_JSON=false
 
-# Counters by codec
-declare -A CODEC_COUNT
-declare -A CODEC_BYTES
+# Associative arrays require Bash 4+ (check deferred until after --help parsing)
+# Early exit for --help so it works on Bash 3.2
+for _arg in "$@"; do
+    [ "$_arg" = "--help" ] && {
+        _SKIP_VERSION=true
+        break
+    }
+    [ "$_arg" = "--dry-run" ] && {
+        _SKIP_VERSION=true
+        break
+    }
+done
+
+if [ "${_SKIP_VERSION:-false}" != true ] && [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    echo "ERROR: media-stats.sh requires Bash 4.0+ for associative arrays (current: $BASH_VERSION)" >&2
+    exit 1
+fi
+
+# Counters by codec (Bash 4+ only, guarded above)
+if [ "${BASH_VERSINFO[0]}" -ge 4 ]; then
+    declare -A CODEC_COUNT
+    declare -A CODEC_BYTES
+fi
 TOTAL_FILES=0
 TOTAL_BYTES=0
 TOTAL_DURATION_SECS=0
@@ -228,7 +248,11 @@ scan_media() {
         [ "$FILE_LIMIT" -gt 0 ] && [ "$count" -ge "$FILE_LIMIT" ] && break
 
         local sz
-        sz=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sz=$(stat -f%z "$file" 2>/dev/null || echo 0)
+        else
+            sz=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        fi
         [ "$sz" -eq 0 ] && continue
 
         local info
@@ -351,6 +375,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ── Validate user-supplied paths ─────────────────────────────────────────────
+
+validate_output_dir "$PLEX_DIR" || exit 1
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 umask 077
@@ -402,7 +430,7 @@ if [ "$OUTPUT_JSON" = true ]; then
     local_codec_json="{}"
     for codec in "${!CODEC_COUNT[@]}"; do
         local_codec_json=$(echo "$local_codec_json" |
-            python3 -c "import json,sys; d=json.load(sys.stdin); d['${codec}']={'count':${CODEC_COUNT[$codec]},'bytes':${CODEC_BYTES[$codec]}}; print(json.dumps(d))" 2>/dev/null || echo "{}")
+            python3 -c "import json,sys; d=json.load(sys.stdin); d[sys.argv[1]]={'count':int(sys.argv[2]),'bytes':int(sys.argv[3])}; print(json.dumps(d))" "$codec" "${CODEC_COUNT[$codec]}" "${CODEC_BYTES[$codec]}" 2>/dev/null || echo "{}")
     done
 
     jq -n \

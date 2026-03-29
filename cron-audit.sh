@@ -113,9 +113,9 @@ record_finding() {
     printf "        Cmd:    %s\n\n" "${command:0:80}"
 
     local escaped_cmd escaped_source escaped_issue
-    escaped_cmd=$(echo "$command" | sed 's/"/\\"/g')
-    escaped_source=$(echo "$source" | sed 's/"/\\"/g')
-    escaped_issue=$(echo "$issue" | sed 's/"/\\"/g')
+    escaped_cmd=$(json_escape "$command")
+    escaped_source=$(json_escape "$source")
+    escaped_issue=$(json_escape "$issue")
 
     local entry
     entry=$(printf '{"severity":"%s","source":"%s","schedule":"%s","user":"%s","command":"%s","issue":"%s"}' \
@@ -254,7 +254,7 @@ check_cron_dirs() {
         scripts=$(find "$dir" -maxdepth 1 -type f 2>/dev/null | sort)
         if [ -n "$scripts" ]; then
             echo "  /etc/cron.${period}:"
-            echo "$scripts" | while read -r f; do
+            while read -r f; do
                 local ok="${GREEN}✓${NC}"
                 [ -x "$f" ] || {
                     ok="${RED}✗ not executable${NC}"
@@ -263,7 +263,7 @@ check_cron_dirs() {
                 }
                 printf "    %b %s\n" "$ok" "$(basename "$f")"
                 TOTAL_JOBS=$((TOTAL_JOBS + 1))
-            done
+            done < <(echo "$scripts")
         fi
     done
 }
@@ -289,7 +289,7 @@ check_systemd_timers() {
     printf "  %-30s %-20s %-15s\n" "TIMER" "NEXT" "LAST"
     printf "  %s\n" "$(printf '─%.0s' {1..70})"
 
-    echo "$timers" | while read -r line; do
+    while read -r line; do
         # Format: NEXT LEFT LAST PASSED UNIT ACTIVATES
         local timer
         timer=$(echo "$line" | awk '{print $(NF-1)}')
@@ -300,7 +300,7 @@ check_systemd_timers() {
         [ -z "$timer" ] && continue
         printf "  %-30s %-20s %s\n" "${timer:0:30}" "${next:0:20}" "${last:0:15}"
         TOTAL_JOBS=$((TOTAL_JOBS + 1))
-    done
+    done < <(echo "$timers")
 
     log_line "TIMERS" "checked"
 }

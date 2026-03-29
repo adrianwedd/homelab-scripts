@@ -14,23 +14,37 @@ A collection of Bash system maintenance and homelab DevOps scripts for macOS/Lin
 
 | Script | Purpose |
 |--------|---------|
-| `disk-cleanup.sh` | Cache cleanup (VS Code, Docker, Git, Homebrew, NPM, pip, virtualenvs) |
-| `smart-cleanup.sh` | Interactive wrapper around disk-cleanup.sh with analysis UI |
-| `update-all.sh` | System-wide package manager updates (Homebrew, NPM, pnpm, pip, gem, macOS) |
-| `rclone-sync.sh` | Background daemon for continuous Google Drive backup |
-| `nmap-scan.sh` | Network discovery and change tracking with delta analysis |
-| `ssh-key-audit.sh` | SSH authorized_keys hygiene and risk scoring |
-| `deploy-scripts.sh` | Sync this repository to remote hosts (git or rsync) |
-| `compose-redeploy.sh` | Docker Compose updates with volume backup and rollback |
-| `docker-volume-backup.sh` | Docker volume snapshots with compression |
-| `dyndns-update.sh` | Dynamic DNS updates for changing IPs |
-| `service-health-check.sh` | Config-driven uptime monitoring |
-| `db-backup.sh` | Database backups (PostgreSQL, MySQL) with retention and cloud sync |
-| `smart-disk-check.sh` | S.M.A.R.T. monitoring and disk health alerts |
-| `new-vm-setup.sh` | Bootstrap fresh VMs with standard configuration |
+| `auth-log-audit.sh` | SSH authentication log analysis and threat detection |
+| `backup-verify.sh` | Verify backup integrity, recency, and completeness |
 | `cert-renewal-check.sh` | SSL certificate expiry monitoring |
 | `ci-health-audit.sh` | GitHub Actions workflow analysis across repositories |
+| `compose-redeploy.sh` | Docker Compose updates with volume backup and rollback |
+| `cron-audit.sh` | Audit cron jobs and systemd timers for issues |
+| `db-backup.sh` | Database backups (PostgreSQL, MySQL) with retention and cloud sync |
+| `deploy-scripts.sh` | Sync this repository to remote hosts (git or rsync) |
+| `disk-assistant.sh` | Interactive Claude Code session for guided disk cleanup |
+| `disk-cleanup.sh` | Cache cleanup (VS Code, Docker, Git, Homebrew, NPM, pip, virtualenvs) |
+| `docker-health.sh` | Docker container health, image inventory, and disk report |
+| `docker-volume-backup.sh` | Docker volume snapshots with compression |
+| `dyndns-update.sh` | Dynamic DNS updates for changing IPs |
+| `firewall-audit.sh` | UFW/iptables rule audit against baseline |
+| `log-manager.sh` | Log rotation, compression, and retention management |
+| `media-stats.sh` | Plex library codec analysis and re-encode candidates |
+| `minecraft-manager.sh` | Minecraft server lifecycle (start/stop/backup/monitor) |
+| `network-monitor.sh` | Latency, packet loss, and DNS monitoring with timeseries |
+| `new-vm-setup.sh` | Bootstrap fresh VMs with standard configuration |
+| `nmap-scan.sh` | Network discovery and change tracking with delta analysis |
+| `package-cve-check.sh` | Check installed packages for known CVEs (Debian/Ubuntu) |
+| `plex-cleanup.sh` | Plex Media Server cache and duplicate cleanup |
 | `qa-all.sh` | Unified QA harness (shellcheck, shfmt, syntax, dry-run) |
+| `rclone-sync.sh` | Background daemon for continuous Google Drive backup |
+| `secrets-scan.sh` | Scan git repositories for accidentally committed secrets |
+| `service-health-check.sh` | Config-driven uptime monitoring |
+| `smart-cleanup.sh` | Interactive wrapper around disk-cleanup.sh with analysis UI |
+| `smart-disk-check.sh` | S.M.A.R.T. monitoring and disk health alerts |
+| `ssh-key-audit.sh` | SSH authorized_keys hygiene and risk scoring |
+| `system-monitor.sh` | CPU, memory, disk, and process resource monitoring |
+| `update-all.sh` | System-wide package manager updates (Homebrew, NPM, pnpm, pip, gem, macOS) |
 
 **Shared library** (`lib/common.sh`):
 - Sourced by most scripts via `source "${SCRIPT_DIR}/lib/common.sh"`
@@ -39,7 +53,7 @@ A collection of Bash system maintenance and homelab DevOps scripts for macOS/Lin
 
 **Homelab orchestrator** (`homelab/`):
 - `homelab/homelab.sh` - Unified CLI that composes root scripts into workflows
-- `homelab/lib/` - Modular libraries: `config.sh`, `logger.sh`, `workflows.sh`, `status.sh`, `notifications.sh`, `scheduler.sh`, `conditions.sh`, `state.sh`, `report.sh`, `history.sh`
+- `homelab/lib/` - Modular libraries: `config.sh`, `logger.sh`, `workflows.sh`, `status.sh`, `notifications.sh`, `scheduler.sh`, `conditions.sh`, `state.sh`, `report.sh`
 - Workflows: `morning`, `weekly`, `emergency`, `pre-deploy`
 - Features: smart script detection, graceful degradation, scheduling (cron/launchd), multi-channel notifications (Slack, webhooks, macOS native, email)
 - Config: `~/.config/homelab/homelab.conf`
@@ -96,6 +110,10 @@ bash -n *.sh
 ./nmap-scan.sh --dry-run
 ./smart-cleanup.sh --status
 ./ssh-key-audit.sh --dry-run
+./docker-health.sh --dry-run
+./network-monitor.sh --dry-run
+./system-monitor.sh --dry-run
+./backup-verify.sh --dry-run
 ./homelab/homelab.sh morning --dry-run
 ```
 
@@ -132,5 +150,5 @@ docs: update CLAUDE.md with v1.0.1 features
 ## Dependencies
 
 - **Required**: `bash`, `git`, `awk`, `sed`, `grep`, `du`, `df`
-- **Optional**: `rclone`, `nmap`, `docker`, `jq`, `smartctl`, `openssl`, `pg_dump`/`mysqldump`
+- **Optional**: `rclone`, `nmap`, `docker`, `jq`, `smartctl`, `openssl`, `pg_dump`/`mysqldump`, `ffprobe`, `ss`, `md5sum`/`md5`
 - **Dev tools**: `shellcheck`, `shfmt` (`brew install shellcheck shfmt`)

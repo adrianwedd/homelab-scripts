@@ -174,9 +174,9 @@ record_finding() {
 
     # Append to JSON array
     local escaped_file escaped_excerpt escaped_repo
-    escaped_file=$(echo "$file" | sed 's/"/\\"/g')
-    escaped_excerpt=$(echo "$excerpt" | sed 's/"/\\"/g')
-    escaped_repo=$(echo "$repo" | sed 's/"/\\"/g')
+    escaped_file=$(json_escape "$file")
+    escaped_excerpt=$(json_escape "$excerpt")
+    escaped_repo=$(json_escape "$repo")
 
     local finding
     finding=$(printf '{"severity":"%s","pattern":"%s","repo":"%s","file":"%s","line":%s,"excerpt":"%s"}' \
@@ -212,7 +212,7 @@ scan_file() {
             [ -z "$lineno" ] && continue
             # Mask the sensitive value
             local display
-            display=$(echo "$match" | sed 's/[A-Za-z0-9+/=_\-]\{8,\}/***MASKED***/2')
+            display=$(mask_secret "$match")
             record_finding "$severity" "$repo" "$rel_file" "$lineno" "$pattern_name" "$display"
         done < <(echo "$content" | grep -nE "$pattern" 2>/dev/null | head -5)
     }
@@ -317,7 +317,7 @@ scan_history() {
         while IFS=: read -r lineno match; do
             [ -z "$match" ] && continue
             local display
-            display=$(echo "$match" | sed 's/[A-Za-z0-9+/=_\-]\{8,\}/***MASKED***/2')
+            display=$(mask_secret "$match")
             record_finding "$severity" "$repo_name" "[history]" "$lineno" "$pattern_name (history)" "$display"
         done < <(grep -nE "$pattern" "$tmp_patch" 2>/dev/null | head -3)
     done
@@ -398,7 +398,11 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 # Find repos
-mapfile -t REPOS < <(find "$SCAN_DIR" -maxdepth 2 -name ".git" -type d | sed 's|/.git$||' | sort)
+REPOS=()
+while IFS= read -r _gitdir; do
+    REPOS+=("${_gitdir%/.git}")
+done < <(find "$SCAN_DIR" -maxdepth 2 -name ".git" -type d | sort)
+unset _gitdir
 
 if [ ${#REPOS[@]} -eq 0 ]; then
     # No git repos — just scan the directory directly

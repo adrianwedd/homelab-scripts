@@ -7,7 +7,13 @@
 # Handles backslashes, double quotes, and common control characters.
 # Usage: escaped=$(json_escape "$value")
 json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\t'/\\t}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    printf '%s' "$s"
 }
 
 # Get ISO8601 timestamp (BSD/GNU compatible)
