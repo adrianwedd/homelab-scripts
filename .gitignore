@@ -37,3 +37,5 @@ cleanup_manifest_*.json.bak
 # Test outputs
 test_output/
 test_results/
+
+.afterwords

@@ -40,31 +40,31 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 print_error() {
-    echo -e "${RED}✗ Error:${NC} $1" >&2
-    log_line "ERROR" "$1"
+	echo -e "${RED}✗ Error:${NC} $1" >&2
+	log_line "ERROR" "$1"
 }
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-    log_line "OK" "$1"
+	echo -e "${GREEN}✓${NC} $1"
+	log_line "OK" "$1"
 }
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-    log_line "WARN" "$1"
+	echo -e "${YELLOW}⚠${NC} $1"
+	log_line "WARN" "$1"
 }
 print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-    log_line "INFO" "$1"
+	echo -e "${BLUE}ℹ${NC} $1"
+	log_line "INFO" "$1"
 }
 print_section() {
-    echo ""
-    echo -e "${CYAN}━━━ $1 ━━━${NC}"
-    echo ""
-    log_line "SECTION" "$1"
+	echo ""
+	echo -e "${CYAN}━━━ $1 ━━━${NC}"
+	echo ""
+	log_line "SECTION" "$1"
 }
 log_line() { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
 
 show_help() {
-    cat <<'HELP'
+	cat <<'HELP'
 backup-verify.sh - Verify that backups are valid and recent
 
 USAGE:
@@ -115,284 +115,284 @@ HELP
 }
 
 pass_check() {
-    local name="$1" detail="${2:-}"
-    CHECKS_PASSED=$((CHECKS_PASSED + 1))
-    print_success "$name${detail:+: $detail}"
-    log_line "PASS" "$name${detail:+ | $detail}"
-    local escaped
-    escaped=$(json_escape "$name${detail:+: $detail}")
-    local entry
-    entry=$(printf '{"check":"%s","result":"pass"}' "$escaped")
-    [ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
+	local name="$1" detail="${2:-}"
+	CHECKS_PASSED=$((CHECKS_PASSED + 1))
+	print_success "$name${detail:+: $detail}"
+	log_line "PASS" "$name${detail:+ | $detail}"
+	local escaped
+	escaped=$(json_escape "$name${detail:+: $detail}")
+	local entry
+	entry=$(printf '{"check":"%s","result":"pass"}' "$escaped")
+	[ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
 }
 
 fail_check() {
-    local name="$1" detail="${2:-}"
-    CHECKS_FAILED=$((CHECKS_FAILED + 1))
-    STATUS="failures"
-    print_warning "FAIL: $name${detail:+ — $detail}"
-    log_line "FAIL" "$name${detail:+ | $detail}"
-    local escaped
-    escaped=$(json_escape "$name${detail:+: $detail}")
-    local entry
-    entry=$(printf '{"check":"%s","result":"fail","detail":"%s"}' "$name" "$escaped")
-    [ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
+	local name="$1" detail="${2:-}"
+	CHECKS_FAILED=$((CHECKS_FAILED + 1))
+	STATUS="failures"
+	print_warning "FAIL: $name${detail:+ — $detail}"
+	log_line "FAIL" "$name${detail:+ | $detail}"
+	local escaped
+	escaped=$(json_escape "$name${detail:+: $detail}")
+	local entry
+	entry=$(printf '{"check":"%s","result":"fail","detail":"%s"}' "$name" "$escaped")
+	[ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
 }
 
 skip_check() {
-    local name="$1" reason="${2:-not configured}"
-    CHECKS_SKIPPED=$((CHECKS_SKIPPED + 1))
-    print_info "SKIP: $name — $reason"
-    log_line "SKIP" "$name | $reason"
+	local name="$1" reason="${2:-not configured}"
+	CHECKS_SKIPPED=$((CHECKS_SKIPPED + 1))
+	print_info "SKIP: $name — $reason"
+	log_line "SKIP" "$name | $reason"
 }
 
 file_age_hours() {
-    local file="$1"
-    local mod_ts
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        mod_ts=$(stat -f%m "$file" 2>/dev/null || echo 0)
-    else
-        mod_ts=$(stat -c%Y "$file" 2>/dev/null || echo 0)
-    fi
-    local now_ts
-    now_ts=$(date +%s)
-    echo $(((now_ts - mod_ts) / 3600))
+	local file="$1"
+	local mod_ts
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		mod_ts=$(stat -f%m "$file" 2>/dev/null || echo 0)
+	else
+		mod_ts=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+	fi
+	local now_ts
+	now_ts=$(date +%s)
+	echo $(((now_ts - mod_ts) / 3600))
 }
 
 # ── Database backup verification ──────────────────────────────────────────────
 
 verify_db_backups() {
-    print_section "Database Backups"
+	print_section "Database Backups"
 
-    # Auto-detect db-backup.sh output dir
-    local backup_dir="$DB_BACKUP_DIR"
-    if [ -z "$backup_dir" ]; then
-        # Check common locations used by db-backup.sh
-        local candidates=("${SCRIPT_DIR}/backups/db" "${HOME}/backups/db" "/tmp/db-backups")
-        for c in "${candidates[@]}"; do
-            [ -d "$c" ] && {
-                backup_dir="$c"
-                break
-            }
-        done
-    fi
+	# Auto-detect db-backup.sh output dir
+	local backup_dir="$DB_BACKUP_DIR"
+	if [ -z "$backup_dir" ]; then
+		# Check common locations used by db-backup.sh
+		local candidates=("${SCRIPT_DIR}/backups/db" "${HOME}/backups/db" "/tmp/db-backups")
+		for c in "${candidates[@]}"; do
+			[ -d "$c" ] && {
+				backup_dir="$c"
+				break
+			}
+		done
+	fi
 
-    if [ -z "$backup_dir" ] || [ ! -d "$backup_dir" ]; then
-        skip_check "db-backup" "no backup directory found (use --db-backup-dir)"
-        return
-    fi
+	if [ -z "$backup_dir" ] || [ ! -d "$backup_dir" ]; then
+		skip_check "db-backup" "no backup directory found (use --db-backup-dir)"
+		return
+	fi
 
-    print_info "Backup dir: $backup_dir"
+	print_info "Backup dir: $backup_dir"
 
-    # Find newest backup
-    local newest
-    newest=$(find "$backup_dir" -type f \( -name "*.sql" -o -name "*.sql.gz" -o -name "*.db" \) \
-        -printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+	# Find newest backup
+	local newest
+	newest=$(find "$backup_dir" -type f \( -name "*.sql" -o -name "*.sql.gz" -o -name "*.db" \) \
+		-printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
 
-    if [ -z "$newest" ]; then
-        fail_check "db-backup-exists" "no backup files found in $backup_dir"
-        return
-    fi
+	if [ -z "$newest" ]; then
+		fail_check "db-backup-exists" "no backup files found in $backup_dir"
+		return
+	fi
 
-    print_info "Newest backup: $newest"
+	print_info "Newest backup: $newest"
 
-    # Age check
-    local age_hours
-    age_hours=$(file_age_hours "$newest")
-    if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
-        fail_check "db-backup-age" "newest backup is ${age_hours}h old (max: ${MAX_AGE_HOURS}h)"
-    else
-        pass_check "db-backup-age" "${age_hours}h old (within ${MAX_AGE_HOURS}h limit)"
-    fi
+	# Age check
+	local age_hours
+	age_hours=$(file_age_hours "$newest")
+	if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
+		fail_check "db-backup-age" "newest backup is ${age_hours}h old (max: ${MAX_AGE_HOURS}h)"
+	else
+		pass_check "db-backup-age" "${age_hours}h old (within ${MAX_AGE_HOURS}h limit)"
+	fi
 
-    # Size check
-    local sz
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sz=$(stat -f%z "$newest" 2>/dev/null || echo 0)
-    else
-        sz=$(stat -c%s "$newest" 2>/dev/null || echo 0)
-    fi
-    if [ "$sz" -eq 0 ]; then
-        fail_check "db-backup-size" "backup file is empty: $newest"
-    else
-        pass_check "db-backup-size" "$(numfmt --to=iec "$sz" 2>/dev/null || echo "${sz}B")"
-    fi
+	# Size check
+	local sz
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		sz=$(stat -f%z "$newest" 2>/dev/null || echo 0)
+	else
+		sz=$(stat -c%s "$newest" 2>/dev/null || echo 0)
+	fi
+	if [ "$sz" -eq 0 ]; then
+		fail_check "db-backup-size" "backup file is empty: $newest"
+	else
+		pass_check "db-backup-size" "$(numfmt --to=iec "$sz" 2>/dev/null || echo "${sz}B")"
+	fi
 
-    # Integrity check
-    case "$newest" in
-    *.db)
-        if command -v sqlite3 >/dev/null 2>&1; then
-            local integrity
-            integrity=$(sqlite3 "$newest" "PRAGMA integrity_check;" 2>/dev/null | head -1)
-            if [ "$integrity" = "ok" ]; then
-                pass_check "db-backup-integrity" "SQLite integrity_check OK"
-            else
-                fail_check "db-backup-integrity" "SQLite integrity_check failed: $integrity"
-            fi
-        else
-            skip_check "db-backup-integrity" "sqlite3 not installed"
-        fi
-        ;;
-    *.sql)
-        if grep -qE "^(CREATE TABLE|INSERT INTO|BEGIN TRANSACTION)" "$newest" 2>/dev/null; then
-            pass_check "db-backup-integrity" "SQL dump contains expected keywords"
-        else
-            fail_check "db-backup-integrity" "SQL dump missing expected keywords (may be corrupt)"
-        fi
-        ;;
-    *.sql.gz)
-        if zcat "$newest" 2>/dev/null | grep -qE "^(CREATE TABLE|INSERT INTO)"; then
-            pass_check "db-backup-integrity" "Compressed SQL dump contains expected keywords"
-        else
-            fail_check "db-backup-integrity" "Compressed SQL dump validation failed"
-        fi
-        ;;
-    esac
+	# Integrity check
+	case "$newest" in
+	*.db)
+		if command -v sqlite3 >/dev/null 2>&1; then
+			local integrity
+			integrity=$(sqlite3 "$newest" "PRAGMA integrity_check;" 2>/dev/null | head -1)
+			if [ "$integrity" = "ok" ]; then
+				pass_check "db-backup-integrity" "SQLite integrity_check OK"
+			else
+				fail_check "db-backup-integrity" "SQLite integrity_check failed: $integrity"
+			fi
+		else
+			skip_check "db-backup-integrity" "sqlite3 not installed"
+		fi
+		;;
+	*.sql)
+		if grep -qE "^(CREATE TABLE|INSERT INTO|BEGIN TRANSACTION)" "$newest" 2>/dev/null; then
+			pass_check "db-backup-integrity" "SQL dump contains expected keywords"
+		else
+			fail_check "db-backup-integrity" "SQL dump missing expected keywords (may be corrupt)"
+		fi
+		;;
+	*.sql.gz)
+		if zcat "$newest" 2>/dev/null | grep -qE "^(CREATE TABLE|INSERT INTO)"; then
+			pass_check "db-backup-integrity" "Compressed SQL dump contains expected keywords"
+		else
+			fail_check "db-backup-integrity" "Compressed SQL dump validation failed"
+		fi
+		;;
+	esac
 }
 
 # ── rclone remote verification ────────────────────────────────────────────────
 
 verify_rclone() {
-    print_section "rclone Remote"
+	print_section "rclone Remote"
 
-    if ! command -v rclone >/dev/null 2>&1; then
-        skip_check "rclone" "rclone not installed"
-        return
-    fi
+	if ! command -v rclone >/dev/null 2>&1; then
+		skip_check "rclone" "rclone not installed"
+		return
+	fi
 
-    # Auto-detect remote
-    local remote="$RCLONE_REMOTE"
-    if [ -z "$remote" ]; then
-        remote=$(rclone listremotes 2>/dev/null | head -1 | tr -d ':')
-    fi
+	# Auto-detect remote
+	local remote="$RCLONE_REMOTE"
+	if [ -z "$remote" ]; then
+		remote=$(rclone listremotes 2>/dev/null | head -1 | tr -d ':')
+	fi
 
-    if [ -z "$remote" ]; then
-        skip_check "rclone-remote" "no remotes configured (run: rclone config)"
-        return
-    fi
+	if [ -z "$remote" ]; then
+		skip_check "rclone-remote" "no remotes configured (run: rclone config)"
+		return
+	fi
 
-    local remote_path="${RCLONE_REMOTE_PATH:-repos}"
-    print_info "Remote: ${remote}: / path: $remote_path"
+	local remote_path="${RCLONE_REMOTE_PATH:-repos}"
+	print_info "Remote: ${remote}: / path: $remote_path"
 
-    # Reachability
-    if rclone lsd "${remote}:" --max-depth 1 >/dev/null 2>&1; then
-        pass_check "rclone-reachable" "${remote}: is accessible"
-    else
-        fail_check "rclone-reachable" "cannot connect to ${remote}: — check credentials"
-        return
-    fi
+	# Reachability
+	if rclone lsd "${remote}:" --max-depth 1 >/dev/null 2>&1; then
+		pass_check "rclone-reachable" "${remote}: is accessible"
+	else
+		fail_check "rclone-reachable" "cannot connect to ${remote}: — check credentials"
+		return
+	fi
 
-    # Recent files check
-    local recent_count
-    recent_count=$(rclone ls "${remote}:${remote_path}" \
-        --max-age 48h 2>/dev/null | wc -l || echo 0)
+	# Recent files check
+	local recent_count
+	recent_count=$(rclone ls "${remote}:${remote_path}" \
+		--max-age 48h 2>/dev/null | wc -l || echo 0)
 
-    if [ "$recent_count" -gt 0 ]; then
-        pass_check "rclone-recent-files" "$recent_count file(s) modified in last 48h"
-    else
-        fail_check "rclone-recent-files" "no files modified in last 48h on ${remote}:${remote_path}"
-    fi
+	if [ "$recent_count" -gt 0 ]; then
+		pass_check "rclone-recent-files" "$recent_count file(s) modified in last 48h"
+	else
+		fail_check "rclone-recent-files" "no files modified in last 48h on ${remote}:${remote_path}"
+	fi
 }
 
 # ── Docker volume backup verification ─────────────────────────────────────────
 
 verify_docker_backups() {
-    print_section "Docker Volume Backups"
+	print_section "Docker Volume Backups"
 
-    local backup_dir="$DOCKER_BACKUP_DIR"
-    if [ -z "$backup_dir" ]; then
-        local candidates=("${SCRIPT_DIR}/backups/docker-volumes" "${HOME}/backups/docker-volumes")
-        for c in "${candidates[@]}"; do
-            [ -d "$c" ] && {
-                backup_dir="$c"
-                break
-            }
-        done
-    fi
+	local backup_dir="$DOCKER_BACKUP_DIR"
+	if [ -z "$backup_dir" ]; then
+		local candidates=("${SCRIPT_DIR}/backups/docker-volumes" "${HOME}/backups/docker-volumes")
+		for c in "${candidates[@]}"; do
+			[ -d "$c" ] && {
+				backup_dir="$c"
+				break
+			}
+		done
+	fi
 
-    if [ -z "$backup_dir" ] || [ ! -d "$backup_dir" ]; then
-        skip_check "docker-volume-backup" "no backup directory found (use --docker-backup-dir)"
-        return
-    fi
+	if [ -z "$backup_dir" ] || [ ! -d "$backup_dir" ]; then
+		skip_check "docker-volume-backup" "no backup directory found (use --docker-backup-dir)"
+		return
+	fi
 
-    print_info "Backup dir: $backup_dir"
+	print_info "Backup dir: $backup_dir"
 
-    local newest
-    newest=$(find "$backup_dir" -type f -name "*.tar.gz" \
-        -printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+	local newest
+	newest=$(find "$backup_dir" -type f -name "*.tar.gz" \
+		-printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
 
-    if [ -z "$newest" ]; then
-        fail_check "docker-volume-backup-exists" "no .tar.gz backup files found"
-        return
-    fi
+	if [ -z "$newest" ]; then
+		fail_check "docker-volume-backup-exists" "no .tar.gz backup files found"
+		return
+	fi
 
-    print_info "Newest: $newest"
+	print_info "Newest: $newest"
 
-    local age_hours
-    age_hours=$(file_age_hours "$newest")
-    if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
-        fail_check "docker-volume-backup-age" "${age_hours}h old (max: ${MAX_AGE_HOURS}h)"
-    else
-        pass_check "docker-volume-backup-age" "${age_hours}h old"
-    fi
+	local age_hours
+	age_hours=$(file_age_hours "$newest")
+	if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
+		fail_check "docker-volume-backup-age" "${age_hours}h old (max: ${MAX_AGE_HOURS}h)"
+	else
+		pass_check "docker-volume-backup-age" "${age_hours}h old"
+	fi
 
-    # Integrity check via tar -t
-    if tar -tzf "$newest" >/dev/null 2>&1; then
-        pass_check "docker-volume-backup-integrity" "tar archive is valid"
-    else
-        fail_check "docker-volume-backup-integrity" "tar archive is corrupt: $newest"
-    fi
+	# Integrity check via tar -t
+	if tar -tzf "$newest" >/dev/null 2>&1; then
+		pass_check "docker-volume-backup-integrity" "tar archive is valid"
+	else
+		fail_check "docker-volume-backup-integrity" "tar archive is corrupt: $newest"
+	fi
 }
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-    --max-age-hours)
-        MAX_AGE_HOURS="$2"
-        shift 2
-        ;;
-    --db-backup-dir)
-        DB_BACKUP_DIR="$2"
-        _USER_SET_DB_BACKUP_DIR=true
-        shift 2
-        ;;
-    --docker-backup-dir)
-        DOCKER_BACKUP_DIR="$2"
-        _USER_SET_DOCKER_BACKUP_DIR=true
-        shift 2
-        ;;
-    --rclone-remote)
-        RCLONE_REMOTE="$2"
-        shift 2
-        ;;
-    --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-    --json)
-        OUTPUT_JSON=true
-        shift
-        ;;
-    --help | -h)
-        show_help
-        exit 0
-        ;;
-    *)
-        echo "Unknown option: $1" >&2
-        show_help
-        exit 2
-        ;;
-    esac
+	case "$1" in
+	--max-age-hours)
+		MAX_AGE_HOURS="$2"
+		shift 2
+		;;
+	--db-backup-dir)
+		DB_BACKUP_DIR="$2"
+		_USER_SET_DB_BACKUP_DIR=true
+		shift 2
+		;;
+	--docker-backup-dir)
+		DOCKER_BACKUP_DIR="$2"
+		_USER_SET_DOCKER_BACKUP_DIR=true
+		shift 2
+		;;
+	--rclone-remote)
+		RCLONE_REMOTE="$2"
+		shift 2
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	--json)
+		OUTPUT_JSON=true
+		shift
+		;;
+	--help | -h)
+		show_help
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1" >&2
+		show_help
+		exit 2
+		;;
+	esac
 done
 
 # ── Validate user-supplied paths ─────────────────────────────────────────────
 
 if [ "${_USER_SET_DB_BACKUP_DIR:-false}" = true ]; then
-    validate_output_dir "$DB_BACKUP_DIR" || exit 1
+	validate_output_dir "$DB_BACKUP_DIR" || exit 1
 fi
 if [ "${_USER_SET_DOCKER_BACKUP_DIR:-false}" = true ]; then
-    validate_output_dir "$DOCKER_BACKUP_DIR" || exit 1
+	validate_output_dir "$DOCKER_BACKUP_DIR" || exit 1
 fi
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -411,11 +411,11 @@ print_info "Max backup age: ${MAX_AGE_HOURS}h"
 print_info "Log: $LOG_FILE"
 
 if [ "$DRY_RUN" = true ]; then
-    print_warning "DRY RUN — would verify:"
-    echo "  - Database backups (${DB_BACKUP_DIR:-auto-detect})"
-    echo "  - rclone remote (${RCLONE_REMOTE:-auto-detect})"
-    echo "  - Docker volume backups (${DOCKER_BACKUP_DIR:-auto-detect})"
-    exit 0
+	print_warning "DRY RUN — would verify:"
+	echo "  - Database backups (${DB_BACKUP_DIR:-auto-detect})"
+	echo "  - rclone remote (${RCLONE_REMOTE:-auto-detect})"
+	echo "  - Docker volume backups (${DOCKER_BACKUP_DIR:-auto-detect})"
+	exit 0
 fi
 
 verify_db_backups
@@ -436,25 +436,25 @@ printf "  Skipped:  %d\n" "$CHECKS_SKIPPED"
 echo ""
 
 if [ "$STATUS" = "ok" ]; then
-    print_success "All backup checks passed"
+	print_success "All backup checks passed"
 else
-    print_warning "$CHECKS_FAILED check(s) failed — backups may be stale or corrupt"
+	print_warning "$CHECKS_FAILED check(s) failed — backups may be stale or corrupt"
 fi
 
 print_info "Log: $LOG_FILE"
 
 if [ "$OUTPUT_JSON" = true ]; then
-    jq -n \
-        --arg script "backup-verify.sh" \
-        --arg version "1.0.0" \
-        --arg timestamp "$(get_iso8601_timestamp)" \
-        --arg status "$STATUS" \
-        --argjson duration_ms "$DURATION_MS" \
-        --argjson passed "$CHECKS_PASSED" \
-        --argjson failed "$CHECKS_FAILED" \
-        --argjson skipped "$CHECKS_SKIPPED" \
-        --argjson findings "$FINDINGS_JSON" \
-        '{
+	jq -n \
+		--arg script "backup-verify.sh" \
+		--arg version "1.0.0" \
+		--arg timestamp "$(get_iso8601_timestamp)" \
+		--arg status "$STATUS" \
+		--argjson duration_ms "$DURATION_MS" \
+		--argjson passed "$CHECKS_PASSED" \
+		--argjson failed "$CHECKS_FAILED" \
+		--argjson skipped "$CHECKS_SKIPPED" \
+		--argjson findings "$FINDINGS_JSON" \
+		'{
             script: $script,
             version: $version,
             timestamp: $timestamp,
@@ -468,8 +468,8 @@ if [ "$OUTPUT_JSON" = true ]; then
                 findings: $findings
             }
         }' >"$JSON_FILE"
-    chmod 600 "$JSON_FILE"
-    print_info "JSON: $JSON_FILE"
+	chmod 600 "$JSON_FILE"
+	print_info "JSON: $JSON_FILE"
 fi
 
 [ "$STATUS" != "ok" ] && exit 1

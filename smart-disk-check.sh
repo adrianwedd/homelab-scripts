@@ -40,35 +40,35 @@ NC='\033[0m'
 
 # Print functions
 print_error() {
-    echo -e "${RED}✗ Error:${NC} $1" >&2
-    echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
+	echo -e "${RED}✗ Error:${NC} $1" >&2
+	echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
 }
 
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-    echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
+	echo -e "${GREEN}✓${NC} $1"
+	echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-    echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
+	echo -e "${YELLOW}⚠${NC} $1"
+	echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-    echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
+	echo -e "${BLUE}ℹ${NC} $1"
+	echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
 }
 
 print_section() {
-    echo ""
-    echo -e "${BLUE}━━━ $1 ━━━${NC}"
-    echo ""
-    echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
+	echo ""
+	echo -e "${BLUE}━━━ $1 ━━━${NC}"
+	echo ""
+	echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
 }
 
 # Show usage
 show_help() {
-    cat <<'HELP'
+	cat <<'HELP'
 smart-disk-check.sh - S.M.A.R.T. monitoring and disk health alerts
 
 USAGE:
@@ -121,61 +121,61 @@ HELP
 
 # Parse CLI arguments
 while [[ $# -gt 0 ]]; do
-    case $1 in
-    --devices)
-        DEVICES="$2"
-        AUTO_DISCOVER=false
-        shift 2
-        ;;
-    --test)
-        TEST_TYPE="$2"
-        if [[ ! "$TEST_TYPE" =~ ^(short|long|conveyance)$ ]]; then
-            echo "Error: --test must be one of: short, long, conveyance"
-            exit 1
-        fi
-        RUN_TEST=true
-        shift 2
-        ;;
-    --warn-temp)
-        WARN_TEMP="$2"
-        if ! [[ "$WARN_TEMP" =~ ^[0-9]+$ ]] || [ "$WARN_TEMP" -lt 30 ] || [ "$WARN_TEMP" -gt 80 ]; then
-            echo "Error: --warn-temp must be between 30 and 80°C"
-            exit 1
-        fi
-        shift 2
-        ;;
-    --crit-temp)
-        CRIT_TEMP="$2"
-        if ! [[ "$CRIT_TEMP" =~ ^[0-9]+$ ]] || [ "$CRIT_TEMP" -lt 40 ] || [ "$CRIT_TEMP" -gt 90 ]; then
-            echo "Error: --crit-temp must be between 40 and 90°C"
-            exit 1
-        fi
-        shift 2
-        ;;
-    --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-    --json)
-        OUTPUT_JSON=true
-        shift
-        ;;
-    --help)
-        show_help
-        exit 0
-        ;;
-    *)
-        echo "Error: Unknown option $1"
-        show_help
-        exit 1
-        ;;
-    esac
+	case $1 in
+	--devices)
+		DEVICES="$2"
+		AUTO_DISCOVER=false
+		shift 2
+		;;
+	--test)
+		TEST_TYPE="$2"
+		if [[ ! "$TEST_TYPE" =~ ^(short|long|conveyance)$ ]]; then
+			echo "Error: --test must be one of: short, long, conveyance"
+			exit 1
+		fi
+		RUN_TEST=true
+		shift 2
+		;;
+	--warn-temp)
+		WARN_TEMP="$2"
+		if ! [[ "$WARN_TEMP" =~ ^[0-9]+$ ]] || [ "$WARN_TEMP" -lt 30 ] || [ "$WARN_TEMP" -gt 80 ]; then
+			echo "Error: --warn-temp must be between 30 and 80°C"
+			exit 1
+		fi
+		shift 2
+		;;
+	--crit-temp)
+		CRIT_TEMP="$2"
+		if ! [[ "$CRIT_TEMP" =~ ^[0-9]+$ ]] || [ "$CRIT_TEMP" -lt 40 ] || [ "$CRIT_TEMP" -gt 90 ]; then
+			echo "Error: --crit-temp must be between 40 and 90°C"
+			exit 1
+		fi
+		shift 2
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	--json)
+		OUTPUT_JSON=true
+		shift
+		;;
+	--help)
+		show_help
+		exit 0
+		;;
+	*)
+		echo "Error: Unknown option $1"
+		show_help
+		exit 1
+		;;
+	esac
 done
 
 # Validate temperature thresholds
 if [ "$CRIT_TEMP" -le "$WARN_TEMP" ]; then
-    echo "Error: --crit-temp ($CRIT_TEMP) must be greater than --warn-temp ($WARN_TEMP)"
-    exit 1
+	echo "Error: --crit-temp ($CRIT_TEMP) must be greater than --warn-temp ($WARN_TEMP)"
+	exit 1
 fi
 
 # Create log directory
@@ -185,62 +185,62 @@ umask 077
 
 # Check jq if JSON output requested
 if ! require_jq_if_json "$OUTPUT_JSON"; then
-    exit 1
+	exit 1
 fi
 if [ "$OUTPUT_JSON" = true ]; then
-    print_success "jq installed"
+	print_success "jq installed"
 fi
 
 # Start logging
 {
-    echo "================================================"
-    echo "S.M.A.R.T. Disk Check - $(get_iso8601_timestamp)"
-    echo "================================================"
-    echo "Auto-discover: $AUTO_DISCOVER"
-    echo "Devices: ${DEVICES:-auto}"
-    echo "Warning temp: ${WARN_TEMP}°C"
-    echo "Critical temp: ${CRIT_TEMP}°C"
-    echo "Run test: ${TEST_TYPE:-none}"
-    echo "Dry run: $DRY_RUN"
-    echo "JSON output: $OUTPUT_JSON"
-    echo "================================================"
+	echo "================================================"
+	echo "S.M.A.R.T. Disk Check - $(get_iso8601_timestamp)"
+	echo "================================================"
+	echo "Auto-discover: $AUTO_DISCOVER"
+	echo "Devices: ${DEVICES:-auto}"
+	echo "Warning temp: ${WARN_TEMP}°C"
+	echo "Critical temp: ${CRIT_TEMP}°C"
+	echo "Run test: ${TEST_TYPE:-none}"
+	echo "Dry run: $DRY_RUN"
+	echo "JSON output: $OUTPUT_JSON"
+	echo "================================================"
 } >>"$LOG_FILE"
 
 # Dry-run preview
 if [ "$DRY_RUN" = true ]; then
-    if command -v smartctl >/dev/null 2>&1; then
-        print_success "smartctl found"
-    else
-        print_warning "smartctl not found; dry-run preview mode will continue without device probing"
-        echo "  Install smartmontools for real checks:"
-        echo "    macOS:  brew install smartmontools"
-        echo "    Linux:  sudo apt install smartmontools"
-    fi
+	if command -v smartctl >/dev/null 2>&1; then
+		print_success "smartctl found"
+	else
+		print_warning "smartctl not found; dry-run preview mode will continue without device probing"
+		echo "  Install smartmontools for real checks:"
+		echo "    macOS:  brew install smartmontools"
+		echo "    Linux:  sudo apt install smartmontools"
+	fi
 
-    print_section "Dry Run - Preview"
+	print_section "Dry Run - Preview"
 
-    if [ "$AUTO_DISCOVER" = true ]; then
-        print_info "Would auto-discover devices via: smartctl --scan"
-        echo "  Example devices: /dev/sda, /dev/sdb"
-    else
-        print_info "Would check specified devices: $DEVICES"
-    fi
+	if [ "$AUTO_DISCOVER" = true ]; then
+		print_info "Would auto-discover devices via: smartctl --scan"
+		echo "  Example devices: /dev/sda, /dev/sdb"
+	else
+		print_info "Would check specified devices: $DEVICES"
+	fi
 
-    echo ""
-    echo "For each device, would check:"
-    echo "  • Overall health status (PASSED/FAILED)"
-    echo "  • Temperature (warn: ${WARN_TEMP}°C, crit: ${CRIT_TEMP}°C)"
-    echo "  • Pre-fail attributes (5, 187, 188, 197, 198)"
-    echo "  • Reallocated/Pending sectors"
+	echo ""
+	echo "For each device, would check:"
+	echo "  • Overall health status (PASSED/FAILED)"
+	echo "  • Temperature (warn: ${WARN_TEMP}°C, crit: ${CRIT_TEMP}°C)"
+	echo "  • Pre-fail attributes (5, 187, 188, 197, 198)"
+	echo "  • Reallocated/Pending sectors"
 
-    if [ -n "$RUN_TEST" ]; then
-        echo ""
-        print_info "Would schedule $TEST_TYPE S.M.A.R.T. test on all devices"
-    fi
+	if [ -n "$RUN_TEST" ]; then
+		echo ""
+		print_info "Would schedule $TEST_TYPE S.M.A.R.T. test on all devices"
+	fi
 
-    if [ "$OUTPUT_JSON" = true ]; then
-        DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
-        cat >"$JSON_FILE" <<EOF
+	if [ "$OUTPUT_JSON" = true ]; then
+		DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+		cat >"$JSON_FILE" <<EOF
 {
   "script": "smart-disk-check",
   "version": "1.2.1",
@@ -256,21 +256,21 @@ if [ "$DRY_RUN" = true ]; then
   }
 }
 EOF
-        chmod 600 "$JSON_FILE"
-        print_success "JSON summary written to: $JSON_FILE"
-    fi
+		chmod 600 "$JSON_FILE"
+		print_success "JSON summary written to: $JSON_FILE"
+	fi
 
-    echo ""
-    print_success "Dry-run complete. Use without --dry-run to execute."
-    exit 0
+	echo ""
+	print_success "Dry-run complete. Use without --dry-run to execute."
+	exit 0
 fi
 
 # Check for smartctl
 if ! command -v smartctl >/dev/null 2>&1; then
-    print_error "smartctl not found. Install smartmontools:"
-    echo "  macOS:  brew install smartmontools"
-    echo "  Linux:  sudo apt install smartmontools"
-    exit 1
+	print_error "smartctl not found. Install smartmontools:"
+	echo "  macOS:  brew install smartmontools"
+	echo "  Linux:  sudo apt install smartmontools"
+	exit 1
 fi
 print_success "smartctl found"
 
@@ -282,212 +282,212 @@ declare -a DEVICE_PATHS=()
 declare -a DEVICE_TYPES=()
 
 if [ "$AUTO_DISCOVER" = true ]; then
-    print_info "Auto-discovering devices..."
+	print_info "Auto-discovering devices..."
 
-    # Parse smartctl --scan output to preserve -d type options
-    while IFS= read -r line; do
-        if [ -z "$line" ]; then
-            continue
-        fi
+	# Parse smartctl --scan output to preserve -d type options
+	while IFS= read -r line; do
+		if [ -z "$line" ]; then
+			continue
+		fi
 
-        # Extract device path (first field)
-        dev_path=$(echo "$line" | awk '{print $1}')
+		# Extract device path (first field)
+		dev_path=$(echo "$line" | awk '{print $1}')
 
-        # Check if line contains -d option
-        if echo "$line" | grep -q -- " -d "; then
-            # Extract device type after -d
-            dev_type=$(echo "$line" | sed -n 's/.* -d \([^ ]*\).*/\1/p')
-            DEVICE_TYPES+=("$dev_type")
-        else
-            DEVICE_TYPES+=("")
-        fi
+		# Check if line contains -d option
+		if echo "$line" | grep -q -- " -d "; then
+			# Extract device type after -d
+			dev_type=$(echo "$line" | sed -n 's/.* -d \([^ ]*\).*/\1/p')
+			DEVICE_TYPES+=("$dev_type")
+		else
+			DEVICE_TYPES+=("")
+		fi
 
-        DEVICE_PATHS+=("$dev_path")
-    done < <(smartctl --scan 2>/dev/null || echo "")
+		DEVICE_PATHS+=("$dev_path")
+	done < <(smartctl --scan 2>/dev/null || echo "")
 
-    if [ ${#DEVICE_PATHS[@]} -eq 0 ]; then
-        print_error "No devices found via smartctl --scan"
-        echo "Try specifying devices explicitly with --devices"
-        exit 1
-    fi
+	if [ ${#DEVICE_PATHS[@]} -eq 0 ]; then
+		print_error "No devices found via smartctl --scan"
+		echo "Try specifying devices explicitly with --devices"
+		exit 1
+	fi
 
-    print_success "Found ${#DEVICE_PATHS[@]} device(s)"
+	print_success "Found ${#DEVICE_PATHS[@]} device(s)"
 else
-    # Convert comma-separated to array
-    IFS=',' read -ra DEV_ARRAY <<<"$DEVICES"
-    for dev in "${DEV_ARRAY[@]}"; do
-        DEVICE_PATHS+=("$dev")
-        DEVICE_TYPES+=("")
-    done
-    print_info "Using ${#DEVICE_PATHS[@]} specified device(s)"
+	# Convert comma-separated to array
+	IFS=',' read -ra DEV_ARRAY <<<"$DEVICES"
+	for dev in "${DEV_ARRAY[@]}"; do
+		DEVICE_PATHS+=("$dev")
+		DEVICE_TYPES+=("")
+	done
+	print_info "Using ${#DEVICE_PATHS[@]} specified device(s)"
 fi
 
 # Check each device
 print_section "Health Checks"
 
 for idx in "${!DEVICE_PATHS[@]}"; do
-    device="${DEVICE_PATHS[$idx]}"
-    dev_type="${DEVICE_TYPES[$idx]}"
+	device="${DEVICE_PATHS[$idx]}"
+	dev_type="${DEVICE_TYPES[$idx]}"
 
-    # Build smartctl command with optional -d type
-    if [ -n "$dev_type" ]; then
-        SMARTCTL_CMD="smartctl -d $dev_type"
-        DEVICE_DISPLAY="$device (type: $dev_type)"
-    else
-        SMARTCTL_CMD="smartctl"
-        DEVICE_DISPLAY="$device"
-    fi
+	# Build smartctl command with optional -d type
+	if [ -n "$dev_type" ]; then
+		SMARTCTL_CMD="smartctl -d $dev_type"
+		DEVICE_DISPLAY="$device (type: $dev_type)"
+	else
+		SMARTCTL_CMD="smartctl"
+		DEVICE_DISPLAY="$device"
+	fi
 
-    echo ""
-    print_info "Checking device: $DEVICE_DISPLAY"
-    DEVICES_CHECKED=$((DEVICES_CHECKED + 1))
+	echo ""
+	print_info "Checking device: $DEVICE_DISPLAY"
+	DEVICES_CHECKED=$((DEVICES_CHECKED + 1))
 
-    # Check if device exists (skip for special device types like megaraid)
-    if [[ ! "$device" =~ ^/dev/(bus|sg) ]] && [ ! -e "$device" ]; then
-        print_error "Device not found: $device"
-        DEVICES_CRITICAL=$((DEVICES_CRITICAL + 1))
-        DEVICE_RESULTS+=("$device:CRITICAL:Device not found")
-        continue
-    fi
+	# Check if device exists (skip for special device types like megaraid)
+	if [[ ! "$device" =~ ^/dev/(bus|sg) ]] && [ ! -e "$device" ]; then
+		print_error "Device not found: $device"
+		DEVICES_CRITICAL=$((DEVICES_CRITICAL + 1))
+		DEVICE_RESULTS+=("$device:CRITICAL:Device not found")
+		continue
+	fi
 
-    # Get S.M.A.R.T. info
-    SMART_INFO=$($SMARTCTL_CMD -i "$device" 2>&1)
-    if [ $? -ne 0 ]; then
-        print_warning "Unable to read S.M.A.R.T. info from $DEVICE_DISPLAY"
-        DEVICES_WARNING=$((DEVICES_WARNING + 1))
-        DEVICE_RESULTS+=("$device:WARNING:S.M.A.R.T. not available")
-        continue
-    fi
+	# Get S.M.A.R.T. info
+	SMART_INFO=$($SMARTCTL_CMD -i "$device" 2>&1)
+	if [ $? -ne 0 ]; then
+		print_warning "Unable to read S.M.A.R.T. info from $DEVICE_DISPLAY"
+		DEVICES_WARNING=$((DEVICES_WARNING + 1))
+		DEVICE_RESULTS+=("$device:WARNING:S.M.A.R.T. not available")
+		continue
+	fi
 
-    # Get overall health with multiple fallback patterns
-    HEALTH=$($SMARTCTL_CMD -H "$device" 2>&1 | grep -Ei "overall-health|Health Status|SMART.*PASSED|SMART.*OK" | tail -1 || echo "")
+	# Get overall health with multiple fallback patterns
+	HEALTH=$($SMARTCTL_CMD -H "$device" 2>&1 | grep -Ei "overall-health|Health Status|SMART.*PASSED|SMART.*OK" | tail -1 || echo "")
 
-    # Extract status from various formats
-    if echo "$HEALTH" | grep -iq "PASSED"; then
-        HEALTH="PASSED"
-    elif echo "$HEALTH" | grep -iq "OK"; then
-        HEALTH="PASSED"
-    elif echo "$HEALTH" | grep -iq "FAILED"; then
-        HEALTH="FAILED"
-    else
-        HEALTH="UNKNOWN"
-    fi
+	# Extract status from various formats
+	if echo "$HEALTH" | grep -iq "PASSED"; then
+		HEALTH="PASSED"
+	elif echo "$HEALTH" | grep -iq "OK"; then
+		HEALTH="PASSED"
+	elif echo "$HEALTH" | grep -iq "FAILED"; then
+		HEALTH="FAILED"
+	else
+		HEALTH="UNKNOWN"
+	fi
 
-    # Get attributes
-    ATTRIBUTES=$($SMARTCTL_CMD -A "$device" 2>/dev/null || echo "")
+	# Get attributes
+	ATTRIBUTES=$($SMARTCTL_CMD -A "$device" 2>/dev/null || echo "")
 
-    # Check temperature with multiple extraction methods
-    # Try various formats: SATA (field 10), NVMe (different layouts), generic fallback
-    TEMP=0
+	# Check temperature with multiple extraction methods
+	# Try various formats: SATA (field 10), NVMe (different layouts), generic fallback
+	TEMP=0
 
-    # Method 1: Standard SATA format (field 10)
-    TEMP_SATA=$(echo "$ATTRIBUTES" | grep -i "Temperature" | awk '{print $10}' | head -1 || echo "")
-    if [[ "$TEMP_SATA" =~ ^[0-9]+$ ]]; then
-        TEMP=$TEMP_SATA
-    else
-        # Method 2: Try field 194 (Airflow_Temperature_Cel) or 190 (Temperature_Celsius)
-        TEMP_ALT=$(echo "$ATTRIBUTES" | grep -E "^\s*(190|194)" | awk '{print $10}' | head -1 || echo "")
-        if [[ "$TEMP_ALT" =~ ^[0-9]+$ ]]; then
-            TEMP=$TEMP_ALT
-        else
-            # Method 3: NVMe format - extract first number after "Temperature:"
-            TEMP_NVME=$(echo "$ATTRIBUTES" | grep -i "Temperature:" | grep -oE '[0-9]+' | head -1 || echo "")
-            if [[ "$TEMP_NVME" =~ ^[0-9]+$ ]]; then
-                TEMP=$TEMP_NVME
-            fi
-        fi
-    fi
+	# Method 1: Standard SATA format (field 10)
+	TEMP_SATA=$(echo "$ATTRIBUTES" | grep -i "Temperature" | awk '{print $10}' | head -1 || echo "")
+	if [[ "$TEMP_SATA" =~ ^[0-9]+$ ]]; then
+		TEMP=$TEMP_SATA
+	else
+		# Method 2: Try field 194 (Airflow_Temperature_Cel) or 190 (Temperature_Celsius)
+		TEMP_ALT=$(echo "$ATTRIBUTES" | grep -E "^\s*(190|194)" | awk '{print $10}' | head -1 || echo "")
+		if [[ "$TEMP_ALT" =~ ^[0-9]+$ ]]; then
+			TEMP=$TEMP_ALT
+		else
+			# Method 3: NVMe format - extract first number after "Temperature:"
+			TEMP_NVME=$(echo "$ATTRIBUTES" | grep -i "Temperature:" | grep -oE '[0-9]+' | head -1 || echo "")
+			if [[ "$TEMP_NVME" =~ ^[0-9]+$ ]]; then
+				TEMP=$TEMP_NVME
+			fi
+		fi
+	fi
 
-    # Check critical attributes
-    PREFAIL_ATTRS="5 187 188 197 198"
-    CRITICAL_ATTRS=""
-    for attr_id in $PREFAIL_ATTRS; do
-        ATTR_LINE=$(echo "$ATTRIBUTES" | grep "^[[:space:]]*$attr_id " || echo "")
-        if [ -n "$ATTR_LINE" ]; then
-            RAW_VALUE=$(echo "$ATTR_LINE" | awk '{print $NF}')
-            if [ "$RAW_VALUE" -gt 0 ] 2>/dev/null; then
-                ATTR_NAME=$(echo "$ATTR_LINE" | awk '{print $2}')
-                CRITICAL_ATTRS="${CRITICAL_ATTRS}${ATTR_NAME}:${RAW_VALUE} "
-            fi
-        fi
-    done
+	# Check critical attributes
+	PREFAIL_ATTRS="5 187 188 197 198"
+	CRITICAL_ATTRS=""
+	for attr_id in $PREFAIL_ATTRS; do
+		ATTR_LINE=$(echo "$ATTRIBUTES" | grep "^[[:space:]]*$attr_id " || echo "")
+		if [ -n "$ATTR_LINE" ]; then
+			RAW_VALUE=$(echo "$ATTR_LINE" | awk '{print $NF}')
+			if [ "$RAW_VALUE" -gt 0 ] 2>/dev/null; then
+				ATTR_NAME=$(echo "$ATTR_LINE" | awk '{print $2}')
+				CRITICAL_ATTRS="${CRITICAL_ATTRS}${ATTR_NAME}:${RAW_VALUE} "
+			fi
+		fi
+	done
 
-    # Determine status
-    STATUS="HEALTHY"
-    if [ "$HEALTH" = "FAILED" ]; then
-        STATUS="CRITICAL"
-    elif [ "$HEALTH" = "UNKNOWN" ]; then
-        STATUS="WARNING"
-    elif [ -n "$CRITICAL_ATTRS" ]; then
-        STATUS="WARNING"
-    elif [ "$TEMP" -ge "$CRIT_TEMP" ]; then
-        STATUS="CRITICAL"
-    elif [ "$TEMP" -ge "$WARN_TEMP" ]; then
-        STATUS="WARNING"
-    fi
+	# Determine status
+	STATUS="HEALTHY"
+	if [ "$HEALTH" = "FAILED" ]; then
+		STATUS="CRITICAL"
+	elif [ "$HEALTH" = "UNKNOWN" ]; then
+		STATUS="WARNING"
+	elif [ -n "$CRITICAL_ATTRS" ]; then
+		STATUS="WARNING"
+	elif [ "$TEMP" -ge "$CRIT_TEMP" ]; then
+		STATUS="CRITICAL"
+	elif [ "$TEMP" -ge "$WARN_TEMP" ]; then
+		STATUS="WARNING"
+	fi
 
-    # Report results
-    if [ "$STATUS" = "HEALTHY" ]; then
-        print_success "$device: $STATUS (health: $HEALTH, temp: ${TEMP}°C)"
-        DEVICES_HEALTHY=$((DEVICES_HEALTHY + 1))
-    elif [ "$STATUS" = "WARNING" ]; then
-        print_warning "$device: $STATUS (health: $HEALTH, temp: ${TEMP}°C)"
-        if [ -n "$CRITICAL_ATTRS" ]; then
-            echo "  ⚠ Critical attributes: $CRITICAL_ATTRS"
-        fi
-        DEVICES_WARNING=$((DEVICES_WARNING + 1))
-    else
-        print_error "$device: $STATUS (health: $HEALTH, temp: ${TEMP}°C)"
-        if [ -n "$CRITICAL_ATTRS" ]; then
-            echo "  ✗ Critical attributes: $CRITICAL_ATTRS"
-        fi
-        DEVICES_CRITICAL=$((DEVICES_CRITICAL + 1))
-    fi
+	# Report results
+	if [ "$STATUS" = "HEALTHY" ]; then
+		print_success "$device: $STATUS (health: $HEALTH, temp: ${TEMP}°C)"
+		DEVICES_HEALTHY=$((DEVICES_HEALTHY + 1))
+	elif [ "$STATUS" = "WARNING" ]; then
+		print_warning "$device: $STATUS (health: $HEALTH, temp: ${TEMP}°C)"
+		if [ -n "$CRITICAL_ATTRS" ]; then
+			echo "  ⚠ Critical attributes: $CRITICAL_ATTRS"
+		fi
+		DEVICES_WARNING=$((DEVICES_WARNING + 1))
+	else
+		print_error "$device: $STATUS (health: $HEALTH, temp: ${TEMP}°C)"
+		if [ -n "$CRITICAL_ATTRS" ]; then
+			echo "  ✗ Critical attributes: $CRITICAL_ATTRS"
+		fi
+		DEVICES_CRITICAL=$((DEVICES_CRITICAL + 1))
+	fi
 
-    DEVICE_RESULTS+=("$device:$STATUS:$HEALTH:${TEMP}°C:${CRITICAL_ATTRS:-none}")
+	DEVICE_RESULTS+=("$device:$STATUS:$HEALTH:${TEMP}°C:${CRITICAL_ATTRS:-none}")
 done
 
 # Schedule tests if requested
 if [ -n "$RUN_TEST" ]; then
-    print_section "Test Scheduling"
+	print_section "Test Scheduling"
 
-    print_info "Note: Tests run asynchronously in background; command returns immediately"
-    echo "      Use 'smartctl -a <device>' to check test progress/results later"
-    echo ""
+	print_info "Note: Tests run asynchronously in background; command returns immediately"
+	echo "      Use 'smartctl -a <device>' to check test progress/results later"
+	echo ""
 
-    for idx in "${!DEVICE_PATHS[@]}"; do
-        device="${DEVICE_PATHS[$idx]}"
-        dev_type="${DEVICE_TYPES[$idx]}"
+	for idx in "${!DEVICE_PATHS[@]}"; do
+		device="${DEVICE_PATHS[$idx]}"
+		dev_type="${DEVICE_TYPES[$idx]}"
 
-        # Build smartctl command with optional -d type
-        if [ -n "$dev_type" ]; then
-            SMARTCTL_CMD="smartctl -d $dev_type"
-        else
-            SMARTCTL_CMD="smartctl"
-        fi
+		# Build smartctl command with optional -d type
+		if [ -n "$dev_type" ]; then
+			SMARTCTL_CMD="smartctl -d $dev_type"
+		else
+			SMARTCTL_CMD="smartctl"
+		fi
 
-        # Skip if device doesn't exist (for non-special devices)
-        if [[ ! "$device" =~ ^/dev/(bus|sg) ]] && [ ! -e "$device" ]; then
-            continue
-        fi
+		# Skip if device doesn't exist (for non-special devices)
+		if [[ ! "$device" =~ ^/dev/(bus|sg) ]] && [ ! -e "$device" ]; then
+			continue
+		fi
 
-        print_info "Scheduling $TEST_TYPE test on $device..."
-        # Capture ETA from smartctl output
-        TEST_OUTPUT=$($SMARTCTL_CMD -t "$TEST_TYPE" "$device" 2>&1)
-        if [ $? -eq 0 ]; then
-            # Extract ETA line if present
-            ETA=$(echo "$TEST_OUTPUT" | grep -i "Please wait" || echo "")
-            if [ -n "$ETA" ]; then
-                print_success "Test scheduled on $device ($ETA)"
-            else
-                print_success "Test scheduled on $device"
-            fi
-            echo "$TEST_OUTPUT" >>"$LOG_FILE"
-        else
-            print_error "Failed to schedule test on $device"
-            echo "$TEST_OUTPUT" >>"$LOG_FILE"
-        fi
-    done
+		print_info "Scheduling $TEST_TYPE test on $device..."
+		# Capture ETA from smartctl output
+		TEST_OUTPUT=$($SMARTCTL_CMD -t "$TEST_TYPE" "$device" 2>&1)
+		if [ $? -eq 0 ]; then
+			# Extract ETA line if present
+			ETA=$(echo "$TEST_OUTPUT" | grep -i "Please wait" || echo "")
+			if [ -n "$ETA" ]; then
+				print_success "Test scheduled on $device ($ETA)"
+			else
+				print_success "Test scheduled on $device"
+			fi
+			echo "$TEST_OUTPUT" >>"$LOG_FILE"
+		else
+			print_error "Failed to schedule test on $device"
+			echo "$TEST_OUTPUT" >>"$LOG_FILE"
+		fi
+	done
 fi
 
 # Summary
@@ -499,58 +499,58 @@ echo "  Critical: $DEVICES_CRITICAL"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
-    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
-    JSON_STATUS="success"
-    if [ "$DEVICES_CRITICAL" -gt 0 ]; then
-        JSON_STATUS="critical"
-    elif [ "$DEVICES_WARNING" -gt 0 ]; then
-        JSON_STATUS="warning"
-    fi
-    {
-        echo "{"
-        echo "  \"script\": \"smart-disk-check\","
-        echo "  \"version\": \"1.2.1\","
-        echo "  \"timestamp\": \"$(get_iso8601_timestamp)\","
-        echo "  \"status\": \"$JSON_STATUS\","
-        echo "  \"duration_ms\": $DURATION_MS,"
-        echo "  \"errors\": [],"
-        echo "  \"result\": {\"devices_checked\": $DEVICES_CHECKED, \"devices_critical\": $DEVICES_CRITICAL},"
-        echo "  \"devices_checked\": $DEVICES_CHECKED,"
-        echo "  \"devices_healthy\": $DEVICES_HEALTHY,"
-        echo "  \"devices_warning\": $DEVICES_WARNING,"
-        echo "  \"devices_critical\": $DEVICES_CRITICAL,"
-        echo "  \"warn_temp\": $WARN_TEMP,"
-        echo "  \"crit_temp\": $CRIT_TEMP,"
-        echo "  \"devices\": ["
+	DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+	JSON_STATUS="success"
+	if [ "$DEVICES_CRITICAL" -gt 0 ]; then
+		JSON_STATUS="critical"
+	elif [ "$DEVICES_WARNING" -gt 0 ]; then
+		JSON_STATUS="warning"
+	fi
+	{
+		echo "{"
+		echo "  \"script\": \"smart-disk-check\","
+		echo "  \"version\": \"1.2.1\","
+		echo "  \"timestamp\": \"$(get_iso8601_timestamp)\","
+		echo "  \"status\": \"$JSON_STATUS\","
+		echo "  \"duration_ms\": $DURATION_MS,"
+		echo "  \"errors\": [],"
+		echo "  \"result\": {\"devices_checked\": $DEVICES_CHECKED, \"devices_critical\": $DEVICES_CRITICAL},"
+		echo "  \"devices_checked\": $DEVICES_CHECKED,"
+		echo "  \"devices_healthy\": $DEVICES_HEALTHY,"
+		echo "  \"devices_warning\": $DEVICES_WARNING,"
+		echo "  \"devices_critical\": $DEVICES_CRITICAL,"
+		echo "  \"warn_temp\": $WARN_TEMP,"
+		echo "  \"crit_temp\": $CRIT_TEMP,"
+		echo "  \"devices\": ["
 
-        FIRST=true
-        for result in "${DEVICE_RESULTS[@]}"; do
-            IFS=':' read -r dev status health temp attrs <<<"$result"
-            if [ "$FIRST" = false ]; then
-                echo "    ,"
-            fi
-            FIRST=false
-            echo "    {"
-            echo "      \"device\": \"$dev\","
-            echo "      \"status\": \"$status\","
-            echo "      \"health\": \"$health\","
-            echo "      \"temperature\": \"$temp\","
-            echo "      \"critical_attributes\": \"$attrs\""
-            echo -n "    }"
-        done
-        echo ""
-        echo "  ]"
-        echo "}"
-    } >"$JSON_FILE"
-    chmod 600 "$JSON_FILE"
-    print_success "JSON summary written to: $JSON_FILE"
+		FIRST=true
+		for result in "${DEVICE_RESULTS[@]}"; do
+			IFS=':' read -r dev status health temp attrs <<<"$result"
+			if [ "$FIRST" = false ]; then
+				echo "    ,"
+			fi
+			FIRST=false
+			echo "    {"
+			echo "      \"device\": \"$dev\","
+			echo "      \"status\": \"$status\","
+			echo "      \"health\": \"$health\","
+			echo "      \"temperature\": \"$temp\","
+			echo "      \"critical_attributes\": \"$attrs\""
+			echo -n "    }"
+		done
+		echo ""
+		echo "  ]"
+		echo "}"
+	} >"$JSON_FILE"
+	chmod 600 "$JSON_FILE"
+	print_success "JSON summary written to: $JSON_FILE"
 fi
 
 # Exit with appropriate code
 if [ "$DEVICES_CRITICAL" -gt 0 ]; then
-    exit 2
+	exit 2
 elif [ "$DEVICES_WARNING" -gt 0 ]; then
-    exit 1
+	exit 1
 else
-    exit 0
+	exit 0
 fi

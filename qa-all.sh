@@ -13,13 +13,13 @@ SUMMARY_JSON="${RUN_DIR}/summary.json"
 CI_MODE=false
 
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-    --ci)
-        CI_MODE=true
-        shift
-        ;;
-    --help | -h)
-        cat <<'HELP'
+	case "$1" in
+	--ci)
+		CI_MODE=true
+		shift
+		;;
+	--help | -h)
+		cat <<'HELP'
 qa-all.sh - Unified QA harness
 
 USAGE:
@@ -29,13 +29,13 @@ OPTIONS:
     --ci    CI-friendly mode (same checks, deterministic output layout)
     -h      Show this help
 HELP
-        exit 0
-        ;;
-    *)
-        echo "Unknown option: $1"
-        exit 1
-        ;;
-    esac
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1"
+		exit 1
+		;;
+	esac
 done
 
 mkdir -p "$RUN_DIR"
@@ -48,66 +48,66 @@ FAILED=0
 declare -a RESULTS
 
 log() {
-    printf "%s\n" "$*" | tee -a "$SUMMARY_TXT"
+	printf "%s\n" "$*" | tee -a "$SUMMARY_TXT"
 }
 
 run_expect_success() {
-    local name="$1"
-    shift
-    local logfile="${RUN_DIR}/${name}.log"
-    TOTAL=$((TOTAL + 1))
-    if "$@" >"$logfile" 2>&1; then
-        PASSED=$((PASSED + 1))
-        RESULTS+=("${name}|success|0|pass|${logfile}")
-        log "PASS  ${name}"
-    else
-        local ec=$?
-        FAILED=$((FAILED + 1))
-        RESULTS+=("${name}|success|${ec}|fail|${logfile}")
-        log "FAIL  ${name} (exit=${ec})"
-    fi
+	local name="$1"
+	shift
+	local logfile="${RUN_DIR}/${name}.log"
+	TOTAL=$((TOTAL + 1))
+	if "$@" >"$logfile" 2>&1; then
+		PASSED=$((PASSED + 1))
+		RESULTS+=("${name}|success|0|pass|${logfile}")
+		log "PASS  ${name}"
+	else
+		local ec=$?
+		FAILED=$((FAILED + 1))
+		RESULTS+=("${name}|success|${ec}|fail|${logfile}")
+		log "FAIL  ${name} (exit=${ec})"
+	fi
 }
 
 run_expect_failure() {
-    local name="$1"
-    shift
-    local logfile="${RUN_DIR}/${name}.log"
-    TOTAL=$((TOTAL + 1))
-    if "$@" >"$logfile" 2>&1; then
-        FAILED=$((FAILED + 1))
-        RESULTS+=("${name}|failure|0|fail|${logfile}")
-        log "FAIL  ${name} (expected failure, got exit=0)"
-    else
-        local ec=$?
-        PASSED=$((PASSED + 1))
-        RESULTS+=("${name}|failure|${ec}|pass|${logfile}")
-        log "PASS  ${name} (expected failure)"
-    fi
+	local name="$1"
+	shift
+	local logfile="${RUN_DIR}/${name}.log"
+	TOTAL=$((TOTAL + 1))
+	if "$@" >"$logfile" 2>&1; then
+		FAILED=$((FAILED + 1))
+		RESULTS+=("${name}|failure|0|fail|${logfile}")
+		log "FAIL  ${name} (expected failure, got exit=0)"
+	else
+		local ec=$?
+		PASSED=$((PASSED + 1))
+		RESULTS+=("${name}|failure|${ec}|pass|${logfile}")
+		log "PASS  ${name} (expected failure)"
+	fi
 }
 
 run_batch_help_smoke() {
-    local logfile="${RUN_DIR}/help_smoke.log"
-    TOTAL=$((TOTAL + 1))
-    local failures=0
-    : >"$logfile"
-    for script in *.sh; do
-        [ -x "$script" ] || continue
-        if ./"$script" --help >>"$logfile" 2>&1; then
-            :
-        else
-            failures=$((failures + 1))
-            echo "help failed: $script" >>"$logfile"
-        fi
-    done
-    if [ "$failures" -eq 0 ]; then
-        PASSED=$((PASSED + 1))
-        RESULTS+=("help_smoke|success|0|pass|${logfile}")
-        log "PASS  help_smoke"
-    else
-        FAILED=$((FAILED + 1))
-        RESULTS+=("help_smoke|success|1|fail|${logfile}")
-        log "FAIL  help_smoke (${failures} failures)"
-    fi
+	local logfile="${RUN_DIR}/help_smoke.log"
+	TOTAL=$((TOTAL + 1))
+	local failures=0
+	: >"$logfile"
+	for script in *.sh; do
+		[ -x "$script" ] || continue
+		if ./"$script" --help >>"$logfile" 2>&1; then
+			:
+		else
+			failures=$((failures + 1))
+			echo "help failed: $script" >>"$logfile"
+		fi
+	done
+	if [ "$failures" -eq 0 ]; then
+		PASSED=$((PASSED + 1))
+		RESULTS+=("help_smoke|success|0|pass|${logfile}")
+		log "PASS  help_smoke"
+	else
+		FAILED=$((FAILED + 1))
+		RESULTS+=("help_smoke|success|1|fail|${logfile}")
+		log "FAIL  help_smoke (${failures} failures)"
+	fi
 }
 
 cd "$SCRIPT_DIR" || exit 1
@@ -289,22 +289,22 @@ run_expect_failure "venv_roots_system_block" ./disk-cleanup.sh --venv-roots /etc
 run_expect_failure "venv_roots_traversal_block" ./disk-cleanup.sh --venv-roots "$HOME/../etc"
 
 {
-    echo "{"
-    echo "  \"timestamp\": \"${TIMESTAMP}\","
-    echo "  \"ci_mode\": ${CI_MODE},"
-    echo "  \"run_dir\": \"${RUN_DIR}\","
-    echo "  \"totals\": {\"total\": ${TOTAL}, \"passed\": ${PASSED}, \"failed\": ${FAILED}},"
-    echo "  \"checks\": ["
-    first=true
-    for row in "${RESULTS[@]}"; do
-        IFS='|' read -r name expected exit_code status logfile <<<"$row"
-        [ "$first" = false ] && echo ","
-        first=false
-        echo -n "    {\"name\":\"${name}\",\"expected\":\"${expected}\",\"exit_code\":${exit_code},\"status\":\"${status}\",\"log_file\":\"${logfile}\"}"
-    done
-    echo ""
-    echo "  ]"
-    echo "}"
+	echo "{"
+	echo "  \"timestamp\": \"${TIMESTAMP}\","
+	echo "  \"ci_mode\": ${CI_MODE},"
+	echo "  \"run_dir\": \"${RUN_DIR}\","
+	echo "  \"totals\": {\"total\": ${TOTAL}, \"passed\": ${PASSED}, \"failed\": ${FAILED}},"
+	echo "  \"checks\": ["
+	first=true
+	for row in "${RESULTS[@]}"; do
+		IFS='|' read -r name expected exit_code status logfile <<<"$row"
+		[ "$first" = false ] && echo ","
+		first=false
+		echo -n "    {\"name\":\"${name}\",\"expected\":\"${expected}\",\"exit_code\":${exit_code},\"status\":\"${status}\",\"log_file\":\"${logfile}\"}"
+	done
+	echo ""
+	echo "  ]"
+	echo "}"
 } >"$SUMMARY_JSON"
 
 log ""
@@ -312,6 +312,6 @@ log "Summary: total=${TOTAL} passed=${PASSED} failed=${FAILED}"
 log "JSON: ${SUMMARY_JSON}"
 
 if [ "$FAILED" -gt 0 ]; then
-    exit 1
+	exit 1
 fi
 exit 0

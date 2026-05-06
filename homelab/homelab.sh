@@ -25,7 +25,7 @@ source "${SCRIPT_DIR}/lib/scheduler.sh"
 
 # Show help message
 show_help() {
-    cat <<'HELP'
+	cat <<'HELP'
 homelab - Unified DevOps orchestrator for system maintenance scripts
 
 USAGE:
@@ -140,207 +140,207 @@ HELP
 
 # Show version
 show_version() {
-    echo "homelab v${VERSION}"
-    echo ""
-    echo "Detected scripts:"
-    for script in disk-cleanup.sh update-all.sh ssh-key-audit.sh nmap-scan.sh rclone-sync.sh; do
-        local script_path=$(get_script_path "$script")
-        if [ -n "$script_path" ]; then
-            echo "  ✓ $script"
-        else
-            echo "  ✗ $script (not found)"
-        fi
-    done
+	echo "homelab v${VERSION}"
+	echo ""
+	echo "Detected scripts:"
+	for script in disk-cleanup.sh update-all.sh ssh-key-audit.sh nmap-scan.sh rclone-sync.sh; do
+		local script_path=$(get_script_path "$script")
+		if [ -n "$script_path" ]; then
+			echo "  ✓ $script"
+		else
+			echo "  ✗ $script (not found)"
+		fi
+	done
 }
 
 # Manage configuration
 manage_config() {
-    local subcommand="${1:-show}"
+	local subcommand="${1:-show}"
 
-    case "$subcommand" in
-    show)
-        show_config
-        ;;
-    edit)
-        if [ -n "${EDITOR:-}" ]; then
-            "$EDITOR" "$HOMELAB_CONFIG_FILE"
-        elif command -v nano >/dev/null 2>&1; then
-            nano "$HOMELAB_CONFIG_FILE"
-        elif command -v vi >/dev/null 2>&1; then
-            vi "$HOMELAB_CONFIG_FILE"
-        else
-            print_error "No editor found. Set EDITOR environment variable."
-            echo "Config file: $HOMELAB_CONFIG_FILE"
-            return 1
-        fi
-        ;;
-    validate)
-        validate_config
-        ;;
-    reset)
-        if [ -f "$HOMELAB_CONFIG_FILE" ]; then
-            mv "$HOMELAB_CONFIG_FILE" "${HOMELAB_CONFIG_FILE}.backup"
-            print_info "Backed up config to ${HOMELAB_CONFIG_FILE}.backup"
-        fi
-        create_example_config
-        print_success "Reset config to defaults"
-        ;;
-    *)
-        print_error "Unknown config command: $subcommand"
-        echo "Valid commands: show, edit, validate, reset"
-        return 1
-        ;;
-    esac
+	case "$subcommand" in
+	show)
+		show_config
+		;;
+	edit)
+		if [ -n "${EDITOR:-}" ]; then
+			"$EDITOR" "$HOMELAB_CONFIG_FILE"
+		elif command -v nano >/dev/null 2>&1; then
+			nano "$HOMELAB_CONFIG_FILE"
+		elif command -v vi >/dev/null 2>&1; then
+			vi "$HOMELAB_CONFIG_FILE"
+		else
+			print_error "No editor found. Set EDITOR environment variable."
+			echo "Config file: $HOMELAB_CONFIG_FILE"
+			return 1
+		fi
+		;;
+	validate)
+		validate_config
+		;;
+	reset)
+		if [ -f "$HOMELAB_CONFIG_FILE" ]; then
+			mv "$HOMELAB_CONFIG_FILE" "${HOMELAB_CONFIG_FILE}.backup"
+			print_info "Backed up config to ${HOMELAB_CONFIG_FILE}.backup"
+		fi
+		create_example_config
+		print_success "Reset config to defaults"
+		;;
+	*)
+		print_error "Unknown config command: $subcommand"
+		echo "Valid commands: show, edit, validate, reset"
+		return 1
+		;;
+	esac
 }
 
 # Main entry point
 main() {
-    # Parse global options inline
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-        --dry-run)
-            DRY_RUN=true
-            shift
-            ;;
-        --verbose | -v)
-            HOMELAB_VERBOSE=true
-            shift
-            ;;
-        --quiet | -q)
-            HOMELAB_QUIET=true
-            shift
-            ;;
-        --no-color)
-            HOMELAB_COLOR=false
-            shift
-            ;;
-        --config)
-            HOMELAB_CONFIG_FILE="$2"
-            shift 2
-            ;;
-        *)
-            # Found command or non-global option, stop parsing globals
-            break
-            ;;
-        esac
-    done
+	# Parse global options inline
+	while [[ $# -gt 0 ]]; do
+		case $1 in
+		--dry-run)
+			DRY_RUN=true
+			shift
+			;;
+		--verbose | -v)
+			HOMELAB_VERBOSE=true
+			shift
+			;;
+		--quiet | -q)
+			HOMELAB_QUIET=true
+			shift
+			;;
+		--no-color)
+			HOMELAB_COLOR=false
+			shift
+			;;
+		--config)
+			HOMELAB_CONFIG_FILE="$2"
+			shift 2
+			;;
+		*)
+			# Found command or non-global option, stop parsing globals
+			break
+			;;
+		esac
+	done
 
-    # Load configuration
-    if ! load_config; then
-        print_error "Failed to load configuration"
-        echo ""
-        echo "Run 'homelab config validate' to diagnose issues"
-        exit 1
-    fi
+	# Load configuration
+	if ! load_config; then
+		print_error "Failed to load configuration"
+		echo ""
+		echo "Run 'homelab config validate' to diagnose issues"
+		exit 1
+	fi
 
-    # Get command
-    local command="${1:-help}"
-    shift || true
+	# Get command
+	local command="${1:-help}"
+	shift || true
 
-    # Route to command handlers
-    case "$command" in
-    # Workflows
-    morning)
-        run_morning_routine "$@"
-        ;;
-    weekly)
-        run_weekly_maintenance "$@"
-        ;;
-    emergency)
-        run_emergency_cleanup "$@"
-        ;;
-    pre-deploy)
-        run_predeploy_checks "$@"
-        ;;
+	# Route to command handlers
+	case "$command" in
+	# Workflows
+	morning)
+		run_morning_routine "$@"
+		;;
+	weekly)
+		run_weekly_maintenance "$@"
+		;;
+	emergency)
+		run_emergency_cleanup "$@"
+		;;
+	pre-deploy)
+		run_predeploy_checks "$@"
+		;;
 
-    # Information
-    status)
-        show_status_dashboard "$@"
-        ;;
-    report)
-        generate_report "$@"
-        ;;
-    logs)
-        show_logs "$@"
-        ;;
-    list-logs)
-        list_logs
-        ;;
-    rotate-logs)
-        # Check for --dry-run flag
-        local dry_run=false
-        if [ "${1:-}" = "--dry-run" ]; then
-            dry_run=true
-        fi
-        rotate_logs "$dry_run"
-        ;;
-    version)
-        show_version
-        ;;
-    help | --help | -h)
-        show_help
-        ;;
+	# Information
+	status)
+		show_status_dashboard "$@"
+		;;
+	report)
+		generate_report "$@"
+		;;
+	logs)
+		show_logs "$@"
+		;;
+	list-logs)
+		list_logs
+		;;
+	rotate-logs)
+		# Check for --dry-run flag
+		local dry_run=false
+		if [ "${1:-}" = "--dry-run" ]; then
+			dry_run=true
+		fi
+		rotate_logs "$dry_run"
+		;;
+	version)
+		show_version
+		;;
+	help | --help | -h)
+		show_help
+		;;
 
-    # Configuration
-    config)
-        manage_config "$@"
-        ;;
+	# Configuration
+	config)
+		manage_config "$@"
+		;;
 
-    # Scheduling
-    schedule)
-        local subcmd="${1:-}"
-        case "$subcmd" in
-        install)
-            shift
-            install_schedule "$@"
-            ;;
-        remove)
-            remove_schedule
-            ;;
-        status)
-            show_schedule_status
-            ;;
-        show)
-            show_schedule_config
-            ;;
-        *)
-            print_error "Unknown schedule command: ${subcmd}"
-            echo ""
-            echo "Usage: homelab schedule <install|remove|status|show>"
-            exit 1
-            ;;
-        esac
-        ;;
+	# Scheduling
+	schedule)
+		local subcmd="${1:-}"
+		case "$subcmd" in
+		install)
+			shift
+			install_schedule "$@"
+			;;
+		remove)
+			remove_schedule
+			;;
+		status)
+			show_schedule_status
+			;;
+		show)
+			show_schedule_config
+			;;
+		*)
+			print_error "Unknown schedule command: ${subcmd}"
+			echo ""
+			echo "Usage: homelab schedule <install|remove|status|show>"
+			exit 1
+			;;
+		esac
+		;;
 
-    # Notifications
-    notify)
-        local subcmd="${1:-}"
-        case "$subcmd" in
-        test)
-            shift
-            local dry_run=false
-            if [ "${1:-}" = "--dry-run" ]; then
-                dry_run=true
-            fi
-            test_notifications "$dry_run"
-            ;;
-        *)
-            print_error "Unknown notify command: ${subcmd}"
-            echo ""
-            echo "Usage: homelab notify test [--dry-run]"
-            exit 1
-            ;;
-        esac
-        ;;
+	# Notifications
+	notify)
+		local subcmd="${1:-}"
+		case "$subcmd" in
+		test)
+			shift
+			local dry_run=false
+			if [ "${1:-}" = "--dry-run" ]; then
+				dry_run=true
+			fi
+			test_notifications "$dry_run"
+			;;
+		*)
+			print_error "Unknown notify command: ${subcmd}"
+			echo ""
+			echo "Usage: homelab notify test [--dry-run]"
+			exit 1
+			;;
+		esac
+		;;
 
-    # Unknown command
-    *)
-        print_error "Unknown command: $command"
-        echo ""
-        show_help
-        exit 1
-        ;;
-    esac
+	# Unknown command
+	*)
+		print_error "Unknown command: $command"
+		echo ""
+		show_help
+		exit 1
+		;;
+	esac
 }
 
 # Run main

@@ -38,35 +38,35 @@ NC='\033[0m'
 
 # Print functions
 print_error() {
-    echo -e "${RED}✗ Error:${NC} $1" >&2
-    echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
+	echo -e "${RED}✗ Error:${NC} $1" >&2
+	echo "[$(get_iso8601_timestamp)] ERROR: $1" >>"$LOG_FILE"
 }
 
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-    echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
+	echo -e "${GREEN}✓${NC} $1"
+	echo "[$(get_iso8601_timestamp)] SUCCESS: $1" >>"$LOG_FILE"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-    echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
+	echo -e "${YELLOW}⚠${NC} $1"
+	echo "[$(get_iso8601_timestamp)] WARNING: $1" >>"$LOG_FILE"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-    echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
+	echo -e "${BLUE}ℹ${NC} $1"
+	echo "[$(get_iso8601_timestamp)] INFO: $1" >>"$LOG_FILE"
 }
 
 print_section() {
-    echo ""
-    echo -e "${BLUE}━━━ $1 ━━━${NC}"
-    echo ""
-    echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
+	echo ""
+	echo -e "${BLUE}━━━ $1 ━━━${NC}"
+	echo ""
+	echo "[$(get_iso8601_timestamp)] SECTION: $1" >>"$LOG_FILE"
 }
 
 # Show usage
 show_help() {
-    cat <<'HELP'
+	cat <<'HELP'
 compose-redeploy.sh - Safe Docker Compose updates with rollback
 
 USAGE:
@@ -115,49 +115,49 @@ HELP
 
 # Parse CLI arguments
 while [[ $# -gt 0 ]]; do
-    case $1 in
-    --file)
-        COMPOSE_FILE="$2"
-        shift 2
-        ;;
-    --backup-volumes)
-        BACKUP_VOLUMES=true
-        shift
-        ;;
-    --backup-image)
-        BACKUP_IMAGE="$2"
-        shift 2
-        ;;
-    --health-timeout)
-        HEALTH_TIMEOUT="$2"
-        if ! [[ "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || [ "$HEALTH_TIMEOUT" -lt 1 ] || [ "$HEALTH_TIMEOUT" -gt 3600 ]; then
-            echo "Error: --health-timeout must be between 1 and 3600 seconds"
-            exit 1
-        fi
-        shift 2
-        ;;
-    --no-pull)
-        NO_PULL=true
-        shift
-        ;;
-    --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-    --json)
-        OUTPUT_JSON=true
-        shift
-        ;;
-    --help)
-        show_help
-        exit 0
-        ;;
-    *)
-        echo "Error: Unknown option $1"
-        show_help
-        exit 1
-        ;;
-    esac
+	case $1 in
+	--file)
+		COMPOSE_FILE="$2"
+		shift 2
+		;;
+	--backup-volumes)
+		BACKUP_VOLUMES=true
+		shift
+		;;
+	--backup-image)
+		BACKUP_IMAGE="$2"
+		shift 2
+		;;
+	--health-timeout)
+		HEALTH_TIMEOUT="$2"
+		if ! [[ "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || [ "$HEALTH_TIMEOUT" -lt 1 ] || [ "$HEALTH_TIMEOUT" -gt 3600 ]; then
+			echo "Error: --health-timeout must be between 1 and 3600 seconds"
+			exit 1
+		fi
+		shift 2
+		;;
+	--no-pull)
+		NO_PULL=true
+		shift
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	--json)
+		OUTPUT_JSON=true
+		shift
+		;;
+	--help)
+		show_help
+		exit 0
+		;;
+	*)
+		echo "Error: Unknown option $1"
+		show_help
+		exit 1
+		;;
+	esac
 done
 
 # Setup logging
@@ -167,21 +167,21 @@ mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR" || true
 
 # Start logging
 {
-    echo "================================================"
-    echo "Docker Compose Redeploy - $(get_iso8601_timestamp)"
-    echo "================================================"
-    echo "Compose file: $COMPOSE_FILE"
-    echo "Backup volumes: $BACKUP_VOLUMES"
-    echo "Health timeout: ${HEALTH_TIMEOUT}s"
-    echo "No pull: $NO_PULL"
-    echo "Dry run: $DRY_RUN"
-    echo "================================================"
+	echo "================================================"
+	echo "Docker Compose Redeploy - $(get_iso8601_timestamp)"
+	echo "================================================"
+	echo "Compose file: $COMPOSE_FILE"
+	echo "Backup volumes: $BACKUP_VOLUMES"
+	echo "Health timeout: ${HEALTH_TIMEOUT}s"
+	echo "No pull: $NO_PULL"
+	echo "Dry run: $DRY_RUN"
+	echo "================================================"
 } >>"$LOG_FILE"
 
 # Validate compose file exists
 if [ ! -f "$COMPOSE_FILE" ]; then
-    print_error "Compose file not found: $COMPOSE_FILE"
-    exit 1
+	print_error "Compose file not found: $COMPOSE_FILE"
+	exit 1
 fi
 
 print_section "Docker Compose Redeploy"
@@ -195,38 +195,38 @@ print_info "Log file: $LOG_FILE"
 print_section "Pre-flight Checks"
 
 if ! command -v docker >/dev/null 2>&1; then
-    print_error "Docker not found. Install Docker first."
-    exit 1
+	print_error "Docker not found. Install Docker first."
+	exit 1
 fi
 print_success "Docker installed"
 
 # Detect compose command (v1 or v2)
 if docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD="docker compose"
-    COMPOSE_VERSION="v2"
+	COMPOSE_CMD="docker compose"
+	COMPOSE_VERSION="v2"
 elif command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD="docker-compose"
-    COMPOSE_VERSION="v1"
+	COMPOSE_CMD="docker-compose"
+	COMPOSE_VERSION="v1"
 else
-    print_error "Docker Compose not found. Install docker-compose or use Docker with compose plugin."
-    exit 1
+	print_error "Docker Compose not found. Install docker-compose or use Docker with compose plugin."
+	exit 1
 fi
 print_success "Docker Compose found ($COMPOSE_VERSION)"
 
 # Check jq if JSON output requested
 if ! require_jq_if_json "$OUTPUT_JSON"; then
-    exit 1
+	exit 1
 fi
 if [ "$OUTPUT_JSON" = true ]; then
-    print_success "jq installed"
+	print_success "jq installed"
 fi
 
 # Validate compose file syntax
 print_info "Validating compose file..."
 if ! $COMPOSE_CMD -f "$COMPOSE_FILE" config >/dev/null 2>&1; then
-    print_error "Invalid compose file syntax"
-    $COMPOSE_CMD -f "$COMPOSE_FILE" config 2>&1 | tee -a "$LOG_FILE"
-    exit 1
+	print_error "Invalid compose file syntax"
+	$COMPOSE_CMD -f "$COMPOSE_FILE" config 2>&1 | tee -a "$LOG_FILE"
+	exit 1
 fi
 print_success "Compose file valid"
 
@@ -240,164 +240,164 @@ SERVICE_COUNT=$(echo "$SERVICES" | wc -l | tr -d ' ')
 print_info "Services: $SERVICE_COUNT ($(echo "$SERVICES" | tr '\n' ', ' | sed 's/,$//'))"
 
 if [ "$DRY_RUN" = true ]; then
-    print_warning "DRY RUN MODE - no actual changes will be made"
-    echo ""
-    print_info "Would perform the following operations:"
-    [ "$BACKUP_VOLUMES" = true ] && echo "  1. Backup volumes for all services"
-    [ "$NO_PULL" = false ] && echo "  2. Pull latest images"
-    echo "  3. Recreate containers with new configuration"
-    echo "  4. Wait up to ${HEALTH_TIMEOUT}s for health checks"
-    echo "  5. Rollback on failure"
-    exit 0
+	print_warning "DRY RUN MODE - no actual changes will be made"
+	echo ""
+	print_info "Would perform the following operations:"
+	[ "$BACKUP_VOLUMES" = true ] && echo "  1. Backup volumes for all services"
+	[ "$NO_PULL" = false ] && echo "  2. Pull latest images"
+	echo "  3. Recreate containers with new configuration"
+	echo "  4. Wait up to ${HEALTH_TIMEOUT}s for health checks"
+	echo "  5. Rollback on failure"
+	exit 0
 fi
 
 print_success "Pre-flight checks passed"
 
 # Backup volumes if requested
 if [ "$BACKUP_VOLUMES" = true ]; then
-    print_section "Backing Up Volumes"
+	print_section "Backing Up Volumes"
 
-    # Ensure backup image is available for backups
-    if ! ensure_docker_image "$BACKUP_IMAGE" "$LOG_FILE"; then
-        print_error "Failed to ensure $BACKUP_IMAGE is available"
-        exit 1
-    fi
+	# Ensure backup image is available for backups
+	if ! ensure_docker_image "$BACKUP_IMAGE" "$LOG_FILE"; then
+		print_error "Failed to ensure $BACKUP_IMAGE is available"
+		exit 1
+	fi
 
-    # Get list of volumes
-    VOLUMES=$($COMPOSE_CMD -f "$COMPOSE_FILE" config --volumes 2>/dev/null || echo "")
+	# Get list of volumes
+	VOLUMES=$($COMPOSE_CMD -f "$COMPOSE_FILE" config --volumes 2>/dev/null || echo "")
 
-    if [ -z "$VOLUMES" ]; then
-        print_info "No named volumes to backup"
-    else
-        for volume in $VOLUMES; do
-            backup_file="${BACKUP_DIR}/${PROJECT_NAME}_${volume}_${TIMESTAMP}.tar.gz"
-            print_info "Backing up volume: $volume"
+	if [ -z "$VOLUMES" ]; then
+		print_info "No named volumes to backup"
+	else
+		for volume in $VOLUMES; do
+			backup_file="${BACKUP_DIR}/${PROJECT_NAME}_${volume}_${TIMESTAMP}.tar.gz"
+			print_info "Backing up volume: $volume"
 
-            # Use helper container to backup volume
-            if docker run --rm \
-                -v "${PROJECT_NAME}_${volume}:/data:ro" \
-                -v "$BACKUP_DIR:/backup" \
-                "$BACKUP_IMAGE" tar czf "/backup/$(basename "$backup_file")" /data 2>>"$LOG_FILE"; then
-                chmod 600 "$backup_file"
-                print_success "Volume backed up: $backup_file"
-                BACKED_UP_VOLUMES+=("$volume:$backup_file")
-            else
-                print_error "Failed to backup volume: $volume"
-                exit 1
-            fi
-        done
-    fi
+			# Use helper container to backup volume
+			if docker run --rm \
+				-v "${PROJECT_NAME}_${volume}:/data:ro" \
+				-v "$BACKUP_DIR:/backup" \
+				"$BACKUP_IMAGE" tar czf "/backup/$(basename "$backup_file")" /data 2>>"$LOG_FILE"; then
+				chmod 600 "$backup_file"
+				print_success "Volume backed up: $backup_file"
+				BACKED_UP_VOLUMES+=("$volume:$backup_file")
+			else
+				print_error "Failed to backup volume: $volume"
+				exit 1
+			fi
+		done
+	fi
 fi
 
 # Pull images
 if [ "$NO_PULL" = false ]; then
-    print_section "Pulling Images"
-    if $COMPOSE_CMD -f "$COMPOSE_FILE" pull 2>&1 | tee -a "$LOG_FILE"; then
-        print_success "Images pulled successfully"
-    else
-        print_error "Failed to pull images"
-        exit 1
-    fi
+	print_section "Pulling Images"
+	if $COMPOSE_CMD -f "$COMPOSE_FILE" pull 2>&1 | tee -a "$LOG_FILE"; then
+		print_success "Images pulled successfully"
+	else
+		print_error "Failed to pull images"
+		exit 1
+	fi
 fi
 
 # Deploy
 print_section "Deploying Services"
 if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"; then
-    print_success "Services deployed"
+	print_success "Services deployed"
 else
-    print_error "Deployment failed"
-    DEPLOYMENT_FAILED=true
+	print_error "Deployment failed"
+	DEPLOYMENT_FAILED=true
 fi
 
 # Health checks
 if [ "$DEPLOYMENT_FAILED" = false ]; then
-    print_section "Health Check Validation"
-    print_info "Waiting up to ${HEALTH_TIMEOUT}s for services to become healthy..."
+	print_section "Health Check Validation"
+	print_info "Waiting up to ${HEALTH_TIMEOUT}s for services to become healthy..."
 
-    ELAPSED=0
-    ALL_HEALTHY=false
+	ELAPSED=0
+	ALL_HEALTHY=false
 
-    while [ $ELAPSED -lt "$HEALTH_TIMEOUT" ]; do
-        UNHEALTHY_COUNT=0
+	while [ $ELAPSED -lt "$HEALTH_TIMEOUT" ]; do
+		UNHEALTHY_COUNT=0
 
-        while IFS= read -r service; do
-            # Get container status
-            CONTAINER_ID=$($COMPOSE_CMD -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || echo "")
+		while IFS= read -r service; do
+			# Get container status
+			CONTAINER_ID=$($COMPOSE_CMD -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || echo "")
 
-            if [ -z "$CONTAINER_ID" ]; then
-                print_warning "Service $service: no container found"
-                UNHEALTHY_COUNT=$((UNHEALTHY_COUNT + 1))
-                continue
-            fi
+			if [ -z "$CONTAINER_ID" ]; then
+				print_warning "Service $service: no container found"
+				UNHEALTHY_COUNT=$((UNHEALTHY_COUNT + 1))
+				continue
+			fi
 
-            STATUS=$(docker inspect --format='{{.State.Status}}' "$CONTAINER_ID" 2>/dev/null || echo "unknown")
-            HEALTH=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER_ID" 2>/dev/null || echo "none")
+			STATUS=$(docker inspect --format='{{.State.Status}}' "$CONTAINER_ID" 2>/dev/null || echo "unknown")
+			HEALTH=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER_ID" 2>/dev/null || echo "none")
 
-            if [ "$STATUS" != "running" ]; then
-                print_warning "Service $service: not running (status: $STATUS)"
-                UNHEALTHY_COUNT=$((UNHEALTHY_COUNT + 1))
-            elif [ "$HEALTH" = "unhealthy" ]; then
-                print_warning "Service $service: health check failing"
-                UNHEALTHY_COUNT=$((UNHEALTHY_COUNT + 1))
-            fi
-        done <<<"$SERVICES"
+			if [ "$STATUS" != "running" ]; then
+				print_warning "Service $service: not running (status: $STATUS)"
+				UNHEALTHY_COUNT=$((UNHEALTHY_COUNT + 1))
+			elif [ "$HEALTH" = "unhealthy" ]; then
+				print_warning "Service $service: health check failing"
+				UNHEALTHY_COUNT=$((UNHEALTHY_COUNT + 1))
+			fi
+		done <<<"$SERVICES"
 
-        if [ $UNHEALTHY_COUNT -eq 0 ]; then
-            ALL_HEALTHY=true
-            break
-        fi
+		if [ $UNHEALTHY_COUNT -eq 0 ]; then
+			ALL_HEALTHY=true
+			break
+		fi
 
-        sleep 2
-        ELAPSED=$((ELAPSED + 2))
-    done
+		sleep 2
+		ELAPSED=$((ELAPSED + 2))
+	done
 
-    if [ "$ALL_HEALTHY" = true ]; then
-        print_success "All services healthy"
-    else
-        print_error "Health check timeout (${HEALTH_TIMEOUT}s) - services not healthy"
-        DEPLOYMENT_FAILED=true
-    fi
+	if [ "$ALL_HEALTHY" = true ]; then
+		print_success "All services healthy"
+	else
+		print_error "Health check timeout (${HEALTH_TIMEOUT}s) - services not healthy"
+		DEPLOYMENT_FAILED=true
+	fi
 fi
 
 # Rollback if deployment failed
 if [ "$DEPLOYMENT_FAILED" = true ]; then
-    print_section "Rolling Back"
-    print_warning "Deployment failed - attempting rollback"
+	print_section "Rolling Back"
+	print_warning "Deployment failed - attempting rollback"
 
-    if $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>&1 | tee -a "$LOG_FILE"; then
-        print_info "Stopped failed deployment"
-    fi
+	if $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>&1 | tee -a "$LOG_FILE"; then
+		print_info "Stopped failed deployment"
+	fi
 
-    # Restore backed-up volumes if any
-    if [ ${#BACKED_UP_VOLUMES[@]} -gt 0 ]; then
-        print_info "Restoring ${#BACKED_UP_VOLUMES[@]} volume backup(s)..."
-        for entry in "${BACKED_UP_VOLUMES[@]}"; do
-            vol_name="${entry%%:*}"
-            vol_backup="${entry#*:}"
-            if [ -f "$vol_backup" ]; then
-                print_info "Restoring volume: $vol_name from $vol_backup"
-                if docker run --rm \
-                    -v "${PROJECT_NAME}_${vol_name}:/data" \
-                    -v "$(dirname "$vol_backup"):/backup:ro" \
-                    "$BACKUP_IMAGE" sh -c "rm -rf /data/* && tar xzf /backup/$(basename "$vol_backup") -C /" 2>>"$LOG_FILE"; then
-                    print_success "Volume restored: $vol_name"
-                else
-                    print_error "Failed to restore volume: $vol_name"
-                fi
-            else
-                print_warning "Backup file not found for volume: $vol_name"
-            fi
-        done
-    fi
+	# Restore backed-up volumes if any
+	if [ ${#BACKED_UP_VOLUMES[@]} -gt 0 ]; then
+		print_info "Restoring ${#BACKED_UP_VOLUMES[@]} volume backup(s)..."
+		for entry in "${BACKED_UP_VOLUMES[@]}"; do
+			vol_name="${entry%%:*}"
+			vol_backup="${entry#*:}"
+			if [ -f "$vol_backup" ]; then
+				print_info "Restoring volume: $vol_name from $vol_backup"
+				if docker run --rm \
+					-v "${PROJECT_NAME}_${vol_name}:/data" \
+					-v "$(dirname "$vol_backup"):/backup:ro" \
+					"$BACKUP_IMAGE" sh -c "rm -rf /data/* && tar xzf /backup/$(basename "$vol_backup") -C /" 2>>"$LOG_FILE"; then
+					print_success "Volume restored: $vol_name"
+				else
+					print_error "Failed to restore volume: $vol_name"
+				fi
+			else
+				print_warning "Backup file not found for volume: $vol_name"
+			fi
+		done
+	fi
 
-    # Restart with previous state
-    if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1 | tee -a "$LOG_FILE"; then
-        print_info "Restarted services after rollback"
-    fi
+	# Restart with previous state
+	if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1 | tee -a "$LOG_FILE"; then
+		print_info "Restarted services after rollback"
+	fi
 
-    ROLLBACK_PERFORMED=true
-    print_error "Rollback performed - please check logs and service state"
-    exit 1
+	ROLLBACK_PERFORMED=true
+	print_error "Rollback performed - please check logs and service state"
+	exit 1
 fi
 
 # Success
@@ -406,8 +406,8 @@ print_success "All services deployed and healthy"
 
 # JSON output
 if [ "$OUTPUT_JSON" = true ]; then
-    DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
-    cat >"$JSON_FILE" <<EOF
+	DURATION_MS=$((($(date +%s) - RUN_START_TS) * 1000))
+	cat >"$JSON_FILE" <<EOF
 {
   "script": "compose-redeploy",
   "version": "1.2.1",
@@ -432,8 +432,8 @@ if [ "$OUTPUT_JSON" = true ]; then
   "log_file": "$(json_escape "$LOG_FILE")"
 }
 EOF
-    chmod 600 "$JSON_FILE"
-    print_info "JSON summary: $JSON_FILE"
+	chmod 600 "$JSON_FILE"
+	print_info "JSON summary: $JSON_FILE"
 fi
 
 exit 0

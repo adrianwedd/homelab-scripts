@@ -21,8 +21,8 @@ umask 077
 
 # Ensure logs directory exists with secure permissions
 if [ ! -d "$LOGS_DIR" ]; then
-    mkdir -p "$LOGS_DIR"
-    chmod 700 "$LOGS_DIR"
+	mkdir -p "$LOGS_DIR"
+	chmod 700 "$LOGS_DIR"
 fi
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -41,27 +41,27 @@ DRY_RUN=false
 
 # Print functions
 print_info() {
-    echo -e "${BLUE}ℹ${NC} $*" | tee -a "$LOG_FILE"
+	echo -e "${BLUE}ℹ${NC} $*" | tee -a "$LOG_FILE"
 }
 
 print_success() {
-    echo -e "${GREEN}✓${NC} $*" | tee -a "$LOG_FILE"
+	echo -e "${GREEN}✓${NC} $*" | tee -a "$LOG_FILE"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} $*" | tee -a "$LOG_FILE"
+	echo -e "${YELLOW}⚠${NC} $*" | tee -a "$LOG_FILE"
 }
 
 print_error() {
-    echo -e "${RED}✗${NC} $*" | tee -a "$LOG_FILE"
+	echo -e "${RED}✗${NC} $*" | tee -a "$LOG_FILE"
 }
 
 print_section() {
-    echo -e "\n${CYAN}━━━ $* ━━━${NC}\n" | tee -a "$LOG_FILE"
+	echo -e "\n${CYAN}━━━ $* ━━━${NC}\n" | tee -a "$LOG_FILE"
 }
 
 show_help() {
-    cat <<EOF
+	cat <<EOF
 Usage: ./nmap-scan.sh [OPTIONS]
 
 Network discovery tool with delta tracking. Safe defaults: ping sweep + quick TCP (22,80,443).
@@ -122,107 +122,107 @@ EOF
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
-    case $1 in
-    --cidr)
-        CIDR_LIST="$2"
-        shift 2
-        ;;
-    --fast)
-        SCAN_MODE="fast"
-        shift
-        ;;
-    --full)
-        SCAN_MODE="full"
-        shift
-        ;;
-    --output)
-        OUTPUT_MODE="$2"
-        if [[ ! "$OUTPUT_MODE" =~ ^(json|table|both)$ ]]; then
-            echo "Error: --output must be json, table, or both"
-            exit 1
-        fi
-        shift 2
-        ;;
-    --no-delta)
-        DO_DELTA=false
-        shift
-        ;;
-    --exclude)
-        EXCLUDE_LIST="$2"
-        shift 2
-        ;;
-    --rate)
-        RATE_LIMIT="$2"
-        if ! [[ "$RATE_LIMIT" =~ ^[0-9]+$ ]] || [ "$RATE_LIMIT" -lt 1 ] || [ "$RATE_LIMIT" -gt 10000 ]; then
-            echo "Error: --rate must be between 1 and 10000"
-            exit 1
-        fi
-        shift 2
-        ;;
-    --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-    --help)
-        show_help
-        exit 0
-        ;;
-    *)
-        echo "Error: Unknown option $1"
-        show_help
-        exit 1
-        ;;
-    esac
+	case $1 in
+	--cidr)
+		CIDR_LIST="$2"
+		shift 2
+		;;
+	--fast)
+		SCAN_MODE="fast"
+		shift
+		;;
+	--full)
+		SCAN_MODE="full"
+		shift
+		;;
+	--output)
+		OUTPUT_MODE="$2"
+		if [[ ! "$OUTPUT_MODE" =~ ^(json|table|both)$ ]]; then
+			echo "Error: --output must be json, table, or both"
+			exit 1
+		fi
+		shift 2
+		;;
+	--no-delta)
+		DO_DELTA=false
+		shift
+		;;
+	--exclude)
+		EXCLUDE_LIST="$2"
+		shift 2
+		;;
+	--rate)
+		RATE_LIMIT="$2"
+		if ! [[ "$RATE_LIMIT" =~ ^[0-9]+$ ]] || [ "$RATE_LIMIT" -lt 1 ] || [ "$RATE_LIMIT" -gt 10000 ]; then
+			echo "Error: --rate must be between 1 and 10000"
+			exit 1
+		fi
+		shift 2
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	--help)
+		show_help
+		exit 0
+		;;
+	*)
+		echo "Error: Unknown option $1"
+		show_help
+		exit 1
+		;;
+	esac
 done
 
 # Check for nmap
 if ! command -v nmap >/dev/null 2>&1; then
-    print_error "nmap is not installed"
-    echo ""
-    echo "Install with:"
-    echo "  macOS:  brew install nmap"
-    echo "  Linux:  sudo apt install nmap"
-    echo ""
-    exit 1
+	print_error "nmap is not installed"
+	echo ""
+	echo "Install with:"
+	echo "  macOS:  brew install nmap"
+	echo "  Linux:  sudo apt install nmap"
+	echo ""
+	exit 1
 fi
 
 # Check if running as root (needed for SYN scans)
 is_root() {
-    [ "$(id -u)" -eq 0 ]
+	[ "$(id -u)" -eq 0 ]
 }
 
 # Auto-detect CIDR if not specified
 detect_cidr() {
-    local detected=""
+	local detected=""
 
-    # Try to get primary interface and its subnet
-    if command -v ip >/dev/null 2>&1; then
-        # Linux: use ip command - get default route interface
-        local primary_if=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
-        if [ -n "$primary_if" ]; then
-            # Get CIDR from this interface
-            detected=$(ip -o -4 addr show dev "$primary_if" 2>/dev/null | awk '{print $4}' | head -n1)
-            if [ -n "$detected" ]; then
-                # Calculate network address from CIDR
-                local ip_part=$(echo "$detected" | cut -d'/' -f1)
-                local mask_bits=$(echo "$detected" | cut -d'/' -f2)
+	# Try to get primary interface and its subnet
+	if command -v ip >/dev/null 2>&1; then
+		# Linux: use ip command - get default route interface
+		local primary_if=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+		if [ -n "$primary_if" ]; then
+			# Get CIDR from this interface
+			detected=$(ip -o -4 addr show dev "$primary_if" 2>/dev/null | awk '{print $4}' | head -n1)
+			if [ -n "$detected" ]; then
+				# Calculate network address from CIDR
+				local ip_part=$(echo "$detected" | cut -d'/' -f1)
+				local mask_bits=$(echo "$detected" | cut -d'/' -f2)
 
-                # Convert to network address
-                local net=$(python3 -c "import ipaddress,sys; print(ipaddress.IPv4Network(sys.argv[1], strict=False).network_address)" "$detected" 2>/dev/null || echo "$ip_part")
-                echo "$net/$mask_bits"
-                return 0
-            fi
-        fi
-    elif command -v ifconfig >/dev/null 2>&1 && command -v route >/dev/null 2>&1; then
-        # macOS: use ifconfig and route - get default route interface
-        local primary_if=$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')
-        if [ -n "$primary_if" ]; then
-            local ip=$(ifconfig "$primary_if" 2>/dev/null | awk '/inet / {print $2}' | head -n1)
-            local netmask=$(ifconfig "$primary_if" 2>/dev/null | awk '/inet / {print $4}' | head -n1)
-            if [ -n "$ip" ] && [ -n "$netmask" ]; then
-                # Use python3 to compute network address (handles hex netmasks from macOS ifconfig)
-                if command -v python3 >/dev/null 2>&1; then
-                    local cidr=$(python3 -c "
+				# Convert to network address
+				local net=$(python3 -c "import ipaddress,sys; print(ipaddress.IPv4Network(sys.argv[1], strict=False).network_address)" "$detected" 2>/dev/null || echo "$ip_part")
+				echo "$net/$mask_bits"
+				return 0
+			fi
+		fi
+	elif command -v ifconfig >/dev/null 2>&1 && command -v route >/dev/null 2>&1; then
+		# macOS: use ifconfig and route - get default route interface
+		local primary_if=$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')
+		if [ -n "$primary_if" ]; then
+			local ip=$(ifconfig "$primary_if" 2>/dev/null | awk '/inet / {print $2}' | head -n1)
+			local netmask=$(ifconfig "$primary_if" 2>/dev/null | awk '/inet / {print $4}' | head -n1)
+			if [ -n "$ip" ] && [ -n "$netmask" ]; then
+				# Use python3 to compute network address (handles hex netmasks from macOS ifconfig)
+				if command -v python3 >/dev/null 2>&1; then
+					local cidr=$(python3 -c "
 import ipaddress, sys
 ip, mask = sys.argv[1], sys.argv[2]
 if mask.startswith('0x'):
@@ -232,84 +232,84 @@ else:
 net = ipaddress.IPv4Network(f'{ip}/{prefix_len}', strict=False)
 print(net)
 " "$ip" "$netmask" 2>/dev/null)
-                    if [ -n "$cidr" ]; then
-                        echo "$cidr"
-                        return 0
-                    fi
-                fi
-            fi
-        fi
-    fi
+					if [ -n "$cidr" ]; then
+						echo "$cidr"
+						return 0
+					fi
+				fi
+			fi
+		fi
+	fi
 
-    return 1
+	return 1
 }
 
 # Validate CIDR format
 validate_cidr() {
-    local cidr="$1"
+	local cidr="$1"
 
-    # CIDR format: IPv4/prefix (e.g., 192.168.1.0/24)
-    # IPv4: 0-255 . 0-255 . 0-255 . 0-255
-    # Prefix: 0-32
-    local ipv4_regex='^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
+	# CIDR format: IPv4/prefix (e.g., 192.168.1.0/24)
+	# IPv4: 0-255 . 0-255 . 0-255 . 0-255
+	# Prefix: 0-32
+	local ipv4_regex='^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
 
-    if ! echo "$cidr" | grep -Eq "$ipv4_regex"; then
-        print_error "Invalid CIDR format: $cidr"
-        print_info "Expected format: 192.168.1.0/24 (IPv4 address with /prefix)"
-        return 1
-    fi
+	if ! echo "$cidr" | grep -Eq "$ipv4_regex"; then
+		print_error "Invalid CIDR format: $cidr"
+		print_info "Expected format: 192.168.1.0/24 (IPv4 address with /prefix)"
+		return 1
+	fi
 
-    # Extract IP and prefix
-    local ip_part=$(echo "$cidr" | cut -d'/' -f1)
-    local prefix=$(echo "$cidr" | cut -d'/' -f2)
+	# Extract IP and prefix
+	local ip_part=$(echo "$cidr" | cut -d'/' -f1)
+	local prefix=$(echo "$cidr" | cut -d'/' -f2)
 
-    # Validate each octet (0-255)
-    IFS='.' read -ra octets <<<"$ip_part"
-    if [ "${#octets[@]}" -ne 4 ]; then
-        print_error "Invalid IP address: $ip_part (must have 4 octets)"
-        return 1
-    fi
+	# Validate each octet (0-255)
+	IFS='.' read -ra octets <<<"$ip_part"
+	if [ "${#octets[@]}" -ne 4 ]; then
+		print_error "Invalid IP address: $ip_part (must have 4 octets)"
+		return 1
+	fi
 
-    for octet in "${octets[@]}"; do
-        if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ] 2>/dev/null; then
-            print_error "Invalid IP octet: $octet (must be 0-255)"
-            return 1
-        fi
-    done
+	for octet in "${octets[@]}"; do
+		if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ] 2>/dev/null; then
+			print_error "Invalid IP octet: $octet (must be 0-255)"
+			return 1
+		fi
+	done
 
-    # Validate prefix (0-32 for IPv4)
-    if [ "$prefix" -lt 0 ] || [ "$prefix" -gt 32 ] 2>/dev/null; then
-        print_error "Invalid CIDR prefix: /$prefix (must be /0 to /32)"
-        return 1
-    fi
+	# Validate prefix (0-32 for IPv4)
+	if [ "$prefix" -lt 0 ] || [ "$prefix" -gt 32 ] 2>/dev/null; then
+		print_error "Invalid CIDR prefix: /$prefix (must be /0 to /32)"
+		return 1
+	fi
 
-    return 0
+	return 0
 }
 
 if [ -z "$CIDR_LIST" ]; then
-    print_info "No CIDR specified, attempting auto-detection..."
-    CIDR_LIST=$(detect_cidr)
-    if [ -z "$CIDR_LIST" ]; then
-        print_error "Could not auto-detect CIDR"
-        print_info "Please specify with --cidr \"192.168.1.0/24\""
-        exit 1
-    fi
-    print_success "Auto-detected CIDR: $CIDR_LIST"
+	print_info "No CIDR specified, attempting auto-detection..."
+	CIDR_LIST=$(detect_cidr)
+	if [ -z "$CIDR_LIST" ]; then
+		print_error "Could not auto-detect CIDR"
+		print_info "Please specify with --cidr \"192.168.1.0/24\""
+		exit 1
+	fi
+	print_success "Auto-detected CIDR: $CIDR_LIST"
 fi
 
 # Validate all CIDRs in the list
 IFS=',' read -ra CIDR_ARRAY <<<"$CIDR_LIST"
 for cidr in "${CIDR_ARRAY[@]}"; do
-    # Trim leading/trailing whitespace (pure bash)
-    cidr="${cidr#"${cidr%%[![:space:]]*}"}"
-    cidr="${cidr%"${cidr##*[![:space:]]}"}"
-    if ! validate_cidr "$cidr"; then
-        print_info "Examples of valid CIDR notation:"
-        print_info "  Single network:  192.168.1.0/24"
-        print_info "  Multiple:        192.168.1.0/24,10.0.0.0/8"
-        print_info "  Small subnet:    192.168.1.0/30 (4 addresses)"
-        exit 1
-    fi
+	# Trim leading/trailing whitespace (pure bash)
+	cidr="${cidr#"${cidr%%[![:space:]]*}"}"
+	cidr="${cidr%"${cidr##*[![:space:]]}"}"
+	if ! validate_cidr "$cidr"; then
+		print_info "Examples of valid CIDR notation:"
+		print_info "  Single network:  192.168.1.0/24"
+		print_info "  Multiple:        192.168.1.0/24,10.0.0.0/8"
+		print_info "  Small subnet:    192.168.1.0/30 (4 addresses)"
+		exit 1
+	fi
 done
 
 # Show configuration
@@ -324,82 +324,82 @@ print_info "JSON output: $JSON_FILE"
 
 # Build nmap command
 build_nmap_cmd() {
-    local cidr="$1"
-    NMAP_CMD=(nmap)
+	local cidr="$1"
+	NMAP_CMD=(nmap)
 
-    # Scan mode - adapt based on root privileges
-    if [ "$SCAN_MODE" = "fast" ]; then
-        # Fast mode: host discovery + quick TCP scan on common ports
-        NMAP_CMD+=(-sn "-PS22,80,443") # Ping scan + TCP SYN to common ports
-        if ! is_root; then
-            # Non-root: -sn doesn't require root, but -PS does
-            # Fall back to -sT (TCP connect) for port scanning
-            print_warning "Running as non-root: using TCP connect scan (-sT) instead of SYN scan (-sS)"
-            print_info "For faster scans with MAC addresses, run with sudo"
-        fi
-    else
-        # Full mode: comprehensive TCP scan
-        if is_root; then
-            NMAP_CMD+=(-sS) # TCP SYN scan (fast, requires root)
-        else
-            NMAP_CMD+=(-sT) # TCP connect scan (slower, works without root)
-            print_warning "Running as non-root: using TCP connect scan (-sT)"
-            print_info "SYN scan (-sS) requires root privileges. For faster scans, run with sudo"
-        fi
-        NMAP_CMD+=(-p 1-1000) # Top 1000 ports (not all 65535)
-    fi
+	# Scan mode - adapt based on root privileges
+	if [ "$SCAN_MODE" = "fast" ]; then
+		# Fast mode: host discovery + quick TCP scan on common ports
+		NMAP_CMD+=(-sn "-PS22,80,443") # Ping scan + TCP SYN to common ports
+		if ! is_root; then
+			# Non-root: -sn doesn't require root, but -PS does
+			# Fall back to -sT (TCP connect) for port scanning
+			print_warning "Running as non-root: using TCP connect scan (-sT) instead of SYN scan (-sS)"
+			print_info "For faster scans with MAC addresses, run with sudo"
+		fi
+	else
+		# Full mode: comprehensive TCP scan
+		if is_root; then
+			NMAP_CMD+=(-sS) # TCP SYN scan (fast, requires root)
+		else
+			NMAP_CMD+=(-sT) # TCP connect scan (slower, works without root)
+			print_warning "Running as non-root: using TCP connect scan (-sT)"
+			print_info "SYN scan (-sS) requires root privileges. For faster scans, run with sudo"
+		fi
+		NMAP_CMD+=(-p 1-1000) # Top 1000 ports (not all 65535)
+	fi
 
-    # Rate limiting (applies to all modes)
-    NMAP_CMD+=(--max-rate "$RATE_LIMIT")
+	# Rate limiting (applies to all modes)
+	NMAP_CMD+=(--max-rate "$RATE_LIMIT")
 
-    # Output format
-    NMAP_CMD+=(-oX -) # XML output to stdout
+	# Output format
+	NMAP_CMD+=(-oX -) # XML output to stdout
 
-    # Add CIDR
-    NMAP_CMD+=("$cidr")
+	# Add CIDR
+	NMAP_CMD+=("$cidr")
 
-    # Exclusions
-    if [ -n "$EXCLUDE_LIST" ]; then
-        NMAP_CMD+=(--exclude "$EXCLUDE_LIST")
-    fi
+	# Exclusions
+	if [ -n "$EXCLUDE_LIST" ]; then
+		NMAP_CMD+=(--exclude "$EXCLUDE_LIST")
+	fi
 }
 
 if [ "$DRY_RUN" = true ]; then
-    print_warning "DRY RUN - no actual scanning will be performed"
-    echo ""
+	print_warning "DRY RUN - no actual scanning will be performed"
+	echo ""
 
-    # Show exact commands that would be run
-    print_info "Commands that would be executed:"
-    echo ""
-    IFS=',' read -ra CIDR_ARRAY <<<"$CIDR_LIST"
-    for cidr in "${CIDR_ARRAY[@]}"; do
-        # Trim leading/trailing whitespace (pure bash)
-        cidr="${cidr#"${cidr%%[![:space:]]*}"}"
-        cidr="${cidr%"${cidr##*[![:space:]]}"}"
-        build_nmap_cmd "$cidr"
-        echo "  ${NMAP_CMD[*]}"
-    done
-    echo ""
+	# Show exact commands that would be run
+	print_info "Commands that would be executed:"
+	echo ""
+	IFS=',' read -ra CIDR_ARRAY <<<"$CIDR_LIST"
+	for cidr in "${CIDR_ARRAY[@]}"; do
+		# Trim leading/trailing whitespace (pure bash)
+		cidr="${cidr#"${cidr%%[![:space:]]*}"}"
+		cidr="${cidr%"${cidr##*[![:space:]]}"}"
+		build_nmap_cmd "$cidr"
+		echo "  ${NMAP_CMD[*]}"
+	done
+	echo ""
 
-    print_info "Output files:"
-    echo "  JSON: $JSON_FILE"
-    echo "  Log:  $LOG_FILE"
-    echo ""
+	print_info "Output files:"
+	echo "  JSON: $JSON_FILE"
+	echo "  Log:  $LOG_FILE"
+	echo ""
 
-    # Show privilege info
-    if is_root; then
-        print_success "Running as root: SYN scans available, MAC addresses will be captured"
-    else
-        print_warning "Running as non-root: TCP connect scans only, MAC addresses may not be available"
-        print_info "Note: MAC addresses are only available for hosts on the same L2 segment"
-    fi
+	# Show privilege info
+	if is_root; then
+		print_success "Running as root: SYN scans available, MAC addresses will be captured"
+	else
+		print_warning "Running as non-root: TCP connect scans only, MAC addresses may not be available"
+		print_info "Note: MAC addresses are only available for hosts on the same L2 segment"
+	fi
 
-    exit 0
+	exit 0
 fi
 
 # Parse nmap XML output to JSON with schema versioning
 parse_nmap_xml() {
-    awk '
+	awk '
     function extract_attr(line, name,    start, rest, val) {
         start = index(line, name "=\"")
         if (start == 0) return ""
@@ -484,20 +484,20 @@ temp_xml=$(mktemp)
 trap 'rm -f "$temp_xml"' EXIT
 
 for cidr in "${CIDR_ARRAY[@]}"; do
-    # Trim leading/trailing whitespace (pure bash)
-    cidr="${cidr#"${cidr%%[![:space:]]*}"}"
-    cidr="${cidr%"${cidr##*[![:space:]]}"}"
-    print_info "Scanning $cidr..."
+	# Trim leading/trailing whitespace (pure bash)
+	cidr="${cidr#"${cidr%%[![:space:]]*}"}"
+	cidr="${cidr%"${cidr##*[![:space:]]}"}"
+	print_info "Scanning $cidr..."
 
-    build_nmap_cmd "$cidr"
-    print_info "Command: ${NMAP_CMD[*]}"
+	build_nmap_cmd "$cidr"
+	print_info "Command: ${NMAP_CMD[*]}"
 
-    if ! "${NMAP_CMD[@]}" >>"$temp_xml" 2>>"$LOG_FILE"; then
-        print_error "Scan failed for $cidr"
-        continue
-    fi
+	if ! "${NMAP_CMD[@]}" >>"$temp_xml" 2>>"$LOG_FILE"; then
+		print_error "Scan failed for $cidr"
+		continue
+	fi
 
-    print_success "Completed scan of $cidr"
+	print_success "Completed scan of $cidr"
 done
 
 # Parse XML to JSON
@@ -510,38 +510,38 @@ print_success "Found $host_count active host(s)"
 
 # Delta tracking (must run before updating latest symlink)
 if [ "$DO_DELTA" = true ] && [ -f "$LATEST_LINK" ]; then
-    prev_file=$(readlink "$LATEST_LINK" 2>/dev/null)
-    if [ -n "$prev_file" ] && [ -f "$LOGS_DIR/$prev_file" ] && [ "$LOGS_DIR/$prev_file" != "$JSON_FILE" ]; then
-        print_section "Delta Analysis"
+	prev_file=$(readlink "$LATEST_LINK" 2>/dev/null)
+	if [ -n "$prev_file" ] && [ -f "$LOGS_DIR/$prev_file" ] && [ "$LOGS_DIR/$prev_file" != "$JSON_FILE" ]; then
+		print_section "Delta Analysis"
 
-        # Extract IPs from current and previous scans
-        current_ips=$(grep -o '"ip": "[^"]*"' "$JSON_FILE" | cut -d'"' -f4 | sort)
-        previous_ips=$(grep -o '"ip": "[^"]*"' "$LOGS_DIR/$prev_file" | cut -d'"' -f4 | sort)
+		# Extract IPs from current and previous scans
+		current_ips=$(grep -o '"ip": "[^"]*"' "$JSON_FILE" | cut -d'"' -f4 | sort)
+		previous_ips=$(grep -o '"ip": "[^"]*"' "$LOGS_DIR/$prev_file" | cut -d'"' -f4 | sort)
 
-        # Find new and removed hosts
-        new_hosts=$(comm -13 <(echo "$previous_ips") <(echo "$current_ips"))
-        removed_hosts=$(comm -23 <(echo "$previous_ips") <(echo "$current_ips"))
+		# Find new and removed hosts
+		new_hosts=$(comm -13 <(echo "$previous_ips") <(echo "$current_ips"))
+		removed_hosts=$(comm -23 <(echo "$previous_ips") <(echo "$current_ips"))
 
-        if [ -n "$new_hosts" ]; then
-            print_success "New hosts detected:"
-            echo "$new_hosts" | while read -r ip; do
-                echo "  + $ip"
-            done | tee -a "$LOG_FILE"
-        fi
+		if [ -n "$new_hosts" ]; then
+			print_success "New hosts detected:"
+			echo "$new_hosts" | while read -r ip; do
+				echo "  + $ip"
+			done | tee -a "$LOG_FILE"
+		fi
 
-        if [ -n "$removed_hosts" ]; then
-            print_warning "Hosts no longer responding:"
-            echo "$removed_hosts" | while read -r ip; do
-                echo "  - $ip"
-            done | tee -a "$LOG_FILE"
-        fi
+		if [ -n "$removed_hosts" ]; then
+			print_warning "Hosts no longer responding:"
+			echo "$removed_hosts" | while read -r ip; do
+				echo "  - $ip"
+			done | tee -a "$LOG_FILE"
+		fi
 
-        if [ -z "$new_hosts" ] && [ -z "$removed_hosts" ]; then
-            print_info "No changes detected since last scan"
-        fi
-    else
-        print_info "No previous scan found for delta comparison"
-    fi
+		if [ -z "$new_hosts" ] && [ -z "$removed_hosts" ]; then
+			print_info "No changes detected since last scan"
+		fi
+	else
+		print_info "No previous scan found for delta comparison"
+	fi
 fi
 
 # Update latest symlink (after delta comparison)
@@ -549,29 +549,29 @@ ln -sf "$(basename "$JSON_FILE")" "$LATEST_LINK"
 
 # Output results
 if [[ "$OUTPUT_MODE" =~ ^(table|both)$ ]]; then
-    print_section "Scan Results"
+	print_section "Scan Results"
 
-    # Table header
-    printf "%-16s %-18s %-30s %-20s\n" "IP Address" "MAC Address" "Vendor" "Open Ports" | tee -a "$LOG_FILE"
-    printf "%s\n" "$(printf '─%.0s' {1..90})" | tee -a "$LOG_FILE"
+	# Table header
+	printf "%-16s %-18s %-30s %-20s\n" "IP Address" "MAC Address" "Vendor" "Open Ports" | tee -a "$LOG_FILE"
+	printf "%s\n" "$(printf '─%.0s' {1..90})" | tee -a "$LOG_FILE"
 
-    # Parse JSON and display table
-    grep '"ip":' "$JSON_FILE" | while read -r line; do
-        ip=$(echo "$line" | grep -o '"ip": "[^"]*"' | cut -d'"' -f4)
-        mac=$(echo "$line" | grep -o '"mac": "[^"]*"' | cut -d'"' -f4)
-        vendor=$(echo "$line" | grep -o '"vendor": "[^"]*"' | cut -d'"' -f4)
-        ports=$(echo "$line" | grep -o '"ports": "[^"]*"' | cut -d'"' -f4)
+	# Parse JSON and display table
+	grep '"ip":' "$JSON_FILE" | while read -r line; do
+		ip=$(echo "$line" | grep -o '"ip": "[^"]*"' | cut -d'"' -f4)
+		mac=$(echo "$line" | grep -o '"mac": "[^"]*"' | cut -d'"' -f4)
+		vendor=$(echo "$line" | grep -o '"vendor": "[^"]*"' | cut -d'"' -f4)
+		ports=$(echo "$line" | grep -o '"ports": "[^"]*"' | cut -d'"' -f4)
 
-        [ -z "$mac" ] && mac="N/A"
-        [ -z "$vendor" ] && vendor="N/A"
-        [ -z "$ports" ] && ports="N/A"
+		[ -z "$mac" ] && mac="N/A"
+		[ -z "$vendor" ] && vendor="N/A"
+		[ -z "$ports" ] && ports="N/A"
 
-        printf "%-16s %-18s %-30s %-20s\n" "$ip" "$mac" "${vendor:0:30}" "$ports"
-    done | tee -a "$LOG_FILE"
+		printf "%-16s %-18s %-30s %-20s\n" "$ip" "$mac" "${vendor:0:30}" "$ports"
+	done | tee -a "$LOG_FILE"
 fi
 
 if [[ "$OUTPUT_MODE" =~ ^(json|both)$ ]]; then
-    print_info "JSON output saved to: $JSON_FILE"
+	print_info "JSON output saved to: $JSON_FILE"
 fi
 
 print_success "Scan complete"

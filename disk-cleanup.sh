@@ -24,17 +24,17 @@ set -u
 
 # Check Bash version for virtualenv deduplication (requires 4.0+)
 check_bash_version_for_venv() {
-    if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-        echo "Error: Bash 4.0+ required for --scan-venvs and --clean-venvs"
-        echo "Current version: ${BASH_VERSION}"
-        echo ""
-        echo "Install Bash 4.0+ with:"
-        echo "  macOS:  brew install bash"
-        echo "  Linux:  sudo apt install bash (usually already 4.0+)"
-        echo ""
-        echo "Or run without virtualenv flags (all other features work with Bash 3.2+)"
-        exit 1
-    fi
+	if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+		echo "Error: Bash 4.0+ required for --scan-venvs and --clean-venvs"
+		echo "Current version: ${BASH_VERSION}"
+		echo ""
+		echo "Install Bash 4.0+ with:"
+		echo "  macOS:  brew install bash"
+		echo "  Linux:  sudo apt install bash (usually already 4.0+)"
+		echo ""
+		echo "Or run without virtualenv flags (all other features work with Bash 3.2+)"
+		exit 1
+	fi
 }
 
 # Colors for output
@@ -61,8 +61,8 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
 chmod 700 "$LOG_DIR" 2>/dev/null || true
 
 if ! acquire_lock "$LOCK_FILE" 86400; then
-    echo "Another disk-cleanup run is already active (lock: $LOCK_FILE)."
-    exit 3
+	echo "Another disk-cleanup run is already active (lock: $LOCK_FILE)."
+	exit 3
 fi
 
 LOG_FILE="$LOG_DIR/disk_cleanup_$(date +%Y%m%d_%H%M%S).log"
@@ -113,9 +113,9 @@ VENV_MIN_AGE_DAYS=30
 # Detect timeout command (GNU timeout or macOS gtimeout)
 TIMEOUT_CMD=""
 if command -v timeout &>/dev/null; then
-    TIMEOUT_CMD="timeout"
+	TIMEOUT_CMD="timeout"
 elif command -v gtimeout &>/dev/null; then
-    TIMEOUT_CMD="gtimeout"
+	TIMEOUT_CMD="gtimeout"
 fi
 
 # Track total space freed (in bytes)
@@ -126,71 +126,71 @@ declare -a MANIFEST_OPERATIONS
 
 # Cleanup on exit
 cleanup_on_exit() {
-    release_lock "$LOCK_FILE"
-    if [ -f "$LOG_FILE" ]; then
-        print_info "Full log saved to: $LOG_FILE"
-    fi
+	release_lock "$LOCK_FILE"
+	if [ -f "$LOG_FILE" ]; then
+		print_info "Full log saved to: $LOG_FILE"
+	fi
 }
 trap cleanup_on_exit EXIT
 
 # Interrupt handling (Ctrl+C)
 ABORTED=0
 handle_interrupt() {
-    if [ "$ABORTED" -eq 0 ]; then
-        ABORTED=1
-        print_warning "Interrupt received. Attempting graceful stop..."
-        stop_gauge
-        if command -v pkill >/dev/null 2>&1; then
-            pkill -INT -f "git gc --aggressive --prune=now" 2>/dev/null || true
-            pkill -INT -f "timeout .* git gc" 2>/dev/null || true
-            pkill -INT -f "gtimeout .* git gc" 2>/dev/null || true
-        else
-            pgrep -f "git gc --aggressive --prune=now" 2>/dev/null | xargs -r kill -INT 2>/dev/null || true
-        fi
-        print_info "Stopped. Press Ctrl+C again to force quit."
-        exit 130
-    else
-        print_warning "Force stopping..."
-        if command -v pkill >/dev/null 2>&1; then
-            pkill -KILL -f "git gc" 2>/dev/null || true
-            pkill -KILL -f "timeout .* git gc" 2>/dev/null || true
-            pkill -KILL -f "gtimeout .* git gc" 2>/dev/null || true
-        else
-            pgrep -f "git gc" 2>/dev/null | xargs -r kill -KILL 2>/dev/null || true
-        fi
-        exit 137
-    fi
+	if [ "$ABORTED" -eq 0 ]; then
+		ABORTED=1
+		print_warning "Interrupt received. Attempting graceful stop..."
+		stop_gauge
+		if command -v pkill >/dev/null 2>&1; then
+			pkill -INT -f "git gc --aggressive --prune=now" 2>/dev/null || true
+			pkill -INT -f "timeout .* git gc" 2>/dev/null || true
+			pkill -INT -f "gtimeout .* git gc" 2>/dev/null || true
+		else
+			pgrep -f "git gc --aggressive --prune=now" 2>/dev/null | xargs -r kill -INT 2>/dev/null || true
+		fi
+		print_info "Stopped. Press Ctrl+C again to force quit."
+		exit 130
+	else
+		print_warning "Force stopping..."
+		if command -v pkill >/dev/null 2>&1; then
+			pkill -KILL -f "git gc" 2>/dev/null || true
+			pkill -KILL -f "timeout .* git gc" 2>/dev/null || true
+			pkill -KILL -f "gtimeout .* git gc" 2>/dev/null || true
+		else
+			pgrep -f "git gc" 2>/dev/null | xargs -r kill -KILL 2>/dev/null || true
+		fi
+		exit 137
+	fi
 }
 trap handle_interrupt INT TERM
 
 # Function to print colored output
 print_info() {
-    echo -e "${BLUE}ℹ${NC} ${1}" | tee -a "$LOG_FILE"
+	echo -e "${BLUE}ℹ${NC} ${1}" | tee -a "$LOG_FILE"
 }
 
 print_success() {
-    echo -e "${GREEN}✓${NC} ${1}" | tee -a "$LOG_FILE"
+	echo -e "${GREEN}✓${NC} ${1}" | tee -a "$LOG_FILE"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} ${1}" | tee -a "$LOG_FILE"
+	echo -e "${YELLOW}⚠${NC} ${1}" | tee -a "$LOG_FILE"
 }
 
 print_error() {
-    echo -e "${RED}✗${NC} ${1}" | tee -a "$LOG_FILE"
+	echo -e "${RED}✗${NC} ${1}" | tee -a "$LOG_FILE"
 }
 
 # Fun facts and live gauge helpers (defined early so they are available when called)
 show_fun_fact() {
-    local facts=(
-        "Tip: Use --dry-run to preview cleanup safely."
-        "Did you know? Git gc can take hours on huge repos."
-        "Pro tip: Use --skip-git-gc for quick weekly cleanups."
-        "Heads up: Docker prune can free tens of GB quickly."
-        "FYI: You can set SOURCE_DIR for rclone without editing."
-    )
-    local idx=$((RANDOM % ${#facts[@]}))
-    echo -e "${YELLOW}💡${NC} ${facts[$idx]}" | tee -a "$LOG_FILE"
+	local facts=(
+		"Tip: Use --dry-run to preview cleanup safely."
+		"Did you know? Git gc can take hours on huge repos."
+		"Pro tip: Use --skip-git-gc for quick weekly cleanups."
+		"Heads up: Docker prune can free tens of GB quickly."
+		"FYI: You can set SOURCE_DIR for rclone without editing."
+	)
+	local idx=$((RANDOM % ${#facts[@]}))
+	echo -e "${YELLOW}💡${NC} ${facts[$idx]}" | tee -a "$LOG_FILE"
 }
 
 FACT_COUNTER=0
@@ -200,252 +200,252 @@ GAUGE_PID=""
 GAUGE_START_TS=$(date +%s)
 
 gauge_line() {
-    local df_line elapsed used avail percent freed_human now
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        df_line=$(df -h / | tail -1)
-        used=$(echo "$df_line" | awk '{print $(NF-3)}')
-        avail=$(echo "$df_line" | awk '{print $(NF-1)}')
-        percent=$(echo "$df_line" | awk '{print $(NF-2)}')
-    else
-        df_line=$(df -h / | tail -1)
-        used=$(echo "$df_line" | awk '{print $(NF-4)}')
-        avail=$(echo "$df_line" | awk '{print $(NF-2)}')
-        percent=$(echo "$df_line" | awk '{print $(NF-3)}')
-    fi
-    now=$(date +%s)
-    elapsed=$((now - GAUGE_START_TS))
-    [ -n "$elapsed" ] && [ "$elapsed" -lt 0 ] && elapsed=0
-    local mins=$((elapsed / 60))
-    local secs=$((elapsed % 60))
-    freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
-    printf "\r💾 Disk: %s used, Avail %s | Freed: %s | ⏱ %dm %02ds" "$percent" "$avail" "$freed_human" "$mins" "$secs"
+	local df_line elapsed used avail percent freed_human now
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		df_line=$(df -h / | tail -1)
+		used=$(echo "$df_line" | awk '{print $(NF-3)}')
+		avail=$(echo "$df_line" | awk '{print $(NF-1)}')
+		percent=$(echo "$df_line" | awk '{print $(NF-2)}')
+	else
+		df_line=$(df -h / | tail -1)
+		used=$(echo "$df_line" | awk '{print $(NF-4)}')
+		avail=$(echo "$df_line" | awk '{print $(NF-2)}')
+		percent=$(echo "$df_line" | awk '{print $(NF-3)}')
+	fi
+	now=$(date +%s)
+	elapsed=$((now - GAUGE_START_TS))
+	[ -n "$elapsed" ] && [ "$elapsed" -lt 0 ] && elapsed=0
+	local mins=$((elapsed / 60))
+	local secs=$((elapsed % 60))
+	freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
+	printf "\r💾 Disk: %s used, Avail %s | Freed: %s | ⏱ %dm %02ds" "$percent" "$avail" "$freed_human" "$mins" "$secs"
 }
 
 start_gauge() {
-    if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
-        (
-            while true; do
-                gauge_line >/dev/tty 2>/dev/null || true
-                sleep "$GAUGE_UPDATE_INTERVAL"
-            done
-        ) &
-        GAUGE_PID=$!
-    fi
+	if [ "$ENABLE_GAUGE" = true ] && [ -t 1 ]; then
+		(
+			while true; do
+				gauge_line >/dev/tty 2>/dev/null || true
+				sleep "$GAUGE_UPDATE_INTERVAL"
+			done
+		) &
+		GAUGE_PID=$!
+	fi
 }
 
 stop_gauge() {
-    if [ -n "$GAUGE_PID" ]; then
-        kill "$GAUGE_PID" 2>/dev/null || true
-        wait "$GAUGE_PID" 2>/dev/null || true
-        GAUGE_PID=""
-        echo "" >/dev/tty 2>/dev/null || true
-    fi
+	if [ -n "$GAUGE_PID" ]; then
+		kill "$GAUGE_PID" 2>/dev/null || true
+		wait "$GAUGE_PID" 2>/dev/null || true
+		GAUGE_PID=""
+		echo "" >/dev/tty 2>/dev/null || true
+	fi
 }
 
 # Virtualenv helpers
 is_active_venv() {
-    # Returns 0 if the given path is the current active VIRTUAL_ENV
-    local path="$1"
-    if [ -n "${VIRTUAL_ENV:-}" ] && [ "$VIRTUAL_ENV" = "$path" ]; then
-        return 0
-    fi
-    return 1
+	# Returns 0 if the given path is the current active VIRTUAL_ENV
+	local path="$1"
+	if [ -n "${VIRTUAL_ENV:-}" ] && [ "$VIRTUAL_ENV" = "$path" ]; then
+		return 0
+	fi
+	return 1
 }
 
 scan_virtualenvs() {
-    print_section "Scanning Python Virtual Envs"
-    local min_bytes=$(awk "BEGIN {printf \"%.0f\", $VENV_MIN_GB * 1024 * 1024 * 1024}")
-    local total_found=0
-    local total_meets=0
-    local total_bytes=0
+	print_section "Scanning Python Virtual Envs"
+	local min_bytes=$(awk "BEGIN {printf \"%.0f\", $VENV_MIN_GB * 1024 * 1024 * 1024}")
+	local total_found=0
+	local total_meets=0
+	local total_bytes=0
 
-    # Deduplication: track seen venvs by realpath
-    declare -A seen_venvs
+	# Deduplication: track seen venvs by realpath
+	declare -A seen_venvs
 
-    for root in "${VENV_ROOTS[@]}"; do
-        [ -d "$root" ] || continue
-        while IFS= read -r vdir; do
-            [ -d "$vdir" ] || continue
+	for root in "${VENV_ROOTS[@]}"; do
+		[ -d "$root" ] || continue
+		while IFS= read -r vdir; do
+			[ -d "$vdir" ] || continue
 
-            # Deduplicate: get canonical path and skip if already seen
-            local canonical_path
-            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$vdir" 2>/dev/null || echo "$vdir")
-            if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
-                continue
-            fi
-            seen_venvs[$canonical_path]=1
+			# Deduplicate: get canonical path and skip if already seen
+			local canonical_path
+			canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$vdir" 2>/dev/null || echo "$vdir")
+			if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
+				continue
+			fi
+			seen_venvs[$canonical_path]=1
 
-            total_found=$((total_found + 1))
-            # Size and age
-            local size_bytes=$(get_dir_size_bytes "$vdir")
-            local size_human=$(bytes_to_human "$size_bytes")
-            local mtime
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                mtime=$(stat -f %m "$vdir" 2>/dev/null || echo 0)
-            else
-                mtime=$(stat -c %Y "$vdir" 2>/dev/null || echo 0)
-            fi
-            local now=$(date +%s)
-            local age_days=$(awk "BEGIN {printf \"%.0f\", ($now - $mtime) / 86400}")
+			total_found=$((total_found + 1))
+			# Size and age
+			local size_bytes=$(get_dir_size_bytes "$vdir")
+			local size_human=$(bytes_to_human "$size_bytes")
+			local mtime
+			if [[ "$OSTYPE" == "darwin"* ]]; then
+				mtime=$(stat -f %m "$vdir" 2>/dev/null || echo 0)
+			else
+				mtime=$(stat -c %Y "$vdir" 2>/dev/null || echo 0)
+			fi
+			local now=$(date +%s)
+			local age_days=$(awk "BEGIN {printf \"%.0f\", ($now - $mtime) / 86400}")
 
-            local meets="no"
-            if [ "$size_bytes" -ge "$min_bytes" ] && [ "$age_days" -ge "$VENV_MIN_AGE_DAYS" ]; then
-                meets="yes"
-                total_meets=$((total_meets + 1))
-                total_bytes=$((total_bytes + size_bytes))
-            fi
+			local meets="no"
+			if [ "$size_bytes" -ge "$min_bytes" ] && [ "$age_days" -ge "$VENV_MIN_AGE_DAYS" ]; then
+				meets="yes"
+				total_meets=$((total_meets + 1))
+				total_bytes=$((total_bytes + size_bytes))
+			fi
 
-            echo "  - $vdir | $size_human | ${age_days}d old | meets: $meets" | tee -a "$LOG_FILE"
-        done < <(find "$root" -maxdepth 5 -type d \( -name ".venv" -o -name "venv" \) -prune 2>/dev/null)
-    done
+			echo "  - $vdir | $size_human | ${age_days}d old | meets: $meets" | tee -a "$LOG_FILE"
+		done < <(find "$root" -maxdepth 5 -type d \( -name ".venv" -o -name "venv" \) -prune 2>/dev/null)
+	done
 
-    print_info "Found $total_found virtualenv(s); candidates meeting thresholds: $total_meets (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
-    print_info "Potential reclaim: $(bytes_to_human $total_bytes)"
-    VENV_FOUND=$((VENV_FOUND + total_found))
-    VENV_CANDIDATES=$((VENV_CANDIDATES + total_meets))
-    VENV_POTENTIAL_BYTES=$((VENV_POTENTIAL_BYTES + total_bytes))
+	print_info "Found $total_found virtualenv(s); candidates meeting thresholds: $total_meets (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
+	print_info "Potential reclaim: $(bytes_to_human $total_bytes)"
+	VENV_FOUND=$((VENV_FOUND + total_found))
+	VENV_CANDIDATES=$((VENV_CANDIDATES + total_meets))
+	VENV_POTENTIAL_BYTES=$((VENV_POTENTIAL_BYTES + total_bytes))
 }
 
 clean_virtualenvs() {
-    print_section "Cleaning Python Virtual Envs"
-    local min_bytes=$(awk "BEGIN {printf \"%.0f\", $VENV_MIN_GB * 1024 * 1024 * 1024}")
-    local removed=0
-    local freed_total=0
+	print_section "Cleaning Python Virtual Envs"
+	local min_bytes=$(awk "BEGIN {printf \"%.0f\", $VENV_MIN_GB * 1024 * 1024 * 1024}")
+	local removed=0
+	local freed_total=0
 
-    # Deduplication: track seen venvs by realpath
-    declare -A seen_venvs
+	# Deduplication: track seen venvs by realpath
+	declare -A seen_venvs
 
-    for root in "${VENV_ROOTS[@]}"; do
-        [ -d "$root" ] || continue
-        while IFS= read -r vdir; do
-            # Security: ensure vdir is a directory and contains pyvenv.cfg
-            if [ ! -d "$vdir" ] || [ ! -f "$vdir/pyvenv.cfg" ]; then
-                print_warning "Skipping invalid or non-venv directory: $vdir"
-                continue
-            fi
+	for root in "${VENV_ROOTS[@]}"; do
+		[ -d "$root" ] || continue
+		while IFS= read -r vdir; do
+			# Security: ensure vdir is a directory and contains pyvenv.cfg
+			if [ ! -d "$vdir" ] || [ ! -f "$vdir/pyvenv.cfg" ]; then
+				print_warning "Skipping invalid or non-venv directory: $vdir"
+				continue
+			fi
 
-            # Security: ensure vdir is within the root
-            if [[ ! "$vdir" == "$root"* ]]; then
-                print_error "Security: venv path is outside of its root. Skipping: $vdir"
-                continue
-            fi
+			# Security: ensure vdir is within the root
+			if [[ ! "$vdir" == "$root"* ]]; then
+				print_error "Security: venv path is outside of its root. Skipping: $vdir"
+				continue
+			fi
 
-            # Deduplicate: get canonical path and skip if already seen
-            local canonical_path
-            canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$vdir" 2>/dev/null || echo "$vdir")
-            if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
-                continue
-            fi
-            seen_venvs[$canonical_path]=1
+			# Deduplicate: get canonical path and skip if already seen
+			local canonical_path
+			canonical_path=$(realpath "$vdir" 2>/dev/null || readlink -f "$vdir" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$vdir" 2>/dev/null || echo "$vdir")
+			if [ -n "${seen_venvs[$canonical_path]:-}" ]; then
+				continue
+			fi
+			seen_venvs[$canonical_path]=1
 
-            if is_active_venv "$vdir"; then
-                print_warning "Skipping active venv: $vdir"
-                continue
-            fi
-            # Size and age
-            local size_bytes=$(get_dir_size_bytes "$vdir")
-            local size_human=$(bytes_to_human "$size_bytes")
-            local mtime
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                mtime=$(stat -f %m "$vdir" 2>/dev/null || echo 0)
-            else
-                mtime=$(stat -c %Y "$vdir" 2>/dev/null || echo 0)
-            fi
-            local now=$(date +%s)
-            local age_days=$(awk "BEGIN {printf \"%.0f\", ($now - $mtime) / 86400}")
+			if is_active_venv "$vdir"; then
+				print_warning "Skipping active venv: $vdir"
+				continue
+			fi
+			# Size and age
+			local size_bytes=$(get_dir_size_bytes "$vdir")
+			local size_human=$(bytes_to_human "$size_bytes")
+			local mtime
+			if [[ "$OSTYPE" == "darwin"* ]]; then
+				mtime=$(stat -f %m "$vdir" 2>/dev/null || echo 0)
+			else
+				mtime=$(stat -c %Y "$vdir" 2>/dev/null || echo 0)
+			fi
+			local now=$(date +%s)
+			local age_days=$(awk "BEGIN {printf \"%.0f\", ($now - $mtime) / 86400}")
 
-            if [ "$size_bytes" -lt "$min_bytes" ] || [ "$age_days" -lt "$VENV_MIN_AGE_DAYS" ]; then
-                continue
-            fi
+			if [ "$size_bytes" -lt "$min_bytes" ] || [ "$age_days" -lt "$VENV_MIN_AGE_DAYS" ]; then
+				continue
+			fi
 
-            local prompt="Remove venv? $vdir ($size_human, ${age_days}d old)"
-            if [ "$DRY_RUN" = true ]; then
-                print_info "[DRY RUN] Would remove venv: $vdir ($size_human)"
-                continue
-            fi
-            if confirm_action "$prompt"; then
-                # Defensive: ensure path isn't prefixed with '-' and use parameter expansion guard
-                if [[ "$vdir" == -* ]]; then
-                    print_error "Security: venv path starts with '-': $vdir"
-                    continue
-                fi
-                if rm -rf -- "${vdir:?}"; then
-                    print_success "Removed venv: $vdir ($size_human)"
-                    removed=$((removed + 1))
-                    freed_total=$((freed_total + size_bytes))
-                    add_to_manifest "venv_remove" "Removed venv $vdir" true "$vdir"
-                else
-                    print_error "Failed to remove venv: $vdir"
-                fi
-            else
-                print_info "Skipped: $vdir"
-            fi
-        done < <(find "$root" -maxdepth 5 -type d \( -name ".venv" -o -name "venv" \) -prune 2>/dev/null)
-    done
+			local prompt="Remove venv? $vdir ($size_human, ${age_days}d old)"
+			if [ "$DRY_RUN" = true ]; then
+				print_info "[DRY RUN] Would remove venv: $vdir ($size_human)"
+				continue
+			fi
+			if confirm_action "$prompt"; then
+				# Defensive: ensure path isn't prefixed with '-' and use parameter expansion guard
+				if [[ "$vdir" == -* ]]; then
+					print_error "Security: venv path starts with '-': $vdir"
+					continue
+				fi
+				if rm -rf -- "${vdir:?}"; then
+					print_success "Removed venv: $vdir ($size_human)"
+					removed=$((removed + 1))
+					freed_total=$((freed_total + size_bytes))
+					add_to_manifest "venv_remove" "Removed venv $vdir" true "$vdir"
+				else
+					print_error "Failed to remove venv: $vdir"
+				fi
+			else
+				print_info "Skipped: $vdir"
+			fi
+		done < <(find "$root" -maxdepth 5 -type d \( -name ".venv" -o -name "venv" \) -prune 2>/dev/null)
+	done
 
-    if [ "$removed" -gt 0 ]; then
-        print_success "Removed $removed venv(s), reclaimed $(bytes_to_human $freed_total)"
-        TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + freed_total))
-        VENV_REMOVED=$((VENV_REMOVED + removed))
-        VENV_FREED_BYTES=$((VENV_FREED_BYTES + freed_total))
-    else
-        print_info "No venvs removed by thresholds (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
-    fi
+	if [ "$removed" -gt 0 ]; then
+		print_success "Removed $removed venv(s), reclaimed $(bytes_to_human $freed_total)"
+		TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + freed_total))
+		VENV_REMOVED=$((VENV_REMOVED + removed))
+		VENV_FREED_BYTES=$((VENV_FREED_BYTES + freed_total))
+	else
+		print_info "No venvs removed by thresholds (>=${VENV_MIN_GB}GB and >=${VENV_MIN_AGE_DAYS}d)"
+	fi
 }
 
 print_section() {
-    echo "" | tee -a "$LOG_FILE"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
-    echo -e "${BLUE}${BOLD}  ${1}${NC}" | tee -a "$LOG_FILE"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
-    # Optional small fun fact between sections
-    FACT_COUNTER=$((FACT_COUNTER + 1))
-    if [ "$SHOW_FUN_FACTS" = true ] && [ $((FACT_COUNTER % 3)) -eq 0 ]; then
-        show_fun_fact
-    fi
+	echo "" | tee -a "$LOG_FILE"
+	echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
+	echo -e "${BLUE}${BOLD}  ${1}${NC}" | tee -a "$LOG_FILE"
+	echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG_FILE"
+	# Optional small fun fact between sections
+	FACT_COUNTER=$((FACT_COUNTER + 1))
+	if [ "$SHOW_FUN_FACTS" = true ] && [ $((FACT_COUNTER % 3)) -eq 0 ]; then
+		show_fun_fact
+	fi
 }
 
 # Desktop notification (macOS/Linux) at completion
 notify_complete() {
-    local title="Disk Cleanup"
-    local msg="Completed. Freed $(bytes_to_human "$TOTAL_FREED_BYTES"). Log: $LOG_FILE"
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        if command -v terminal-notifier >/dev/null 2>&1; then
-            terminal-notifier -title "$title" -message "$msg" >/dev/null 2>&1 || true
-        else
-            osascript -e "display notification \"$msg\" with title \"$title\"" >/dev/null 2>&1 || true
-        fi
-    else
-        if command -v notify-send >/dev/null 2>&1; then
-            notify-send "$title" "$msg" >/dev/null 2>&1 || true
-        fi
-    fi
+	local title="Disk Cleanup"
+	local msg="Completed. Freed $(bytes_to_human "$TOTAL_FREED_BYTES"). Log: $LOG_FILE"
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		if command -v terminal-notifier >/dev/null 2>&1; then
+			terminal-notifier -title "$title" -message "$msg" >/dev/null 2>&1 || true
+		else
+			osascript -e "display notification \"$msg\" with title \"$title\"" >/dev/null 2>&1 || true
+		fi
+	else
+		if command -v notify-send >/dev/null 2>&1; then
+			notify-send "$title" "$msg" >/dev/null 2>&1 || true
+		fi
+	fi
 }
 
 # Function to convert size to bytes
 size_to_bytes() {
-    local size=$1
-    local number=$(echo "$size" | sed 's/[^0-9.]*//g')
-    local unit=$(echo "$size" | sed 's/[0-9.]*//g' | tr '[:lower:]' '[:upper:]')
+	local size=$1
+	local number=$(echo "$size" | sed 's/[^0-9.]*//g')
+	local unit=$(echo "$size" | sed 's/[0-9.]*//g' | tr '[:lower:]' '[:upper:]')
 
-    case "$unit" in
-    K | KB) awk "BEGIN {printf \"%.0f\", $number * 1024}" ;;
-    M | MB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024}" ;;
-    G | GB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024}" ;;
-    T | TB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024 * 1024}" ;;
-    B | *) echo "${number%.*}" ;;
-    esac
+	case "$unit" in
+	K | KB) awk "BEGIN {printf \"%.0f\", $number * 1024}" ;;
+	M | MB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024}" ;;
+	G | GB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024}" ;;
+	T | TB) awk "BEGIN {printf \"%.0f\", $number * 1024 * 1024 * 1024 * 1024}" ;;
+	B | *) echo "${number%.*}" ;;
+	esac
 }
 
 # Function to convert bytes to human readable
 bytes_to_human() {
-    local bytes=$1
-    if [ -z "$bytes" ] || [ "$bytes" = "0" ]; then
-        echo "0B"
-        return
-    fi
+	local bytes=$1
+	if [ -z "$bytes" ] || [ "$bytes" = "0" ]; then
+		echo "0B"
+		return
+	fi
 
-    awk -v bytes="$bytes" 'BEGIN {
+	awk -v bytes="$bytes" 'BEGIN {
         if (bytes >= 1099511627776) printf "%.2fTB", bytes/1099511627776
         else if (bytes >= 1073741824) printf "%.2fGB", bytes/1073741824
         else if (bytes >= 1048576) printf "%.2fMB", bytes/1048576
@@ -456,106 +456,106 @@ bytes_to_human() {
 
 # Function to get directory size in bytes
 get_dir_size_bytes() {
-    if [ -d "$1" ]; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            du -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
-        else
-            # Linux
-            du -sb "$1" 2>/dev/null | awk '{print $1}'
-        fi
-    else
-        echo "0"
-    fi
+	if [ -d "$1" ]; then
+		if [[ "$OSTYPE" == "darwin"* ]]; then
+			# macOS
+			du -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
+		else
+			# Linux
+			du -sb "$1" 2>/dev/null | awk '{print $1}'
+		fi
+	else
+		echo "0"
+	fi
 }
 
 # Function to get directory size (human readable)
 get_dir_size() {
-    local bytes=$(get_dir_size_bytes "$1")
-    bytes_to_human "$bytes"
+	local bytes=$(get_dir_size_bytes "$1")
+	bytes_to_human "$bytes"
 }
 
 # Function to track freed space
 track_freed_space() {
-    local before_bytes=$1
-    local after_bytes=$2
-    local freed=$((before_bytes - after_bytes))
+	local before_bytes=$1
+	local after_bytes=$2
+	local freed=$((before_bytes - after_bytes))
 
-    if [ $freed -gt 0 ]; then
-        TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + freed))
-        echo "$freed"
-    else
-        echo "0"
-    fi
+	if [ $freed -gt 0 ]; then
+		TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + freed))
+		echo "$freed"
+	else
+		echo "0"
+	fi
 }
 
 # Function to confirm action
 confirm_action() {
-    if [ "$INTERACTIVE" = false ]; then
-        return 0
-    fi
+	if [ "$INTERACTIVE" = false ]; then
+		return 0
+	fi
 
-    # In dry run mode, skip confirmations
-    if [ "$DRY_RUN" = true ]; then
-        return 0
-    fi
+	# In dry run mode, skip confirmations
+	if [ "$DRY_RUN" = true ]; then
+		return 0
+	fi
 
-    local message=$1
-    echo -e "${YELLOW}?${NC} ${message} (y/N): " | tee -a "$LOG_FILE"
-    read -r response
-    echo "$response" >>"$LOG_FILE"
+	local message=$1
+	echo -e "${YELLOW}?${NC} ${message} (y/N): " | tee -a "$LOG_FILE"
+	read -r response
+	echo "$response" >>"$LOG_FILE"
 
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        return 0
-    else
-        return 1
-    fi
+	if [[ "$response" =~ ^[Yy]$ ]]; then
+		return 0
+	else
+		return 1
+	fi
 }
 
 # Function to safely remove directory
 safe_remove() {
-    local dir=$1
-    local desc=$2
+	local dir=$1
+	local desc=$2
 
-    if [ ! -d "$dir" ]; then
-        return 0
-    fi
+	if [ ! -d "$dir" ]; then
+		return 0
+	fi
 
-    local size_before=$(get_dir_size_bytes "$dir")
-    local size_human=$(bytes_to_human "$size_before")
+	local size_before=$(get_dir_size_bytes "$dir")
+	local size_human=$(bytes_to_human "$size_before")
 
-    if [ "$DRY_RUN" = true ]; then
-        print_info "[DRY RUN] Would remove: $dir ($size_human)"
-        return 0
-    fi
+	if [ "$DRY_RUN" = true ]; then
+		print_info "[DRY RUN] Would remove: $dir ($size_human)"
+		return 0
+	fi
 
-    print_info "Removing: $dir ($size_human)"
+	print_info "Removing: $dir ($size_human)"
 
-    if rm -rf "$dir" 2>/dev/null; then
-        local freed=$(track_freed_space "$size_before" 0)
-        print_success "Removed $desc: $(bytes_to_human $freed) freed"
-        return 0
-    else
-        print_error "Failed to remove: $dir"
-        return 1
-    fi
+	if rm -rf "$dir" 2>/dev/null; then
+		local freed=$(track_freed_space "$size_before" 0)
+		print_success "Removed $desc: $(bytes_to_human $freed) freed"
+		return 0
+	else
+		print_error "Failed to remove: $dir"
+		return 1
+	fi
 }
 
 # Add operation to manifest
 add_to_manifest() {
-    local type=$1
-    local description=$2
-    local can_rollback=$3
-    local rollback_data=$4
+	local type=$1
+	local description=$2
+	local can_rollback=$3
+	local rollback_data=$4
 
-    MANIFEST_OPERATIONS+=("$type|$description|$can_rollback|$rollback_data")
+	MANIFEST_OPERATIONS+=("$type|$description|$can_rollback|$rollback_data")
 }
 
 # Create cleanup manifest
 create_manifest() {
-    local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+	local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    cat >"$MANIFEST_FILE" <<EOF
+	cat >"$MANIFEST_FILE" <<EOF
 {
     "version": "1.0",
     "timestamp": "$timestamp",
@@ -563,14 +563,14 @@ create_manifest() {
     "operations": [
 EOF
 
-    local first=true
-    for op in "${MANIFEST_OPERATIONS[@]}"; do
-        IFS='|' read -r type desc can_rollback data <<<"$op"
+	local first=true
+	for op in "${MANIFEST_OPERATIONS[@]}"; do
+		IFS='|' read -r type desc can_rollback data <<<"$op"
 
-        [ "$first" = false ] && echo "," >>"$MANIFEST_FILE"
-        first=false
+		[ "$first" = false ] && echo "," >>"$MANIFEST_FILE"
+		first=false
 
-        cat >>"$MANIFEST_FILE" <<EOF
+		cat >>"$MANIFEST_FILE" <<EOF
         {
             "type": "$(json_escape "$type")",
             "description": "$(json_escape "$desc")",
@@ -578,9 +578,9 @@ EOF
             "rollback_data": "$(json_escape "$data")"
         }
 EOF
-    done
+	done
 
-    cat >>"$MANIFEST_FILE" <<EOF
+	cat >>"$MANIFEST_FILE" <<EOF
 
     ],
     "total_freed_bytes": $TOTAL_FREED_BYTES,
@@ -588,50 +588,50 @@ EOF
 }
 EOF
 
-    print_info "Manifest saved: $MANIFEST_FILE"
+	print_info "Manifest saved: $MANIFEST_FILE"
 }
 
 # Rollback from manifest
 rollback_from_manifest() {
-    local manifest=$1
+	local manifest=$1
 
-    if [ ! -f "$manifest" ]; then
-        print_error "Manifest file not found: $manifest"
-        return 1
-    fi
+	if [ ! -f "$manifest" ]; then
+		print_error "Manifest file not found: $manifest"
+		return 1
+	fi
 
-    print_section "Rollback from Manifest"
-    print_warning "This will attempt to restore cleaned items"
-    echo ""
+	print_section "Rollback from Manifest"
+	print_warning "This will attempt to restore cleaned items"
+	echo ""
 
-    # Parse manifest (simple grep-based parsing for bash compatibility)
-    local can_rollback=$(grep -c '"can_rollback": true' "$manifest")
-    local total_ops=$(grep -c '"type":' "$manifest")
+	# Parse manifest (simple grep-based parsing for bash compatibility)
+	local can_rollback=$(grep -c '"can_rollback": true' "$manifest")
+	local total_ops=$(grep -c '"type":' "$manifest")
 
-    print_info "Manifest: $manifest"
-    print_info "Operations: $total_ops total, $can_rollback can rollback"
-    echo ""
+	print_info "Manifest: $manifest"
+	print_info "Operations: $total_ops total, $can_rollback can rollback"
+	echo ""
 
-    if [ "$can_rollback" -eq 0 ]; then
-        print_warning "No operations in this manifest can be rolled back"
-        print_info "Docker images and most caches cannot be reliably restored"
-        return 1
-    fi
+	if [ "$can_rollback" -eq 0 ]; then
+		print_warning "No operations in this manifest can be rolled back"
+		print_info "Docker images and most caches cannot be reliably restored"
+		return 1
+	fi
 
-    if ! confirm_action "Proceed with rollback?"; then
-        print_info "Rollback cancelled"
-        return 1
-    fi
+	if ! confirm_action "Proceed with rollback?"; then
+		print_info "Rollback cancelled"
+		return 1
+	fi
 
-    print_warning "Note: Most cleanup operations (Docker, caches) cannot be undone"
-    print_warning "This feature is for reference and future cache restoration"
+	print_warning "Note: Most cleanup operations (Docker, caches) cannot be undone"
+	print_warning "This feature is for reference and future cache restoration"
 
-    return 0
+	return 0
 }
 
 # Function to show usage
 show_usage() {
-    cat <<EOF
+	cat <<EOF
 Usage: $0 [OPTIONS]
 
 Comprehensive disk cleanup script to free up space from caches and temporary files.
@@ -684,203 +684,203 @@ EOF
 # Config precedence: defaults < system < user < env < CLI
 load_script_config_chain "disk-cleanup"
 apply_env_overrides "DISK_CLEANUP_" \
-    DRY_RUN INTERACTIVE VERBOSE SKIP_GIT_GC FULL_GC SMART_GC GC_THRESHOLD_GB ENABLE_GAUGE SHOW_FUN_FACTS DOCKER_WAIT_SECS SKIP_DOCKER
+	DRY_RUN INTERACTIVE VERBOSE SKIP_GIT_GC FULL_GC SMART_GC GC_THRESHOLD_GB ENABLE_GAUGE SHOW_FUN_FACTS DOCKER_WAIT_SECS SKIP_DOCKER
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
-    -d | --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-    -y | --yes)
-        INTERACTIVE=false
-        shift
-        ;;
-    -v | --verbose)
-        VERBOSE=true
-        shift
-        ;;
-    --skip-git-gc)
-        SKIP_GIT_GC=true
-        shift
-        ;;
-    --full-gc)
-        FULL_GC=true
-        SMART_GC=false
-        shift
-        ;;
-    --smart-gc)
-        SMART_GC=true
-        FULL_GC=false
-        shift
-        ;;
-    --gc-threshold)
-        if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-            print_error "Invalid threshold: $2 (must be a number)"
-            exit 1
-        fi
-        # Bounds check: reasonable range 0.1GB to 1000GB
-        if awk "BEGIN {exit !($2 < 0.1 || $2 > 1000)}"; then
-            print_error "Invalid threshold: $2 (must be between 0.1 and 1000 GB)"
-            exit 1
-        fi
-        GC_THRESHOLD_GB="$2"
-        shift 2
-        ;;
-    --no-fun)
-        SHOW_FUN_FACTS=false
-        shift
-        ;;
-    --gauge)
-        ENABLE_GAUGE=true
-        shift
-        ;;
-    --no-gauge)
-        ENABLE_GAUGE=false
-        shift
-        ;;
-    --json)
-        JSON_MODE=true
-        shift
-        ;;
-    --docker-wait)
-        if ! echo "$2" | grep -Eq '^[0-9]+$'; then
-            print_error "Invalid seconds: $2 (must be a positive integer)"
-            exit 1
-        fi
-        if [ "$2" -lt 1 ] || [ "$2" -gt 3600 ]; then
-            print_error "Invalid wait time: $2 (must be between 1 and 3600 seconds)"
-            exit 1
-        fi
-        DOCKER_WAIT_SECS="$2"
-        shift 2
-        ;;
-    --skip-docker)
-        SKIP_DOCKER=true
-        shift
-        ;;
-    --show-config)
-        SHOW_CONFIG=true
-        shift
-        ;;
-    --scan-venvs)
-        check_bash_version_for_venv
-        FLAG_SCAN_VENVS=true
-        shift
-        ;;
-    --clean-venvs)
-        check_bash_version_for_venv
-        FLAG_CLEAN_VENVS=true
-        shift
-        ;;
-    --venv-roots)
-        # Support colon-separated list to safely include paths with spaces
-        IFS=':' read -r -a VENV_ROOTS <<<"$2"
-        # Validate all paths for security
-        for i in "${!VENV_ROOTS[@]}"; do
-            root="${VENV_ROOTS[$i]}"
-            # Resolve to absolute path with multiple fallbacks
-            abs_root=""
-            if command -v realpath >/dev/null 2>&1; then
-                abs_root=$(realpath -m -- "$root" 2>/dev/null || echo "")
-            elif readlink -f / >/dev/null 2>&1; then
-                abs_root=$(readlink -f -- "$root" 2>/dev/null || echo "")
-            elif command -v python3 >/dev/null 2>&1; then
-                abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" -- "$root" 2>/dev/null || echo "")
-            fi
+	case $1 in
+	-d | --dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	-y | --yes)
+		INTERACTIVE=false
+		shift
+		;;
+	-v | --verbose)
+		VERBOSE=true
+		shift
+		;;
+	--skip-git-gc)
+		SKIP_GIT_GC=true
+		shift
+		;;
+	--full-gc)
+		FULL_GC=true
+		SMART_GC=false
+		shift
+		;;
+	--smart-gc)
+		SMART_GC=true
+		FULL_GC=false
+		shift
+		;;
+	--gc-threshold)
+		if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+			print_error "Invalid threshold: $2 (must be a number)"
+			exit 1
+		fi
+		# Bounds check: reasonable range 0.1GB to 1000GB
+		if awk "BEGIN {exit !($2 < 0.1 || $2 > 1000)}"; then
+			print_error "Invalid threshold: $2 (must be between 0.1 and 1000 GB)"
+			exit 1
+		fi
+		GC_THRESHOLD_GB="$2"
+		shift 2
+		;;
+	--no-fun)
+		SHOW_FUN_FACTS=false
+		shift
+		;;
+	--gauge)
+		ENABLE_GAUGE=true
+		shift
+		;;
+	--no-gauge)
+		ENABLE_GAUGE=false
+		shift
+		;;
+	--json)
+		JSON_MODE=true
+		shift
+		;;
+	--docker-wait)
+		if ! echo "$2" | grep -Eq '^[0-9]+$'; then
+			print_error "Invalid seconds: $2 (must be a positive integer)"
+			exit 1
+		fi
+		if [ "$2" -lt 1 ] || [ "$2" -gt 3600 ]; then
+			print_error "Invalid wait time: $2 (must be between 1 and 3600 seconds)"
+			exit 1
+		fi
+		DOCKER_WAIT_SECS="$2"
+		shift 2
+		;;
+	--skip-docker)
+		SKIP_DOCKER=true
+		shift
+		;;
+	--show-config)
+		SHOW_CONFIG=true
+		shift
+		;;
+	--scan-venvs)
+		check_bash_version_for_venv
+		FLAG_SCAN_VENVS=true
+		shift
+		;;
+	--clean-venvs)
+		check_bash_version_for_venv
+		FLAG_CLEAN_VENVS=true
+		shift
+		;;
+	--venv-roots)
+		# Support colon-separated list to safely include paths with spaces
+		IFS=':' read -r -a VENV_ROOTS <<<"$2"
+		# Validate all paths for security
+		for i in "${!VENV_ROOTS[@]}"; do
+			root="${VENV_ROOTS[$i]}"
+			# Resolve to absolute path with multiple fallbacks
+			abs_root=""
+			if command -v realpath >/dev/null 2>&1; then
+				abs_root=$(realpath -m -- "$root" 2>/dev/null || echo "")
+			elif readlink -f / >/dev/null 2>&1; then
+				abs_root=$(readlink -f -- "$root" 2>/dev/null || echo "")
+			elif command -v python3 >/dev/null 2>&1; then
+				abs_root=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" -- "$root" 2>/dev/null || echo "")
+			fi
 
-            # If no canonicalization tool available, reject paths with traversal sequences
-            if [ -z "$abs_root" ]; then
-                if [[ "$root" == *"/../"* ]] || [[ "$root" == *"../*"* ]] || [[ "$root" == *"/./"* ]] || [[ "$root" == *"./*"* ]]; then
-                    print_error "Security: Path contains traversal sequences and cannot be validated: $root"
-                    print_info "Install realpath, readlink, or python3 for path canonicalization"
-                    exit 1
-                fi
-                abs_root="$root"
-            fi
+			# If no canonicalization tool available, reject paths with traversal sequences
+			if [ -z "$abs_root" ]; then
+				if [[ "$root" == *"/../"* ]] || [[ "$root" == *"../*"* ]] || [[ "$root" == *"/./"* ]] || [[ "$root" == *"./*"* ]]; then
+					print_error "Security: Path contains traversal sequences and cannot be validated: $root"
+					print_info "Install realpath, readlink, or python3 for path canonicalization"
+					exit 1
+				fi
+				abs_root="$root"
+			fi
 
-            # Security: Ensure path is under $HOME and is a directory
-            if [[ ! "$abs_root" == "$HOME"* ]] || [ ! -d "$abs_root" ]; then
-                print_error "Security: venv-roots must be existing directories under \$HOME: $root (resolved to: $abs_root)"
-                exit 1
-            fi
+			# Security: Ensure path is under $HOME and is a directory
+			if [[ ! "$abs_root" == "$HOME"* ]] || [ ! -d "$abs_root" ]; then
+				print_error "Security: venv-roots must be existing directories under \$HOME: $root (resolved to: $abs_root)"
+				exit 1
+			fi
 
-            # Security: Prevent system directories
-            if [[ "$abs_root" == "/usr"* ]] || [[ "$abs_root" == "/etc"* ]] || [[ "$abs_root" == "/var"* ]] || [[ "$abs_root" == "/bin"* ]] || [[ "$abs_root" == "/sbin"* ]]; then
-                print_error "Security: Cannot scan system directories: $root (resolved to: $abs_root)"
-                exit 1
-            fi
-            VENV_ROOTS[$i]="$abs_root"
-        done
-        shift 2
-        ;;
-    --venv-age)
-        if ! echo "$2" | grep -Eq '^[0-9]+$'; then
-            print_error "Invalid age: $2 (must be a positive integer)"
-            exit 1
-        fi
-        # Bounds check: 1 day to 3650 days (10 years)
-        if [ "$2" -lt 1 ] || [ "$2" -gt 3650 ]; then
-            print_error "Invalid age: $2 (must be between 1 and 3650 days)"
-            exit 1
-        fi
-        VENV_MIN_AGE_DAYS="$2"
-        shift 2
-        ;;
-    --venv-min-gb)
-        if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
-            print_error "Invalid venv size: $2 (must be a number)"
-            exit 1
-        fi
-        # Bounds check: 0.01GB (10MB) to 100GB
-        if awk "BEGIN {exit !($2 < 0.01 || $2 > 100)}"; then
-            print_error "Invalid venv size: $2 (must be between 0.01 and 100 GB)"
-            exit 1
-        fi
-        VENV_MIN_GB="$2"
-        shift 2
-        ;;
-    --rollback)
-        ROLLBACK_MODE=true
-        ROLLBACK_MANIFEST="$2"
-        shift 2
-        ;;
-    -h | --help)
-        show_usage
-        exit 0
-        ;;
-    *)
-        print_error "Unknown option: $1"
-        show_usage
-        exit 1
-        ;;
-    esac
+			# Security: Prevent system directories
+			if [[ "$abs_root" == "/usr"* ]] || [[ "$abs_root" == "/etc"* ]] || [[ "$abs_root" == "/var"* ]] || [[ "$abs_root" == "/bin"* ]] || [[ "$abs_root" == "/sbin"* ]]; then
+				print_error "Security: Cannot scan system directories: $root (resolved to: $abs_root)"
+				exit 1
+			fi
+			VENV_ROOTS[$i]="$abs_root"
+		done
+		shift 2
+		;;
+	--venv-age)
+		if ! echo "$2" | grep -Eq '^[0-9]+$'; then
+			print_error "Invalid age: $2 (must be a positive integer)"
+			exit 1
+		fi
+		# Bounds check: 1 day to 3650 days (10 years)
+		if [ "$2" -lt 1 ] || [ "$2" -gt 3650 ]; then
+			print_error "Invalid age: $2 (must be between 1 and 3650 days)"
+			exit 1
+		fi
+		VENV_MIN_AGE_DAYS="$2"
+		shift 2
+		;;
+	--venv-min-gb)
+		if ! echo "$2" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+			print_error "Invalid venv size: $2 (must be a number)"
+			exit 1
+		fi
+		# Bounds check: 0.01GB (10MB) to 100GB
+		if awk "BEGIN {exit !($2 < 0.01 || $2 > 100)}"; then
+			print_error "Invalid venv size: $2 (must be between 0.01 and 100 GB)"
+			exit 1
+		fi
+		VENV_MIN_GB="$2"
+		shift 2
+		;;
+	--rollback)
+		ROLLBACK_MODE=true
+		ROLLBACK_MANIFEST="$2"
+		shift 2
+		;;
+	-h | --help)
+		show_usage
+		exit 0
+		;;
+	*)
+		print_error "Unknown option: $1"
+		show_usage
+		exit 1
+		;;
+	esac
 done
 
 # Validate jq availability for JSON output
 require_jq_if_json "$JSON_MODE" || exit 1
 
 if [ "$SHOW_CONFIG" = true ]; then
-    echo "DRY_RUN=$DRY_RUN"
-    echo "INTERACTIVE=$INTERACTIVE"
-    echo "VERBOSE=$VERBOSE"
-    echo "SKIP_GIT_GC=$SKIP_GIT_GC"
-    echo "FULL_GC=$FULL_GC"
-    echo "SMART_GC=$SMART_GC"
-    echo "GC_THRESHOLD_GB=$GC_THRESHOLD_GB"
-    echo "ENABLE_GAUGE=$ENABLE_GAUGE"
-    echo "SHOW_FUN_FACTS=$SHOW_FUN_FACTS"
-    echo "DOCKER_WAIT_SECS=$DOCKER_WAIT_SECS"
-    echo "SKIP_DOCKER=$SKIP_DOCKER"
-    exit 0
+	echo "DRY_RUN=$DRY_RUN"
+	echo "INTERACTIVE=$INTERACTIVE"
+	echo "VERBOSE=$VERBOSE"
+	echo "SKIP_GIT_GC=$SKIP_GIT_GC"
+	echo "FULL_GC=$FULL_GC"
+	echo "SMART_GC=$SMART_GC"
+	echo "GC_THRESHOLD_GB=$GC_THRESHOLD_GB"
+	echo "ENABLE_GAUGE=$ENABLE_GAUGE"
+	echo "SHOW_FUN_FACTS=$SHOW_FUN_FACTS"
+	echo "DOCKER_WAIT_SECS=$DOCKER_WAIT_SECS"
+	echo "SKIP_DOCKER=$SKIP_DOCKER"
+	exit 0
 fi
 
 ################################################################################
 # Rollback mode
 ################################################################################
 if [ "$ROLLBACK_MODE" = true ]; then
-    rollback_from_manifest "$ROLLBACK_MANIFEST"
-    exit $?
+	rollback_from_manifest "$ROLLBACK_MANIFEST"
+	exit $?
 fi
 
 ################################################################################
@@ -892,7 +892,7 @@ print_info "Log file: $LOG_FILE"
 print_info "Manifest will be saved to: $MANIFEST_FILE"
 
 if [ "$DRY_RUN" = true ]; then
-    print_warning "DRY RUN MODE - No changes will be made"
+	print_warning "DRY RUN MODE - No changes will be made"
 fi
 
 echo "" | tee -a "$LOG_FILE"
@@ -906,29 +906,29 @@ start_gauge
 print_section "Cleaning VS Code Caches"
 
 VSCODE_CACHE_DIRS=(
-    "$HOME/Library/Application Support/Code/Cache"
-    "$HOME/Library/Application Support/Code/CachedData"
-    "$HOME/Library/Application Support/Code/CachedExtensions"
-    "$HOME/Library/Application Support/Code/CachedExtensionVSIXs"
-    "$HOME/Library/Application Support/Code/User/workspaceStorage"
+	"$HOME/Library/Application Support/Code/Cache"
+	"$HOME/Library/Application Support/Code/CachedData"
+	"$HOME/Library/Application Support/Code/CachedExtensions"
+	"$HOME/Library/Application Support/Code/CachedExtensionVSIXs"
+	"$HOME/Library/Application Support/Code/User/workspaceStorage"
 )
 
 vscode_cleaned=false
 for dir in "${VSCODE_CACHE_DIRS[@]}"; do
-    if [ -d "$dir" ]; then
-        if ! $vscode_cleaned; then
-            if ! confirm_action "Clean VS Code caches?"; then
-                print_info "Skipping VS Code cleanup"
-                break
-            fi
-            vscode_cleaned=true
-        fi
-        safe_remove "$dir" "VS Code cache"
-    fi
+	if [ -d "$dir" ]; then
+		if ! $vscode_cleaned; then
+			if ! confirm_action "Clean VS Code caches?"; then
+				print_info "Skipping VS Code cleanup"
+				break
+			fi
+			vscode_cleaned=true
+		fi
+		safe_remove "$dir" "VS Code cache"
+	fi
 done
 
 if ! $vscode_cleaned; then
-    print_info "No VS Code caches found"
+	print_info "No VS Code caches found"
 fi
 
 ################################################################################
@@ -937,231 +937,231 @@ fi
 print_section "Cleaning Docker"
 
 if [ "$SKIP_DOCKER" = true ]; then
-    print_info "Skipping Docker cleanup (--skip-docker)"
+	print_info "Skipping Docker cleanup (--skip-docker)"
 elif command -v docker &>/dev/null; then
-    # Check if Docker daemon is running
-    if ! docker info &>/dev/null; then
-        print_warning "Docker daemon is not running"
+	# Check if Docker daemon is running
+	if ! docker info &>/dev/null; then
+		print_warning "Docker daemon is not running"
 
-        if confirm_action "Start Docker daemon?"; then
-            print_info "Starting Docker..."
+		if confirm_action "Start Docker daemon?"; then
+			print_info "Starting Docker..."
 
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                # macOS - multiple strategies
-                open --background -a Docker 2>/dev/null || open -a Docker 2>/dev/null || open -a /Applications/Docker.app 2>/dev/null || osascript -e 'tell application "Docker" to launch' 2>/dev/null || true
+			if [[ "$OSTYPE" == "darwin"* ]]; then
+				# macOS - multiple strategies
+				open --background -a Docker 2>/dev/null || open -a Docker 2>/dev/null || open -a /Applications/Docker.app 2>/dev/null || osascript -e 'tell application "Docker" to launch' 2>/dev/null || true
 
-                print_info "Waiting for Docker daemon to start (up to ${DOCKER_WAIT_SECS}s)..."
-                waited=0
-                while [ $waited -lt "$DOCKER_WAIT_SECS" ] && ! docker info &>/dev/null; do
-                    sleep 2
-                    waited=$((waited + 2))
-                    echo -n "."
-                done
-                echo ""
+				print_info "Waiting for Docker daemon to start (up to ${DOCKER_WAIT_SECS}s)..."
+				waited=0
+				while [ $waited -lt "$DOCKER_WAIT_SECS" ] && ! docker info &>/dev/null; do
+					sleep 2
+					waited=$((waited + 2))
+					echo -n "."
+				done
+				echo ""
 
-                if docker info &>/dev/null; then
-                    print_success "Docker daemon started successfully"
-                else
-                    print_error "Failed to start Docker daemon after ${waited}s"
-                    print_info "Tip: Start Docker Desktop manually, or increase wait with --docker-wait SECS"
-                    print_info "Skipping Docker cleanup"
-                fi
-            else
-                # Linux - user must start Docker manually
-                print_error "Docker daemon is not running."
-                print_info "Please start the Docker daemon manually and re-run the script."
-                print_info "e.g., 'sudo systemctl start docker' or 'sudo service docker start'"
-                print_info "Skipping Docker cleanup"
-            fi
-        else
-            print_info "Skipping Docker cleanup"
-        fi
-    fi
+				if docker info &>/dev/null; then
+					print_success "Docker daemon started successfully"
+				else
+					print_error "Failed to start Docker daemon after ${waited}s"
+					print_info "Tip: Start Docker Desktop manually, or increase wait with --docker-wait SECS"
+					print_info "Skipping Docker cleanup"
+				fi
+			else
+				# Linux - user must start Docker manually
+				print_error "Docker daemon is not running."
+				print_info "Please start the Docker daemon manually and re-run the script."
+				print_info "e.g., 'sudo systemctl start docker' or 'sudo service docker start'"
+				print_info "Skipping Docker cleanup"
+			fi
+		else
+			print_info "Skipping Docker cleanup"
+		fi
+	fi
 
-    # Proceed with cleanup if Docker is now running
-    if docker info &>/dev/null && confirm_action "Clean Docker (removes unused containers, images, volumes)?"; then
-        if [ "$DRY_RUN" = true ]; then
-            print_info "[DRY RUN] Would run: docker system prune -af --volumes"
-            docker system df 2>&1 | tee -a "$LOG_FILE"
-        else
-            print_info "Running Docker system prune..."
-            docker_log=$(mktemp /tmp/docker_cleanup.XXXXXX.log)
-            docker system prune -af --volumes 2>&1 | tee -a "$LOG_FILE" | tee "$docker_log"
+	# Proceed with cleanup if Docker is now running
+	if docker info &>/dev/null && confirm_action "Clean Docker (removes unused containers, images, volumes)?"; then
+		if [ "$DRY_RUN" = true ]; then
+			print_info "[DRY RUN] Would run: docker system prune -af --volumes"
+			docker system df 2>&1 | tee -a "$LOG_FILE"
+		else
+			print_info "Running Docker system prune..."
+			docker_log=$(mktemp /tmp/docker_cleanup.XXXXXX.log)
+			docker system prune -af --volumes 2>&1 | tee -a "$LOG_FILE" | tee "$docker_log"
 
-            if grep -q "Total reclaimed space" "$docker_log"; then
-                space=$(grep "Total reclaimed space" "$docker_log" | awk '{print $(NF-1), $NF}')
-                space_bytes=$(size_to_bytes "$space")
-                TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + space_bytes))
-                print_success "Docker cleanup completed. Space freed: $space"
+			if grep -q "Total reclaimed space" "$docker_log"; then
+				space=$(grep "Total reclaimed space" "$docker_log" | awk '{print $(NF-1), $NF}')
+				space_bytes=$(size_to_bytes "$space")
+				TOTAL_FREED_BYTES=$((TOTAL_FREED_BYTES + space_bytes))
+				print_success "Docker cleanup completed. Space freed: $space"
 
-                add_to_manifest "docker_prune" "Docker system prune" "false" "Cannot restore Docker images reliably"
-            else
-                print_success "Docker cleanup completed"
-                add_to_manifest "docker_prune" "Docker system prune" "false" "No space freed"
-            fi
-            rm -f "$docker_log" || true
-            DOCKER_EXECUTED=true
-        fi
-    else
-        print_info "Skipping Docker cleanup"
-    fi
+				add_to_manifest "docker_prune" "Docker system prune" "false" "Cannot restore Docker images reliably"
+			else
+				print_success "Docker cleanup completed"
+				add_to_manifest "docker_prune" "Docker system prune" "false" "No space freed"
+			fi
+			rm -f "$docker_log" || true
+			DOCKER_EXECUTED=true
+		fi
+	else
+		print_info "Skipping Docker cleanup"
+	fi
 else
-    print_warning "Docker not found, skipping"
+	print_warning "Docker not found, skipping"
 fi
 
 ################################################################################
 # 3. Git Garbage Collection
 ################################################################################
 if [ "$SKIP_GIT_GC" = false ]; then
-    print_section "Git Garbage Collection"
+	print_section "Git Garbage Collection"
 
-    print_info "Searching for Git repositories in ~/repos..."
+	print_info "Searching for Git repositories in ~/repos..."
 
-    # Build repo list without using mapfile (macOS bash 3.2 compatible)
-    git_repos=()
-    while IFS= read -r repo; do
-        git_repos+=("$repo")
-    done < <(find ~/repos -name ".git" -type d 2>/dev/null | sed 's|/.git||')
+	# Build repo list without using mapfile (macOS bash 3.2 compatible)
+	git_repos=()
+	while IFS= read -r repo; do
+		git_repos+=("$repo")
+	done < <(find ~/repos -name ".git" -type d 2>/dev/null | sed 's|/.git||')
 
-    if [ ${#git_repos[@]} -eq 0 ]; then
-        print_warning "No Git repositories found"
-    else
-        repo_count=${#git_repos[@]}
-        print_info "Found $repo_count Git repositories"
+	if [ ${#git_repos[@]} -eq 0 ]; then
+		print_warning "No Git repositories found"
+	else
+		repo_count=${#git_repos[@]}
+		print_info "Found $repo_count Git repositories"
 
-        # Smart GC threshold in KiB
-        GC_THRESHOLD_KIB=$(awk "BEGIN {printf \"%.0f\", $GC_THRESHOLD_GB * 1024 * 1024}")
+		# Smart GC threshold in KiB
+		GC_THRESHOLD_KIB=$(awk "BEGIN {printf \"%.0f\", $GC_THRESHOLD_GB * 1024 * 1024}")
 
-        if confirm_action "Run git gc (smart=$SMART_GC, threshold=${GC_THRESHOLD_GB}GB)?"; then
-            current=0
-            failed=0
-            processed=0
-            skipped=0
-            ORIGINAL_DIR=$(pwd)
+		if confirm_action "Run git gc (smart=$SMART_GC, threshold=${GC_THRESHOLD_GB}GB)?"; then
+			current=0
+			failed=0
+			processed=0
+			skipped=0
+			ORIGINAL_DIR=$(pwd)
 
-            for repo in "${git_repos[@]}"; do
-                current=$((current + 1))
-                print_info "[$current/$repo_count] Processing: $repo"
+			for repo in "${git_repos[@]}"; do
+				current=$((current + 1))
+				print_info "[$current/$repo_count] Processing: $repo"
 
-                if [ ! -d "$repo" ]; then
-                    print_warning "Repository no longer exists: $repo"
-                    continue
-                fi
+				if [ ! -d "$repo" ]; then
+					print_warning "Repository no longer exists: $repo"
+					continue
+				fi
 
-                cd "$repo" || {
-                    print_error "Cannot access repository: $repo"
-                    failed=$((failed + 1))
-                    continue
-                }
+				cd "$repo" || {
+					print_error "Cannot access repository: $repo"
+					failed=$((failed + 1))
+					continue
+				}
 
-                # Get repo size before
-                size_before=$(get_dir_size_bytes ".")
-                size_before_human=$(bytes_to_human "$size_before")
+				# Get repo size before
+				size_before=$(get_dir_size_bytes ".")
+				size_before_human=$(bytes_to_human "$size_before")
 
-                should_gc=true
-                reason="full"
-                if [ "$SMART_GC" = true ] && [ "$FULL_GC" = false ]; then
-                    # Evaluate heuristics
-                    # size-pack in KiB
-                    size_pack_kib=$(git count-objects -v 2>/dev/null | awk '/^size-pack:/ {print $2+0}')
-                    [ -z "$size_pack_kib" ] && size_pack_kib=0
-                    # last GC time from marker
-                    last_gc_file=".git/.last_gc"
-                    last_gc_age_days=9999
-                    if [ -f "$last_gc_file" ]; then
-                        if [[ "$OSTYPE" == "darwin"* ]]; then
-                            mtime=$(stat -f %m "$last_gc_file" 2>/dev/null || echo 0)
-                        else
-                            mtime=$(stat -c %Y "$last_gc_file" 2>/dev/null || echo 0)
-                        fi
-                        now_ts=$(date +%s)
-                        age_sec=$((now_ts - mtime))
-                        [ -n "$age_sec" ] && [ "$age_sec" -lt 0 ] && age_sec=0
-                        last_gc_age_days=$(awk "BEGIN {printf \"%.0f\", $age_sec / 86400}")
-                    fi
-                    should_gc=false
-                    reason="threshold_not_met"
-                    if [ "$size_pack_kib" -ge "$GC_THRESHOLD_KIB" ]; then
-                        should_gc=true
-                        reason="pack>=${GC_THRESHOLD_GB}GB"
-                    elif [ "$last_gc_age_days" -ge "$GC_MAX_AGE_DAYS" ]; then
-                        should_gc=true
-                        reason=">=${GC_MAX_AGE_DAYS}d_since_last_gc"
-                    fi
-                fi
+				should_gc=true
+				reason="full"
+				if [ "$SMART_GC" = true ] && [ "$FULL_GC" = false ]; then
+					# Evaluate heuristics
+					# size-pack in KiB
+					size_pack_kib=$(git count-objects -v 2>/dev/null | awk '/^size-pack:/ {print $2+0}')
+					[ -z "$size_pack_kib" ] && size_pack_kib=0
+					# last GC time from marker
+					last_gc_file=".git/.last_gc"
+					last_gc_age_days=9999
+					if [ -f "$last_gc_file" ]; then
+						if [[ "$OSTYPE" == "darwin"* ]]; then
+							mtime=$(stat -f %m "$last_gc_file" 2>/dev/null || echo 0)
+						else
+							mtime=$(stat -c %Y "$last_gc_file" 2>/dev/null || echo 0)
+						fi
+						now_ts=$(date +%s)
+						age_sec=$((now_ts - mtime))
+						[ -n "$age_sec" ] && [ "$age_sec" -lt 0 ] && age_sec=0
+						last_gc_age_days=$(awk "BEGIN {printf \"%.0f\", $age_sec / 86400}")
+					fi
+					should_gc=false
+					reason="threshold_not_met"
+					if [ "$size_pack_kib" -ge "$GC_THRESHOLD_KIB" ]; then
+						should_gc=true
+						reason="pack>=${GC_THRESHOLD_GB}GB"
+					elif [ "$last_gc_age_days" -ge "$GC_MAX_AGE_DAYS" ]; then
+						should_gc=true
+						reason=">=${GC_MAX_AGE_DAYS}d_since_last_gc"
+					fi
+				fi
 
-                if [ "$DRY_RUN" = true ]; then
-                    if [ "$should_gc" = true ] || [ "$FULL_GC" = true ]; then
-                        print_info "[DRY RUN] Would run git gc on: $repo (size: $size_before_human; reason: $reason)"
-                        processed=$((processed + 1))
-                    else
-                        print_info "Skipping git gc (reason: $reason)"
-                        skipped=$((skipped + 1))
-                    fi
-                else
-                    if [ "$should_gc" = false ] && [ "$FULL_GC" = false ]; then
-                        print_info "Skipping git gc (reason: $reason)"
-                        skipped=$((skipped + 1))
-                        cd "$ORIGINAL_DIR" >/dev/null 2>&1 || true
-                        continue
-                    fi
-                    processed=$((processed + 1))
-                    # Run git gc with timeout protection
-                    print_info "Running git gc (size: $size_before_human)..."
+				if [ "$DRY_RUN" = true ]; then
+					if [ "$should_gc" = true ] || [ "$FULL_GC" = true ]; then
+						print_info "[DRY RUN] Would run git gc on: $repo (size: $size_before_human; reason: $reason)"
+						processed=$((processed + 1))
+					else
+						print_info "Skipping git gc (reason: $reason)"
+						skipped=$((skipped + 1))
+					fi
+				else
+					if [ "$should_gc" = false ] && [ "$FULL_GC" = false ]; then
+						print_info "Skipping git gc (reason: $reason)"
+						skipped=$((skipped + 1))
+						cd "$ORIGINAL_DIR" >/dev/null 2>&1 || true
+						continue
+					fi
+					processed=$((processed + 1))
+					# Run git gc with timeout protection
+					print_info "Running git gc (size: $size_before_human)..."
 
-                    # Run git gc with timeout if available
-                    gc_output=""
-                    gc_exit_code=0
-                    if [ -n "$TIMEOUT_CMD" ]; then
-                        gc_output=$($TIMEOUT_CMD 1800 git gc --aggressive --prune=now 2>&1)
-                        gc_exit_code=$?
-                    else
-                        print_warning "No timeout command available (install coreutils for gtimeout on macOS)"
-                        gc_output=$(git gc --aggressive --prune=now 2>&1)
-                        gc_exit_code=$?
-                    fi
+					# Run git gc with timeout if available
+					gc_output=""
+					gc_exit_code=0
+					if [ -n "$TIMEOUT_CMD" ]; then
+						gc_output=$($TIMEOUT_CMD 1800 git gc --aggressive --prune=now 2>&1)
+						gc_exit_code=$?
+					else
+						print_warning "No timeout command available (install coreutils for gtimeout on macOS)"
+						gc_output=$(git gc --aggressive --prune=now 2>&1)
+						gc_exit_code=$?
+					fi
 
-                    # Log output
-                    echo "$gc_output" | tee -a "$LOG_FILE"
+					# Log output
+					echo "$gc_output" | tee -a "$LOG_FILE"
 
-                    # Check exit status instead of grepping output
-                    if [ $gc_exit_code -ne 0 ]; then
-                        print_warning "Git gc failed or timed out in $repo (exit code: $gc_exit_code)"
-                        failed=$((failed + 1))
-                    else
-                        size_after=$(get_dir_size_bytes ".")
-                        size_after_human=$(bytes_to_human "$size_after")
-                        freed=$(track_freed_space "$size_before" "$size_after")
+					# Check exit status instead of grepping output
+					if [ $gc_exit_code -ne 0 ]; then
+						print_warning "Git gc failed or timed out in $repo (exit code: $gc_exit_code)"
+						failed=$((failed + 1))
+					else
+						size_after=$(get_dir_size_bytes ".")
+						size_after_human=$(bytes_to_human "$size_after")
+						freed=$(track_freed_space "$size_before" "$size_after")
 
-                        if [ "$freed" -gt 0 ]; then
-                            print_success "Completed: $(bytes_to_human $freed) freed (was $size_before_human, now $size_after_human)"
-                        else
-                            print_success "Completed (no size change)"
-                        fi
-                        # Update last GC marker
-                        date +%s >.git/.last_gc 2>/dev/null || true
-                    fi
-                fi
-            done
+						if [ "$freed" -gt 0 ]; then
+							print_success "Completed: $(bytes_to_human $freed) freed (was $size_before_human, now $size_after_human)"
+						else
+							print_success "Completed (no size change)"
+						fi
+						# Update last GC marker
+						date +%s >.git/.last_gc 2>/dev/null || true
+					fi
+				fi
+			done
 
-            # Return to original directory
-            cd "$ORIGINAL_DIR" || exit 1
+			# Return to original directory
+			cd "$ORIGINAL_DIR" || exit 1
 
-            if [ $failed -gt 0 ]; then
-                print_warning "Git gc failed for $failed repositories"
-            fi
-            print_info "Git gc summary: processed=$processed, skipped=$skipped, failed=$failed"
-            # Save to globals for JSON summary
-            GIT_GC_PROCESSED=$processed
-            GIT_GC_SKIPPED=$skipped
-            GIT_GC_FAILED=$failed
-        else
-            print_info "Skipping Git garbage collection"
-        fi
-    fi
+			if [ $failed -gt 0 ]; then
+				print_warning "Git gc failed for $failed repositories"
+			fi
+			print_info "Git gc summary: processed=$processed, skipped=$skipped, failed=$failed"
+			# Save to globals for JSON summary
+			GIT_GC_PROCESSED=$processed
+			GIT_GC_SKIPPED=$skipped
+			GIT_GC_FAILED=$failed
+		else
+			print_info "Skipping Git garbage collection"
+		fi
+	fi
 else
-    print_section "Git Garbage Collection"
-    print_info "Skipped (--skip-git-gc flag used)"
+	print_section "Git Garbage Collection"
+	print_info "Skipped (--skip-git-gc flag used)"
 fi
 
 ################################################################################
@@ -1170,28 +1170,28 @@ fi
 print_section "Cleaning Homebrew"
 
 if command -v brew &>/dev/null; then
-    if confirm_action "Clean Homebrew caches?"; then
-        if [ "$DRY_RUN" = true ]; then
-            print_info "[DRY RUN] Would run: brew cleanup --prune=all -s"
-        else
-            print_info "Running brew cleanup..."
-            brew_log=$(mktemp /tmp/brew_cleanup.XXXXXX.log)
-            brew cleanup --prune=all -s 2>&1 | tee -a "$LOG_FILE" | tee "$brew_log"
+	if confirm_action "Clean Homebrew caches?"; then
+		if [ "$DRY_RUN" = true ]; then
+			print_info "[DRY RUN] Would run: brew cleanup --prune=all -s"
+		else
+			print_info "Running brew cleanup..."
+			brew_log=$(mktemp /tmp/brew_cleanup.XXXXXX.log)
+			brew cleanup --prune=all -s 2>&1 | tee -a "$LOG_FILE" | tee "$brew_log"
 
-            # Try to extract space freed
-            if grep -qE "Pruned|freed|removed" "$brew_log"; then
-                space_line=$(grep -E "Pruned|freed|removed" "$brew_log" | tail -1)
-                print_success "Homebrew cleanup completed: $space_line"
-            else
-                print_success "Homebrew cleanup completed"
-            fi
-            rm -f "$brew_log" || true
-        fi
-    else
-        print_info "Skipping Homebrew cleanup"
-    fi
+			# Try to extract space freed
+			if grep -qE "Pruned|freed|removed" "$brew_log"; then
+				space_line=$(grep -E "Pruned|freed|removed" "$brew_log" | tail -1)
+				print_success "Homebrew cleanup completed: $space_line"
+			else
+				print_success "Homebrew cleanup completed"
+			fi
+			rm -f "$brew_log" || true
+		fi
+	else
+		print_info "Skipping Homebrew cleanup"
+	fi
 else
-    print_warning "Homebrew not found, skipping"
+	print_warning "Homebrew not found, skipping"
 fi
 
 ################################################################################
@@ -1200,33 +1200,33 @@ fi
 print_section "Cleaning NPM Cache"
 
 if command -v npm &>/dev/null; then
-    cache_dir=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+	cache_dir=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
 
-    if [ -d "$cache_dir" ]; then
-        size_before=$(get_dir_size_bytes "$cache_dir")
-        size_before_human=$(bytes_to_human "$size_before")
+	if [ -d "$cache_dir" ]; then
+		size_before=$(get_dir_size_bytes "$cache_dir")
+		size_before_human=$(bytes_to_human "$size_before")
 
-        print_info "NPM cache location: $cache_dir (Size: $size_before_human)"
+		print_info "NPM cache location: $cache_dir (Size: $size_before_human)"
 
-        if confirm_action "Clean NPM cache?"; then
-            if [ "$DRY_RUN" = true ]; then
-                print_info "[DRY RUN] Would run: npm cache clean --force"
-            else
-                print_info "Running npm cache clean..."
-                npm cache clean --force 2>&1 | tee -a "$LOG_FILE"
+		if confirm_action "Clean NPM cache?"; then
+			if [ "$DRY_RUN" = true ]; then
+				print_info "[DRY RUN] Would run: npm cache clean --force"
+			else
+				print_info "Running npm cache clean..."
+				npm cache clean --force 2>&1 | tee -a "$LOG_FILE"
 
-                size_after=$(get_dir_size_bytes "$cache_dir")
-                freed=$(track_freed_space "$size_before" "$size_after")
-                print_success "NPM cache cleaned: $(bytes_to_human $freed) freed"
-            fi
-        else
-            print_info "Skipping NPM cleanup"
-        fi
-    else
-        print_warning "NPM cache directory not found"
-    fi
+				size_after=$(get_dir_size_bytes "$cache_dir")
+				freed=$(track_freed_space "$size_before" "$size_after")
+				print_success "NPM cache cleaned: $(bytes_to_human $freed) freed"
+			fi
+		else
+			print_info "Skipping NPM cleanup"
+		fi
+	else
+		print_warning "NPM cache directory not found"
+	fi
 else
-    print_warning "NPM not found, skipping"
+	print_warning "NPM not found, skipping"
 fi
 
 ################################################################################
@@ -1235,33 +1235,33 @@ fi
 print_section "Cleaning Playwright Browsers"
 
 if command -v npx &>/dev/null; then
-    playwright_cache="$HOME/Library/Caches/ms-playwright"
+	playwright_cache="$HOME/Library/Caches/ms-playwright"
 
-    if [ -d "$playwright_cache" ]; then
-        size_before=$(get_dir_size_bytes "$playwright_cache")
-        size_before_human=$(bytes_to_human "$size_before")
+	if [ -d "$playwright_cache" ]; then
+		size_before=$(get_dir_size_bytes "$playwright_cache")
+		size_before_human=$(bytes_to_human "$size_before")
 
-        print_info "Playwright cache: $playwright_cache (Size: $size_before_human)"
+		print_info "Playwright cache: $playwright_cache (Size: $size_before_human)"
 
-        if confirm_action "Uninstall all Playwright browsers?"; then
-            if [ "$DRY_RUN" = true ]; then
-                print_info "[DRY RUN] Would run: npx playwright uninstall --all"
-            else
-                print_info "Uninstalling all Playwright browsers..."
-                npx playwright uninstall --all 2>&1 | tee -a "$LOG_FILE"
+		if confirm_action "Uninstall all Playwright browsers?"; then
+			if [ "$DRY_RUN" = true ]; then
+				print_info "[DRY RUN] Would run: npx playwright uninstall --all"
+			else
+				print_info "Uninstalling all Playwright browsers..."
+				npx playwright uninstall --all 2>&1 | tee -a "$LOG_FILE"
 
-                size_after=$(get_dir_size_bytes "$playwright_cache")
-                freed=$(track_freed_space "$size_before" "$size_after")
-                print_success "Playwright browsers removed: $(bytes_to_human $freed) freed"
-            fi
-        else
-            print_info "Skipping Playwright cleanup"
-        fi
-    else
-        print_warning "No Playwright cache found"
-    fi
+				size_after=$(get_dir_size_bytes "$playwright_cache")
+				freed=$(track_freed_space "$size_before" "$size_after")
+				print_success "Playwright browsers removed: $(bytes_to_human $freed) freed"
+			fi
+		else
+			print_info "Skipping Playwright cleanup"
+		fi
+	else
+		print_warning "No Playwright cache found"
+	fi
 else
-    print_warning "npx not found, skipping Playwright cleanup"
+	print_warning "npx not found, skipping Playwright cleanup"
 fi
 
 ################################################################################
@@ -1270,27 +1270,27 @@ fi
 print_section "Cleaning pnpm Store"
 
 if command -v pnpm &>/dev/null; then
-    if confirm_action "Prune pnpm store?"; then
-        if [ "$DRY_RUN" = true ]; then
-            print_info "[DRY RUN] Would run: pnpm store prune"
-        else
-            print_info "Running pnpm store prune..."
-            pnpm_log=$(mktemp /tmp/pnpm_cleanup.XXXXXX.log)
-            pnpm store prune 2>&1 | tee -a "$LOG_FILE" | tee "$pnpm_log"
+	if confirm_action "Prune pnpm store?"; then
+		if [ "$DRY_RUN" = true ]; then
+			print_info "[DRY RUN] Would run: pnpm store prune"
+		else
+			print_info "Running pnpm store prune..."
+			pnpm_log=$(mktemp /tmp/pnpm_cleanup.XXXXXX.log)
+			pnpm store prune 2>&1 | tee -a "$LOG_FILE" | tee "$pnpm_log"
 
-            if grep -q "removed" "$pnpm_log"; then
-                packages=$(grep "removed" "$pnpm_log" | head -1)
-                print_success "pnpm store pruned: $packages"
-            else
-                print_success "pnpm store pruned"
-            fi
-            rm -f "$pnpm_log" || true
-        fi
-    else
-        print_info "Skipping pnpm cleanup"
-    fi
+			if grep -q "removed" "$pnpm_log"; then
+				packages=$(grep "removed" "$pnpm_log" | head -1)
+				print_success "pnpm store pruned: $packages"
+			else
+				print_success "pnpm store pruned"
+			fi
+			rm -f "$pnpm_log" || true
+		fi
+	else
+		print_info "Skipping pnpm cleanup"
+	fi
 else
-    print_warning "pnpm not found, skipping"
+	print_warning "pnpm not found, skipping"
 fi
 
 ################################################################################
@@ -1299,44 +1299,44 @@ fi
 print_section "Cleaning pip/Python Cache"
 
 if command -v pip &>/dev/null || command -v pip3 &>/dev/null; then
-    PIP_CMD="pip"
-    command -v pip3 &>/dev/null && PIP_CMD="pip3"
+	PIP_CMD="pip"
+	command -v pip3 &>/dev/null && PIP_CMD="pip3"
 
-    cache_dir=$($PIP_CMD cache dir 2>/dev/null || echo "$HOME/Library/Caches/pip")
+	cache_dir=$($PIP_CMD cache dir 2>/dev/null || echo "$HOME/Library/Caches/pip")
 
-    if [ -d "$cache_dir" ]; then
-        size_before=$(get_dir_size_bytes "$cache_dir")
-        size_before_human=$(bytes_to_human "$size_before")
+	if [ -d "$cache_dir" ]; then
+		size_before=$(get_dir_size_bytes "$cache_dir")
+		size_before_human=$(bytes_to_human "$size_before")
 
-        print_info "pip cache location: $cache_dir (Size: $size_before_human)"
+		print_info "pip cache location: $cache_dir (Size: $size_before_human)"
 
-        if confirm_action "Purge pip cache?"; then
-            if [ "$DRY_RUN" = true ]; then
-                print_info "[DRY RUN] Would run: $PIP_CMD cache purge"
-            else
-                print_info "Running pip cache purge..."
-                pip_log=$(mktemp /tmp/pip_cleanup.XXXXXX.log)
-                $PIP_CMD cache purge 2>&1 | tee -a "$LOG_FILE" | tee "$pip_log"
+		if confirm_action "Purge pip cache?"; then
+			if [ "$DRY_RUN" = true ]; then
+				print_info "[DRY RUN] Would run: $PIP_CMD cache purge"
+			else
+				print_info "Running pip cache purge..."
+				pip_log=$(mktemp /tmp/pip_cleanup.XXXXXX.log)
+				$PIP_CMD cache purge 2>&1 | tee -a "$LOG_FILE" | tee "$pip_log"
 
-                size_after=$(get_dir_size_bytes "$cache_dir")
-                freed=$(track_freed_space "$size_before" "$size_after")
+				size_after=$(get_dir_size_bytes "$cache_dir")
+				freed=$(track_freed_space "$size_before" "$size_after")
 
-                if grep -q "Files removed" "$pip_log"; then
-                    files=$(grep "Files removed" "$pip_log")
-                    print_success "pip cache purged: $files ($(bytes_to_human $freed) freed)"
-                else
-                    print_success "pip cache purged: $(bytes_to_human $freed) freed"
-                fi
-                rm -f "$pip_log" || true
-            fi
-        else
-            print_info "Skipping pip cleanup"
-        fi
-    else
-        print_warning "pip cache directory not found"
-    fi
+				if grep -q "Files removed" "$pip_log"; then
+					files=$(grep "Files removed" "$pip_log")
+					print_success "pip cache purged: $files ($(bytes_to_human $freed) freed)"
+				else
+					print_success "pip cache purged: $(bytes_to_human $freed) freed"
+				fi
+				rm -f "$pip_log" || true
+			fi
+		else
+			print_info "Skipping pip cleanup"
+		fi
+	else
+		print_warning "pip cache directory not found"
+	fi
 else
-    print_warning "pip not found, skipping"
+	print_warning "pip not found, skipping"
 fi
 
 ################################################################################
@@ -1346,36 +1346,36 @@ print_section "Cleaning AWS CLI Cache"
 
 AWS_CACHE_DIR="$HOME/.aws/cli/cache"
 if [ -d "$AWS_CACHE_DIR" ]; then
-    size_before=$(get_dir_size_bytes "$AWS_CACHE_DIR")
-    size_before_human=$(bytes_to_human "$size_before")
+	size_before=$(get_dir_size_bytes "$AWS_CACHE_DIR")
+	size_before_human=$(bytes_to_human "$size_before")
 
-    print_info "AWS CLI cache: $AWS_CACHE_DIR (Size: $size_before_human)"
+	print_info "AWS CLI cache: $AWS_CACHE_DIR (Size: $size_before_human)"
 
-    if confirm_action "Clean AWS CLI cache?"; then
-        if [ "$DRY_RUN" = true ]; then
-            print_info "[DRY RUN] Would remove: $AWS_CACHE_DIR/*"
-        else
-            rm -rf "${AWS_CACHE_DIR:?}"/* 2>&1 | tee -a "$LOG_FILE"
+	if confirm_action "Clean AWS CLI cache?"; then
+		if [ "$DRY_RUN" = true ]; then
+			print_info "[DRY RUN] Would remove: $AWS_CACHE_DIR/*"
+		else
+			rm -rf "${AWS_CACHE_DIR:?}"/* 2>&1 | tee -a "$LOG_FILE"
 
-            freed=$(track_freed_space "$size_before" 0)
-            print_success "AWS CLI cache cleaned: $(bytes_to_human $freed) freed"
-        fi
-    else
-        print_info "Skipping AWS cleanup"
-    fi
+			freed=$(track_freed_space "$size_before" 0)
+			print_success "AWS CLI cache cleaned: $(bytes_to_human $freed) freed"
+		fi
+	else
+		print_info "Skipping AWS cleanup"
+	fi
 else
-    print_warning "No AWS CLI cache found"
+	print_warning "No AWS CLI cache found"
 fi
 
 ################################################################################
 # 10. Python Virtual Environments (optional)
 ################################################################################
 if [ "$FLAG_SCAN_VENVS" = true ]; then
-    scan_virtualenvs
+	scan_virtualenvs
 fi
 
 if [ "$FLAG_CLEAN_VENVS" = true ]; then
-    clean_virtualenvs
+	clean_virtualenvs
 fi
 
 ################################################################################
@@ -1384,18 +1384,18 @@ fi
 print_section "Cleanup Complete!"
 
 if [ "$DRY_RUN" = true ]; then
-    print_warning "DRY RUN completed - no changes were made"
+	print_warning "DRY RUN completed - no changes were made"
 else
-    total_freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
-    print_success "Total space freed: $total_freed_human"
+	total_freed_human=$(bytes_to_human "$TOTAL_FREED_BYTES")
+	print_success "Total space freed: $total_freed_human"
 
-    # Create manifest for non-dry-run cleanups
-    if [ "${#MANIFEST_OPERATIONS[@]}" -gt 0 ]; then
-        create_manifest
-        echo "" | tee -a "$LOG_FILE"
-        print_info "💾 Manifest created for reference"
-        print_info "   View with: $0 --rollback $MANIFEST_FILE"
-    fi
+	# Create manifest for non-dry-run cleanups
+	if [ "${#MANIFEST_OPERATIONS[@]}" -gt 0 ]; then
+		create_manifest
+		echo "" | tee -a "$LOG_FILE"
+		print_info "💾 Manifest created for reference"
+		print_info "   View with: $0 --rollback $MANIFEST_FILE"
+	fi
 fi
 
 print_info "Completed at: $(date)"
@@ -1405,8 +1405,8 @@ echo "" | tee -a "$LOG_FILE"
 print_info "To see current disk usage, run: df -h"
 
 if [ "$DRY_RUN" = true ]; then
-    echo "" | tee -a "$LOG_FILE"
-    print_info "To perform actual cleanup, run: $0 -y"
+	echo "" | tee -a "$LOG_FILE"
+	print_info "To perform actual cleanup, run: $0 -y"
 fi
 
 echo "" | tee -a "$LOG_FILE"
@@ -1418,20 +1418,20 @@ notify_complete
 # JSON summary (optional)
 RUN_END_TS=$(date +%s)
 if [ "$JSON_MODE" = true ]; then
-    JSON_FILE="$LOG_DIR/disk_cleanup_summary_$(date +%Y%m%d_%H%M%S).json"
-    {
-        echo '{'
-        echo "  \"version\": \"1.0\","
-        echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
-        if [ "$DRY_RUN" = true ]; then echo '  "dry_run": true,'; else echo '  "dry_run": false,'; fi
-        echo "  \"log_file\": \"$(json_escape "$LOG_FILE")\","
-        echo "  \"start_ts\": $RUN_START_TS,"
-        echo "  \"end_ts\": $RUN_END_TS,"
-        echo "  \"total_freed_bytes\": $TOTAL_FREED_BYTES,"
-        echo "  \"total_freed_human\": \"$(bytes_to_human \"$TOTAL_FREED_BYTES\")\","
-        if [ "$DOCKER_EXECUTED" = true ]; then echo '  "docker_executed": true,'; else echo '  "docker_executed": false,'; fi
-        echo "  \"git_gc\": { \"processed\": $GIT_GC_PROCESSED, \"skipped\": $GIT_GC_SKIPPED, \"failed\": $GIT_GC_FAILED },"
-        echo "  \"venv\": { \"found\": $VENV_FOUND, \"candidates\": $VENV_CANDIDATES, \"potential_bytes\": $VENV_POTENTIAL_BYTES, \"removed\": $VENV_REMOVED, \"freed_bytes\": $VENV_FREED_BYTES }"
-        echo '}'
-    } | tee "$JSON_FILE"
+	JSON_FILE="$LOG_DIR/disk_cleanup_summary_$(date +%Y%m%d_%H%M%S).json"
+	{
+		echo '{'
+		echo "  \"version\": \"1.0\","
+		echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+		if [ "$DRY_RUN" = true ]; then echo '  "dry_run": true,'; else echo '  "dry_run": false,'; fi
+		echo "  \"log_file\": \"$(json_escape "$LOG_FILE")\","
+		echo "  \"start_ts\": $RUN_START_TS,"
+		echo "  \"end_ts\": $RUN_END_TS,"
+		echo "  \"total_freed_bytes\": $TOTAL_FREED_BYTES,"
+		echo "  \"total_freed_human\": \"$(bytes_to_human \"$TOTAL_FREED_BYTES\")\","
+		if [ "$DOCKER_EXECUTED" = true ]; then echo '  "docker_executed": true,'; else echo '  "docker_executed": false,'; fi
+		echo "  \"git_gc\": { \"processed\": $GIT_GC_PROCESSED, \"skipped\": $GIT_GC_SKIPPED, \"failed\": $GIT_GC_FAILED },"
+		echo "  \"venv\": { \"found\": $VENV_FOUND, \"candidates\": $VENV_CANDIDATES, \"potential_bytes\": $VENV_POTENTIAL_BYTES, \"removed\": $VENV_REMOVED, \"freed_bytes\": $VENV_FREED_BYTES }"
+		echo '}'
+	} | tee "$JSON_FILE"
 fi

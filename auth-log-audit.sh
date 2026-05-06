@@ -39,31 +39,31 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 print_error() {
-    echo -e "${RED}✗ Error:${NC} $1" >&2
-    log_line "ERROR" "$1"
+	echo -e "${RED}✗ Error:${NC} $1" >&2
+	log_line "ERROR" "$1"
 }
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-    log_line "OK" "$1"
+	echo -e "${GREEN}✓${NC} $1"
+	log_line "OK" "$1"
 }
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-    log_line "WARN" "$1"
+	echo -e "${YELLOW}⚠${NC} $1"
+	log_line "WARN" "$1"
 }
 print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-    log_line "INFO" "$1"
+	echo -e "${BLUE}ℹ${NC} $1"
+	log_line "INFO" "$1"
 }
 print_section() {
-    echo ""
-    echo -e "${CYAN}━━━ $1 ━━━${NC}"
-    echo ""
-    log_line "SECTION" "$1"
+	echo ""
+	echo -e "${CYAN}━━━ $1 ━━━${NC}"
+	echo ""
+	log_line "SECTION" "$1"
 }
 log_line() { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
 
 show_help() {
-    cat <<'HELP'
+	cat <<'HELP'
 auth-log-audit.sh - Audit SSH authentication logs for threats and anomalies
 
 USAGE:
@@ -116,220 +116,220 @@ HELP
 # ── Find auth log files ───────────────────────────────────────────────────────
 
 find_log_files() {
-    local candidates=(
-        "/var/log/auth.log"
-        "/var/log/auth.log.1"
-        "/var/log/secure"
-        "/var/log/secure.1"
-    )
-    local found=()
-    for f in "${candidates[@]}"; do
-        [ -r "$f" ] && found+=("$f")
-    done
-    # Also check for rotated gz files within date range
-    for pattern in "/var/log/auth.log.*.gz" "/var/log/secure.*.gz"; do
-        for f in $pattern; do
-            [ -r "$f" ] && found+=("$f")
-        done
-    done
-    echo "${found[@]:-}"
+	local candidates=(
+		"/var/log/auth.log"
+		"/var/log/auth.log.1"
+		"/var/log/secure"
+		"/var/log/secure.1"
+	)
+	local found=()
+	for f in "${candidates[@]}"; do
+		[ -r "$f" ] && found+=("$f")
+	done
+	# Also check for rotated gz files within date range
+	for pattern in "/var/log/auth.log.*.gz" "/var/log/secure.*.gz"; do
+		for f in $pattern; do
+			[ -r "$f" ] && found+=("$f")
+		done
+	done
+	echo "${found[@]:-}"
 }
 
 # ── Read all log content (handles .gz) ───────────────────────────────────────
 
 read_logs() {
-    local files=("$@")
-    for f in "${files[@]}"; do
-        case "$f" in
-        *.gz) zcat "$f" 2>/dev/null ;;
-        *) cat "$f" 2>/dev/null ;;
-        esac
-    done
+	local files=("$@")
+	for f in "${files[@]}"; do
+		case "$f" in
+		*.gz) zcat "$f" 2>/dev/null ;;
+		*) cat "$f" 2>/dev/null ;;
+		esac
+	done
 }
 
 # ── Parse failed attempts ─────────────────────────────────────────────────────
 
 analyze_failures() {
-    local content="$1"
+	local content="$1"
 
-    print_section "Failed SSH Attempts"
+	print_section "Failed SSH Attempts"
 
-    # Count total failures
-    FAILED_ATTEMPTS=$(echo "$content" | grep -cE "Failed (password|publickey)|Invalid user|authentication failure" 2>/dev/null || echo 0)
+	# Count total failures
+	FAILED_ATTEMPTS=$(echo "$content" | grep -cE "Failed (password|publickey)|Invalid user|authentication failure" 2>/dev/null || echo 0)
 
-    # Top attacking IPs
-    local ip_counts
-    ip_counts=$(echo "$content" |
-        grep -E "Failed (password|publickey)|Invalid user" |
-        grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' |
-        sort | uniq -c | sort -rn |
-        head -"$TOP_ATTACKERS")
+	# Top attacking IPs
+	local ip_counts
+	ip_counts=$(echo "$content" |
+		grep -E "Failed (password|publickey)|Invalid user" |
+		grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' |
+		sort | uniq -c | sort -rn |
+		head -"$TOP_ATTACKERS")
 
-    UNIQUE_ATTACKERS=$(echo "$content" |
-        grep -E "Failed (password|publickey)|Invalid user" |
-        grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' |
-        sort -u | wc -l)
+	UNIQUE_ATTACKERS=$(echo "$content" |
+		grep -E "Failed (password|publickey)|Invalid user" |
+		grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' |
+		sort -u | wc -l)
 
-    print_info "Total failures: $FAILED_ATTEMPTS"
-    print_info "Unique source IPs: $UNIQUE_ATTACKERS"
+	print_info "Total failures: $FAILED_ATTEMPTS"
+	print_info "Unique source IPs: $UNIQUE_ATTACKERS"
 
-    if [ -n "$ip_counts" ]; then
-        echo ""
-        printf "  %-8s  %s\n" "COUNT" "IP ADDRESS"
-        printf "  %s\n" "$(printf '─%.0s' {1..40})"
-        while read -r count ip; do
-            local color="$NC"
-            [ "$count" -ge "$ALERT_THRESHOLD" ] && {
-                color="$RED"
-                STATUS="alert"
-            }
-            [ "$count" -ge "$((ALERT_THRESHOLD / 2))" ] && [ "$count" -lt "$ALERT_THRESHOLD" ] && color="$YELLOW"
-            printf "  ${color}%-8s  %s${NC}\n" "$count" "$ip"
-        done < <(echo "$ip_counts")
-    fi
+	if [ -n "$ip_counts" ]; then
+		echo ""
+		printf "  %-8s  %s\n" "COUNT" "IP ADDRESS"
+		printf "  %s\n" "$(printf '─%.0s' {1..40})"
+		while read -r count ip; do
+			local color="$NC"
+			[ "$count" -ge "$ALERT_THRESHOLD" ] && {
+				color="$RED"
+				STATUS="alert"
+			}
+			[ "$count" -ge "$((ALERT_THRESHOLD / 2))" ] && [ "$count" -lt "$ALERT_THRESHOLD" ] && color="$YELLOW"
+			printf "  ${color}%-8s  %s${NC}\n" "$count" "$ip"
+		done < <(echo "$ip_counts")
+	fi
 
-    # Invalid usernames
-    local invalid_users
-    invalid_users=$(echo "$content" |
-        grep "Invalid user" |
-        grep -oE "Invalid user [^ ]+" | awk '{print $3}' |
-        sort | uniq -c | sort -rn | head -10)
+	# Invalid usernames
+	local invalid_users
+	invalid_users=$(echo "$content" |
+		grep "Invalid user" |
+		grep -oE "Invalid user [^ ]+" | awk '{print $3}' |
+		sort | uniq -c | sort -rn | head -10)
 
-    if [ -n "$invalid_users" ]; then
-        echo ""
-        print_info "Top invalid usernames tried:"
-        echo "$invalid_users" | while read -r count user; do
-            printf "  %-8s  %s\n" "$count" "$user"
-        done
-    fi
+	if [ -n "$invalid_users" ]; then
+		echo ""
+		print_info "Top invalid usernames tried:"
+		echo "$invalid_users" | while read -r count user; do
+			printf "  %-8s  %s\n" "$count" "$user"
+		done
+	fi
 
-    log_line "FAILURES" "total=${FAILED_ATTEMPTS} unique_ips=${UNIQUE_ATTACKERS}"
+	log_line "FAILURES" "total=${FAILED_ATTEMPTS} unique_ips=${UNIQUE_ATTACKERS}"
 }
 
 # ── Parse successful logins ───────────────────────────────────────────────────
 
 analyze_successes() {
-    local content="$1"
+	local content="$1"
 
-    print_section "Successful Logins"
+	print_section "Successful Logins"
 
-    local successes
-    successes=$(echo "$content" |
-        grep -E "Accepted (password|publickey|keyboard-interactive)" |
-        tail -50)
+	local successes
+	successes=$(echo "$content" |
+		grep -E "Accepted (password|publickey|keyboard-interactive)" |
+		tail -50)
 
-    SUCCESSFUL_LOGINS=$(echo "$successes" | grep -c "Accepted" 2>/dev/null || echo 0)
-    print_info "Total successful logins: $SUCCESSFUL_LOGINS"
+	SUCCESSFUL_LOGINS=$(echo "$successes" | grep -c "Accepted" 2>/dev/null || echo 0)
+	print_info "Total successful logins: $SUCCESSFUL_LOGINS"
 
-    if [ -n "$successes" ]; then
-        echo ""
-        printf "  %-12s %-16s %-15s  %s\n" "METHOD" "USER" "FROM IP" "TIMESTAMP"
-        printf "  %s\n" "$(printf '─%.0s' {1..65})"
-        echo "$successes" | while read -r line; do
-            local method user ip ts
-            ts=$(echo "$line" | awk '{print $1, $2, $3}')
-            method=$(echo "$line" | grep -oE 'Accepted \S+' | awk '{print $2}')
-            user=$(echo "$line" | grep -oE 'for [^ ]+' | awk '{print $2}')
-            ip=$(echo "$line" | grep -oE 'from ([0-9]{1,3}\.){3}[0-9]{1,3}' | awk '{print $2}')
-            printf "  %-12s %-16s %-15s  %s\n" "${method:-?}" "${user:-?}" "${ip:-?}" "${ts:-?}"
-        done | tail -20
-    fi
+	if [ -n "$successes" ]; then
+		echo ""
+		printf "  %-12s %-16s %-15s  %s\n" "METHOD" "USER" "FROM IP" "TIMESTAMP"
+		printf "  %s\n" "$(printf '─%.0s' {1..65})"
+		echo "$successes" | while read -r line; do
+			local method user ip ts
+			ts=$(echo "$line" | awk '{print $1, $2, $3}')
+			method=$(echo "$line" | grep -oE 'Accepted \S+' | awk '{print $2}')
+			user=$(echo "$line" | grep -oE 'for [^ ]+' | awk '{print $2}')
+			ip=$(echo "$line" | grep -oE 'from ([0-9]{1,3}\.){3}[0-9]{1,3}' | awk '{print $2}')
+			printf "  %-12s %-16s %-15s  %s\n" "${method:-?}" "${user:-?}" "${ip:-?}" "${ts:-?}"
+		done | tail -20
+	fi
 
-    log_line "SUCCESSES" "total=${SUCCESSFUL_LOGINS}"
+	log_line "SUCCESSES" "total=${SUCCESSFUL_LOGINS}"
 }
 
 # ── Sudo events ───────────────────────────────────────────────────────────────
 
 analyze_sudo() {
-    local content="$1"
+	local content="$1"
 
-    print_section "Sudo Usage"
+	print_section "Sudo Usage"
 
-    local sudo_events
-    sudo_events=$(echo "$content" |
-        grep "sudo:" |
-        grep "COMMAND=" |
-        tail -30)
+	local sudo_events
+	sudo_events=$(echo "$content" |
+		grep "sudo:" |
+		grep "COMMAND=" |
+		tail -30)
 
-    SUDO_EVENTS=$(echo "$sudo_events" | grep -c "COMMAND=" 2>/dev/null || echo 0)
-    print_info "Sudo events (last 30): $SUDO_EVENTS"
+	SUDO_EVENTS=$(echo "$sudo_events" | grep -c "COMMAND=" 2>/dev/null || echo 0)
+	print_info "Sudo events (last 30): $SUDO_EVENTS"
 
-    if [ -n "$sudo_events" ]; then
-        echo ""
-        echo "$sudo_events" | while read -r line; do
-            local user ts cmd
-            ts=$(echo "$line" | awk '{print $1, $2, $3}')
-            user=$(echo "$line" | awk '{print $4}' | sed 's/:$//')
-            cmd=$(echo "$line" | sed -n 's/.*COMMAND=//p')
-            printf "  [%s] %s → %s\n" "${ts:-?}" "${user:-?}" "${cmd:0:60}"
-        done
-    fi
+	if [ -n "$sudo_events" ]; then
+		echo ""
+		echo "$sudo_events" | while read -r line; do
+			local user ts cmd
+			ts=$(echo "$line" | awk '{print $1, $2, $3}')
+			user=$(echo "$line" | awk '{print $4}' | sed 's/:$//')
+			cmd=$(echo "$line" | sed -n 's/.*COMMAND=//p')
+			printf "  [%s] %s → %s\n" "${ts:-?}" "${user:-?}" "${cmd:0:60}"
+		done
+	fi
 
-    log_line "SUDO" "events=${SUDO_EVENTS}"
+	log_line "SUDO" "events=${SUDO_EVENTS}"
 }
 
 # ── User/group creation ───────────────────────────────────────────────────────
 
 analyze_user_changes() {
-    local content="$1"
+	local content="$1"
 
-    print_section "User & Group Changes"
+	print_section "User & Group Changes"
 
-    local user_events
-    user_events=$(echo "$content" |
-        grep -E "useradd|userdel|groupadd|groupdel|passwd.*changed|new user|new group" |
-        head -20)
+	local user_events
+	user_events=$(echo "$content" |
+		grep -E "useradd|userdel|groupadd|groupdel|passwd.*changed|new user|new group" |
+		head -20)
 
-    NEW_USERS=$(echo "$user_events" | grep -c "new user" 2>/dev/null || echo 0)
+	NEW_USERS=$(echo "$user_events" | grep -c "new user" 2>/dev/null || echo 0)
 
-    if [ -n "$user_events" ]; then
-        print_warning "User/group changes detected:"
-        echo "$user_events" | while read -r line; do
-            local ts
-            ts=$(echo "$line" | awk '{print $1, $2, $3}')
-            echo "  [$ts] ${line##*]: }"
-        done
-    else
-        print_success "No user/group changes in this period"
-    fi
+	if [ -n "$user_events" ]; then
+		print_warning "User/group changes detected:"
+		echo "$user_events" | while read -r line; do
+			local ts
+			ts=$(echo "$line" | awk '{print $1, $2, $3}')
+			echo "  [$ts] ${line##*]: }"
+		done
+	else
+		print_success "No user/group changes in this period"
+	fi
 
-    log_line "USER_CHANGES" "new_users=${NEW_USERS}"
+	log_line "USER_CHANGES" "new_users=${NEW_USERS}"
 }
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-    --days)
-        DAYS="$2"
-        shift 2
-        ;;
-    --top)
-        TOP_ATTACKERS="$2"
-        shift 2
-        ;;
-    --alert-threshold)
-        ALERT_THRESHOLD="$2"
-        shift 2
-        ;;
-    --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-    --json)
-        OUTPUT_JSON=true
-        shift
-        ;;
-    --help | -h)
-        show_help
-        exit 0
-        ;;
-    *)
-        echo "Unknown option: $1" >&2
-        show_help
-        exit 2
-        ;;
-    esac
+	case "$1" in
+	--days)
+		DAYS="$2"
+		shift 2
+		;;
+	--top)
+		TOP_ATTACKERS="$2"
+		shift 2
+		;;
+	--alert-threshold)
+		ALERT_THRESHOLD="$2"
+		shift 2
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	--json)
+		OUTPUT_JSON=true
+		shift
+		;;
+	--help | -h)
+		show_help
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1" >&2
+		show_help
+		exit 2
+		;;
+	esac
 done
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -349,16 +349,16 @@ print_info "Alert:   IPs with > ${ALERT_THRESHOLD} failures"
 print_info "Log:     $LOG_FILE"
 
 if [ "$DRY_RUN" = true ]; then
-    print_warning "DRY RUN — would analyse: /var/log/auth.log (and rotated variants)"
-    exit 0
+	print_warning "DRY RUN — would analyse: /var/log/auth.log (and rotated variants)"
+	exit 0
 fi
 
 # Find log files
 read -ra LOG_FILES <<<"$(find_log_files)"
 
 if [ ${#LOG_FILES[@]} -eq 0 ]; then
-    print_error "No readable auth log files found. Try running with sudo."
-    exit 2
+	print_error "No readable auth log files found. Try running with sudo."
+	exit 2
 fi
 
 print_info "Reading: ${LOG_FILES[*]}"
@@ -367,12 +367,12 @@ print_info "Reading: ${LOG_FILES[*]}"
 echo ""
 print_info "Loading logs..."
 LOG_CONTENT=$(read_logs "${LOG_FILES[@]}" |
-    grep -E "$(date -d "-${DAYS} days" '+%b' 2>/dev/null || date -v"-${DAYS}d" '+%b' 2>/dev/null || echo 'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec')" \
-        2>/dev/null || true)
+	grep -E "$(date -d "-${DAYS} days" '+%b' 2>/dev/null || date -v"-${DAYS}d" '+%b' 2>/dev/null || echo 'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec')" \
+		2>/dev/null || true)
 
 if [ -z "$LOG_CONTENT" ]; then
-    print_warning "No log entries found for the past ${DAYS} days"
-    exit 0
+	print_warning "No log entries found for the past ${DAYS} days"
+	exit 0
 fi
 
 analyze_failures "$LOG_CONTENT"
@@ -396,27 +396,27 @@ printf "  New users created:      %d\n" "$NEW_USERS"
 echo ""
 
 if [ "$STATUS" = "ok" ]; then
-    print_success "No high-volume attacks detected"
+	print_success "No high-volume attacks detected"
 else
-    print_warning "High-volume attack detected — review top IPs above and consider blocking with ufw/fail2ban"
+	print_warning "High-volume attack detected — review top IPs above and consider blocking with ufw/fail2ban"
 fi
 
 print_info "Log: $LOG_FILE"
 
 if [ "$OUTPUT_JSON" = true ]; then
-    jq -n \
-        --arg script "auth-log-audit.sh" \
-        --arg version "1.0.0" \
-        --arg timestamp "$(get_iso8601_timestamp)" \
-        --arg status "$STATUS" \
-        --argjson duration_ms "$DURATION_MS" \
-        --argjson days "$DAYS" \
-        --argjson failed "$FAILED_ATTEMPTS" \
-        --argjson unique_ips "$UNIQUE_ATTACKERS" \
-        --argjson successful "$SUCCESSFUL_LOGINS" \
-        --argjson sudo_events "$SUDO_EVENTS" \
-        --argjson new_users "$NEW_USERS" \
-        '{
+	jq -n \
+		--arg script "auth-log-audit.sh" \
+		--arg version "1.0.0" \
+		--arg timestamp "$(get_iso8601_timestamp)" \
+		--arg status "$STATUS" \
+		--argjson duration_ms "$DURATION_MS" \
+		--argjson days "$DAYS" \
+		--argjson failed "$FAILED_ATTEMPTS" \
+		--argjson unique_ips "$UNIQUE_ATTACKERS" \
+		--argjson successful "$SUCCESSFUL_LOGINS" \
+		--argjson sudo_events "$SUDO_EVENTS" \
+		--argjson new_users "$NEW_USERS" \
+		'{
             script: $script,
             version: $version,
             timestamp: $timestamp,
@@ -432,8 +432,8 @@ if [ "$OUTPUT_JSON" = true ]; then
                 new_users_created: $new_users
             }
         }' >"$JSON_FILE"
-    chmod 600 "$JSON_FILE"
-    print_info "JSON: $JSON_FILE"
+	chmod 600 "$JSON_FILE"
+	print_info "JSON: $JSON_FILE"
 fi
 
 [ "$STATUS" != "ok" ] && exit 1

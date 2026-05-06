@@ -37,31 +37,31 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 print_error() {
-    echo -e "${RED}✗ Error:${NC} $1" >&2
-    log_line "ERROR" "$1"
+	echo -e "${RED}✗ Error:${NC} $1" >&2
+	log_line "ERROR" "$1"
 }
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-    log_line "OK" "$1"
+	echo -e "${GREEN}✓${NC} $1"
+	log_line "OK" "$1"
 }
 print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-    log_line "WARN" "$1"
+	echo -e "${YELLOW}⚠${NC} $1"
+	log_line "WARN" "$1"
 }
 print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-    log_line "INFO" "$1"
+	echo -e "${BLUE}ℹ${NC} $1"
+	log_line "INFO" "$1"
 }
 print_section() {
-    echo ""
-    echo -e "${CYAN}━━━ $1 ━━━${NC}"
-    echo ""
-    log_line "SECTION" "$1"
+	echo ""
+	echo -e "${CYAN}━━━ $1 ━━━${NC}"
+	echo ""
+	log_line "SECTION" "$1"
 }
 log_line() { echo "[$(get_iso8601_timestamp)] $1: $2" >>"$LOG_FILE"; }
 
 show_help() {
-    cat <<'HELP'
+	cat <<'HELP'
 firewall-audit.sh - Audit UFW/iptables rules and open ports against a baseline
 
 USAGE:
@@ -111,225 +111,225 @@ HELP
 }
 
 record_finding() {
-    local severity="$1" description="$2"
-    ISSUES=$((ISSUES + 1))
-    STATUS="issues"
-    local color="$NC"
-    [ "$severity" = "ERROR" ] && color="$RED"
-    [ "$severity" = "WARN" ] && color="$YELLOW"
-    printf "  ${color}[%s]${NC} %s\n" "$severity" "$description"
-    log_line "$severity" "$description"
-    local escaped
-    escaped=$(json_escape "$description")
-    local entry
-    entry=$(printf '{"severity":"%s","description":"%s"}' "$severity" "$escaped")
-    [ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
+	local severity="$1" description="$2"
+	ISSUES=$((ISSUES + 1))
+	STATUS="issues"
+	local color="$NC"
+	[ "$severity" = "ERROR" ] && color="$RED"
+	[ "$severity" = "WARN" ] && color="$YELLOW"
+	printf "  ${color}[%s]${NC} %s\n" "$severity" "$description"
+	log_line "$severity" "$description"
+	local escaped
+	escaped=$(json_escape "$description")
+	local entry
+	entry=$(printf '{"severity":"%s","description":"%s"}' "$severity" "$escaped")
+	[ "$FINDINGS_JSON" = "[]" ] && FINDINGS_JSON="[$entry]" || FINDINGS_JSON="${FINDINGS_JSON%]},${entry}]"
 }
 
 # ── Load baseline ─────────────────────────────────────────────────────────────
 
 load_baseline() {
-    BASELINE_PORTS=()
-    local file="${BASELINE_FILE:-$DEFAULT_BASELINE}"
+	BASELINE_PORTS=()
+	local file="${BASELINE_FILE:-$DEFAULT_BASELINE}"
 
-    if [ ! -f "$file" ]; then
-        print_warning "No baseline file found at $file"
-        print_info "Create one with expected ports, e.g.:"
-        echo "    22/tcp    SSH"
-        echo "    80/tcp    HTTP"
-        echo "    443/tcp   HTTPS"
-        print_info "Or skip baseline comparison by running without --baseline"
-        return 1
-    fi
+	if [ ! -f "$file" ]; then
+		print_warning "No baseline file found at $file"
+		print_info "Create one with expected ports, e.g.:"
+		echo "    22/tcp    SSH"
+		echo "    80/tcp    HTTP"
+		echo "    443/tcp   HTTPS"
+		print_info "Or skip baseline comparison by running without --baseline"
+		return 1
+	fi
 
-    while IFS= read -r line; do
-        [[ "$line" =~ ^#|^$ ]] && continue
-        local port_proto
-        port_proto=$(echo "$line" | awk '{print $1}')
-        BASELINE_PORTS+=("$port_proto")
-    done <"$file"
+	while IFS= read -r line; do
+		[[ "$line" =~ ^#|^$ ]] && continue
+		local port_proto
+		port_proto=$(echo "$line" | awk '{print $1}')
+		BASELINE_PORTS+=("$port_proto")
+	done <"$file"
 
-    print_info "Baseline: $file (${#BASELINE_PORTS[@]} rules)"
-    return 0
+	print_info "Baseline: $file (${#BASELINE_PORTS[@]} rules)"
+	return 0
 }
 
 # ── UFW ───────────────────────────────────────────────────────────────────────
 
 check_ufw() {
-    print_section "UFW Status"
+	print_section "UFW Status"
 
-    if ! command -v ufw >/dev/null 2>&1; then
-        print_info "UFW not installed"
-        return
-    fi
+	if ! command -v ufw >/dev/null 2>&1; then
+		print_info "UFW not installed"
+		return
+	fi
 
-    local ufw_status
-    ufw_status=$(ufw status 2>/dev/null)
+	local ufw_status
+	ufw_status=$(ufw status 2>/dev/null)
 
-    if echo "$ufw_status" | grep -q "Status: active"; then
-        print_success "UFW is active"
-    else
-        record_finding "WARN" "UFW is inactive or disabled — host is unprotected"
-    fi
+	if echo "$ufw_status" | grep -q "Status: active"; then
+		print_success "UFW is active"
+	else
+		record_finding "WARN" "UFW is inactive or disabled — host is unprotected"
+	fi
 
-    # Print rules
-    echo ""
-    echo "$ufw_status" | while read -r line; do
-        [ -n "$line" ] && echo "  $line"
-    done
+	# Print rules
+	echo ""
+	echo "$ufw_status" | while read -r line; do
+		[ -n "$line" ] && echo "  $line"
+	done
 
-    log_line "UFW" "$(echo "$ufw_status" | head -1)"
+	log_line "UFW" "$(echo "$ufw_status" | head -1)"
 }
 
 # ── iptables ──────────────────────────────────────────────────────────────────
 
 check_iptables() {
-    print_section "iptables INPUT Chain"
+	print_section "iptables INPUT Chain"
 
-    if ! command -v iptables >/dev/null 2>&1; then
-        print_info "iptables not found"
-        return
-    fi
+	if ! command -v iptables >/dev/null 2>&1; then
+		print_info "iptables not found"
+		return
+	fi
 
-    local rules
-    rules=$(iptables -L INPUT -n --line-numbers 2>/dev/null)
+	local rules
+	rules=$(iptables -L INPUT -n --line-numbers 2>/dev/null)
 
-    if [ -z "$rules" ]; then
-        print_warning "Cannot read iptables rules (run with sudo)"
-        return
-    fi
+	if [ -z "$rules" ]; then
+		print_warning "Cannot read iptables rules (run with sudo)"
+		return
+	fi
 
-    local default_policy
-    default_policy=$(echo "$rules" | head -1 | grep -oE 'policy [A-Z]+' | awk '{print $2}')
+	local default_policy
+	default_policy=$(echo "$rules" | head -1 | grep -oE 'policy [A-Z]+' | awk '{print $2}')
 
-    if [ "$default_policy" = "ACCEPT" ]; then
-        record_finding "WARN" "iptables INPUT default policy is ACCEPT — all traffic allowed unless explicitly blocked"
-    else
-        print_success "iptables INPUT default policy: $default_policy"
-    fi
+	if [ "$default_policy" = "ACCEPT" ]; then
+		record_finding "WARN" "iptables INPUT default policy is ACCEPT — all traffic allowed unless explicitly blocked"
+	else
+		print_success "iptables INPUT default policy: $default_policy"
+	fi
 
-    echo ""
-    echo "$rules" | while read -r line; do
-        echo "  $line"
-    done
+	echo ""
+	echo "$rules" | while read -r line; do
+		echo "  $line"
+	done
 }
 
 # ── Listening ports ───────────────────────────────────────────────────────────
 
 check_listening_ports() {
-    print_section "Listening Ports"
+	print_section "Listening Ports"
 
-    local listening
-    listening=$(ss -tlnup 2>/dev/null | tail -n +2)
+	local listening
+	listening=$(ss -tlnup 2>/dev/null | tail -n +2)
 
-    if [ -z "$listening" ]; then
-        print_warning "Cannot enumerate listening ports (try with sudo for process names)"
-        return
-    fi
+	if [ -z "$listening" ]; then
+		print_warning "Cannot enumerate listening ports (try with sudo for process names)"
+		return
+	fi
 
-    printf "  %-8s %-25s %-20s %s\n" "PROTO" "LOCAL ADDRESS" "PROCESS" "STATUS"
-    printf "  %s\n" "$(printf '─%.0s' {1..70})"
+	printf "  %-8s %-25s %-20s %s\n" "PROTO" "LOCAL ADDRESS" "PROCESS" "STATUS"
+	printf "  %s\n" "$(printf '─%.0s' {1..70})"
 
-    local baseline_loaded=false
-    # Ensure BASELINE_PORTS is set (may not be if load_baseline was not called)
-    if [ -z "${BASELINE_PORTS+x}" ]; then BASELINE_PORTS=(); fi
-    [ "${#BASELINE_PORTS[@]}" -gt 0 ] && baseline_loaded=true
+	local baseline_loaded=false
+	# Ensure BASELINE_PORTS is set (may not be if load_baseline was not called)
+	if [ -z "${BASELINE_PORTS+x}" ]; then BASELINE_PORTS=(); fi
+	[ "${#BASELINE_PORTS[@]}" -gt 0 ] && baseline_loaded=true
 
-    echo "$listening" | while IFS= read -r line; do
-        local proto local_addr process
-        proto=$(echo "$line" | awk '{print $1}')
-        local_addr=$(echo "$line" | awk '{print $5}')
-        process=$(echo "$line" | grep -oP 'users:\(\("\K[^"]+' || echo "?")
+	echo "$listening" | while IFS= read -r line; do
+		local proto local_addr process
+		proto=$(echo "$line" | awk '{print $1}')
+		local_addr=$(echo "$line" | awk '{print $5}')
+		process=$(echo "$line" | grep -oP 'users:\(\("\K[^"]+' || echo "?")
 
-        local port
-        port=$(echo "$local_addr" | rev | cut -d: -f1 | rev)
+		local port
+		port=$(echo "$local_addr" | rev | cut -d: -f1 | rev)
 
-        local flag=""
-        local color="$GREEN"
+		local flag=""
+		local color="$GREEN"
 
-        if [ "$baseline_loaded" = true ]; then
-            local matched=false
-            for expected in "${BASELINE_PORTS[@]}"; do
-                local exp_port exp_proto
-                exp_port=$(echo "$expected" | cut -d/ -f1)
-                exp_proto=$(echo "$expected" | cut -d/ -f2)
-                if [ "$port" = "$exp_port" ] && [ "$proto" = "$exp_proto" ]; then
-                    matched=true
-                    break
-                fi
-            done
-            if [ "$matched" = false ]; then
-                flag=" ${RED}[UNEXPECTED]${NC}"
-                color="$YELLOW"
-                record_finding "WARN" "Unexpected open port: ${port}/${proto} (process: $process)"
-            fi
-        fi
+		if [ "$baseline_loaded" = true ]; then
+			local matched=false
+			for expected in "${BASELINE_PORTS[@]}"; do
+				local exp_port exp_proto
+				exp_port=$(echo "$expected" | cut -d/ -f1)
+				exp_proto=$(echo "$expected" | cut -d/ -f2)
+				if [ "$port" = "$exp_port" ] && [ "$proto" = "$exp_proto" ]; then
+					matched=true
+					break
+				fi
+			done
+			if [ "$matched" = false ]; then
+				flag=" ${RED}[UNEXPECTED]${NC}"
+				color="$YELLOW"
+				record_finding "WARN" "Unexpected open port: ${port}/${proto} (process: $process)"
+			fi
+		fi
 
-        printf "  %-8s %-25s %-20s%b%s\n" "$proto" "$local_addr" "${process:0:20}" "$flag" ""
+		printf "  %-8s %-25s %-20s%b%s\n" "$proto" "$local_addr" "${process:0:20}" "$flag" ""
 
-        # Append to open ports JSON
-        local entry
-        entry=$(printf '{"proto":"%s","port":%s,"addr":"%s","process":"%s"}' \
-            "$proto" "$port" "$local_addr" "$process")
-    done
+		# Append to open ports JSON
+		local entry
+		entry=$(printf '{"proto":"%s","port":%s,"addr":"%s","process":"%s"}' \
+			"$proto" "$port" "$local_addr" "$process")
+	done
 
-    log_line "PORTS" "checked"
+	log_line "PORTS" "checked"
 }
 
 # ── nmap localhost ────────────────────────────────────────────────────────────
 
 check_nmap() {
-    print_section "nmap Localhost Scan"
+	print_section "nmap Localhost Scan"
 
-    if ! command -v nmap >/dev/null 2>&1; then
-        print_warning "nmap not installed — skipping (install with: sudo apt install nmap)"
-        return
-    fi
+	if ! command -v nmap >/dev/null 2>&1; then
+		print_warning "nmap not installed — skipping (install with: sudo apt install nmap)"
+		return
+	fi
 
-    print_info "Scanning 127.0.0.1 (TCP SYN scan)..."
-    local nmap_out
-    nmap_out=$(nmap -sS -p- --open -T4 127.0.0.1 2>/dev/null || nmap -sT --open -T4 127.0.0.1 2>/dev/null)
+	print_info "Scanning 127.0.0.1 (TCP SYN scan)..."
+	local nmap_out
+	nmap_out=$(nmap -sS -p- --open -T4 127.0.0.1 2>/dev/null || nmap -sT --open -T4 127.0.0.1 2>/dev/null)
 
-    echo "$nmap_out" | grep -E "^[0-9]+/|Nmap scan" | while read -r line; do
-        echo "  $line"
-    done
+	echo "$nmap_out" | grep -E "^[0-9]+/|Nmap scan" | while read -r line; do
+		echo "  $line"
+	done
 
-    local open_count
-    open_count=$(echo "$nmap_out" | grep -c "^[0-9]" || echo 0)
-    print_info "nmap found $open_count open port(s) on localhost"
-    log_line "NMAP" "$open_count ports open on localhost"
+	local open_count
+	open_count=$(echo "$nmap_out" | grep -c "^[0-9]" || echo 0)
+	print_info "nmap found $open_count open port(s) on localhost"
+	log_line "NMAP" "$open_count ports open on localhost"
 }
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-    --baseline)
-        BASELINE_FILE="$2"
-        shift 2
-        ;;
-    --skip-nmap)
-        SKIP_NMAP=true
-        shift
-        ;;
-    --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-    --json)
-        OUTPUT_JSON=true
-        shift
-        ;;
-    --help | -h)
-        show_help
-        exit 0
-        ;;
-    *)
-        echo "Unknown option: $1" >&2
-        show_help
-        exit 2
-        ;;
-    esac
+	case "$1" in
+	--baseline)
+		BASELINE_FILE="$2"
+		shift 2
+		;;
+	--skip-nmap)
+		SKIP_NMAP=true
+		shift
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	--json)
+		OUTPUT_JSON=true
+		shift
+		;;
+	--help | -h)
+		show_help
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1" >&2
+		show_help
+		exit 2
+		;;
+	esac
 done
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -347,8 +347,8 @@ echo ""
 print_info "Log: $LOG_FILE"
 
 if [ "$DRY_RUN" = true ]; then
-    print_warning "DRY RUN — would check UFW, iptables, listening ports, and nmap"
-    exit 0
+	print_warning "DRY RUN — would check UFW, iptables, listening ports, and nmap"
+	exit 0
 fi
 
 load_baseline || true
@@ -366,23 +366,23 @@ echo ""
 echo -e "${BOLD}━━━ Summary ━━━${NC}"
 echo ""
 if [ "$STATUS" = "ok" ]; then
-    print_success "No unexpected ports or firewall issues found"
+	print_success "No unexpected ports or firewall issues found"
 else
-    print_warning "$ISSUES issue(s) detected — review above"
+	print_warning "$ISSUES issue(s) detected — review above"
 fi
 
 print_info "Log: $LOG_FILE"
 
 if [ "$OUTPUT_JSON" = true ]; then
-    jq -n \
-        --arg script "firewall-audit.sh" \
-        --arg version "1.0.0" \
-        --arg timestamp "$(get_iso8601_timestamp)" \
-        --arg status "$STATUS" \
-        --argjson duration_ms "$DURATION_MS" \
-        --argjson issues "$ISSUES" \
-        --argjson findings "$FINDINGS_JSON" \
-        '{
+	jq -n \
+		--arg script "firewall-audit.sh" \
+		--arg version "1.0.0" \
+		--arg timestamp "$(get_iso8601_timestamp)" \
+		--arg status "$STATUS" \
+		--argjson duration_ms "$DURATION_MS" \
+		--argjson issues "$ISSUES" \
+		--argjson findings "$FINDINGS_JSON" \
+		'{
             script: $script,
             version: $version,
             timestamp: $timestamp,
@@ -394,8 +394,8 @@ if [ "$OUTPUT_JSON" = true ]; then
                 findings: $findings
             }
         }' >"$JSON_FILE"
-    chmod 600 "$JSON_FILE"
-    print_info "JSON: $JSON_FILE"
+	chmod 600 "$JSON_FILE"
+	print_info "JSON: $JSON_FILE"
 fi
 
 [ "$STATUS" != "ok" ] && exit 1

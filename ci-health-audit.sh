@@ -22,23 +22,23 @@ DRY_RUN=false
 
 # Parse arguments
 for arg in "$@"; do
-    case $arg in
-    --fix-broken) FIX_BROKEN=true ;;
-    --add-guards) ADD_GUARDS=true ;;
-    --fix-heredocs) FIX_HEREDOCS=true ;;
-    --dry-run) DRY_RUN=true ;;
-    --help)
-        echo "Usage: $0 [OPTIONS]"
-        echo ""
-        echo "Options:"
-        echo "  --fix-broken    Fix workflows with YAML syntax errors"
-        echo "  --add-guards    Add branch guards to scheduled workflows"
-        echo "  --fix-heredocs  Add sed fixes for Python/JS heredocs"
-        echo "  --dry-run       Scan and report only; skip all fixes"
-        echo "  --help          Show this help message"
-        exit 0
-        ;;
-    esac
+	case $arg in
+	--fix-broken) FIX_BROKEN=true ;;
+	--add-guards) ADD_GUARDS=true ;;
+	--fix-heredocs) FIX_HEREDOCS=true ;;
+	--dry-run) DRY_RUN=true ;;
+	--help)
+		echo "Usage: $0 [OPTIONS]"
+		echo ""
+		echo "Options:"
+		echo "  --fix-broken    Fix workflows with YAML syntax errors"
+		echo "  --add-guards    Add branch guards to scheduled workflows"
+		echo "  --fix-heredocs  Add sed fixes for Python/JS heredocs"
+		echo "  --dry-run       Scan and report only; skip all fixes"
+		echo "  --help          Show this help message"
+		exit 0
+		;;
+	esac
 done
 
 echo -e "${BLUE}=== COMPREHENSIVE CI AUDIT - ALL REPOSITORIES ===${NC}"
@@ -57,67 +57,67 @@ declare -a heredoc_list
 
 # Scan all repositories
 for repo_path in "$REPOS_DIR"/* "$REPOS_DIR"/orchestrix-worktrees/*; do
-    [ -d "$repo_path" ] || continue
-    [ -d "$repo_path/.git" ] || [ -f "$repo_path/.git" ] || continue
+	[ -d "$repo_path" ] || continue
+	[ -d "$repo_path/.git" ] || [ -f "$repo_path/.git" ] || continue
 
-    repo=$(basename "$repo_path")
-    total_repos=$((total_repos + 1))
+	repo=$(basename "$repo_path")
+	total_repos=$((total_repos + 1))
 
-    [ -d "$repo_path/.github/workflows" ] || continue
-    repos_with_workflows=$((repos_with_workflows + 1))
+	[ -d "$repo_path/.github/workflows" ] || continue
+	repos_with_workflows=$((repos_with_workflows + 1))
 
-    cd "$repo_path" || continue
+	cd "$repo_path" || continue
 
-    repo_workflows=0
-    repo_broken=0
-    repo_schedules=0
-    repo_heredocs=0
+	repo_workflows=0
+	repo_broken=0
+	repo_schedules=0
+	repo_heredocs=0
 
-    for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
-        [ -f "$workflow" ] || continue
-        [ "${workflow%.disabled}" != "$workflow" ] && continue
+	for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+		[ -f "$workflow" ] || continue
+		[ "${workflow%.disabled}" != "$workflow" ] && continue
 
-        repo_workflows=$((repo_workflows + 1))
-        total_workflows=$((total_workflows + 1))
+		repo_workflows=$((repo_workflows + 1))
+		total_workflows=$((total_workflows + 1))
 
-        # Check 1: YAML validity
-        if ! python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$workflow" 2>/dev/null; then
-            repo_broken=$((repo_broken + 1))
-            broken_workflows=$((broken_workflows + 1))
-            broken_list+=("$repo:$(basename $workflow)")
-        fi
+		# Check 1: YAML validity
+		if ! python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$workflow" 2>/dev/null; then
+			repo_broken=$((repo_broken + 1))
+			broken_workflows=$((broken_workflows + 1))
+			broken_list+=("$repo:$(basename $workflow)")
+		fi
 
-        # Check 2: Unguarded scheduled workflows
-        if grep -q "schedule:" "$workflow" 2>/dev/null; then
-            if ! grep -q "github.ref.*main\|github.ref.*develop\|github.event_name != 'schedule'" "$workflow" 2>/dev/null; then
-                repo_schedules=$((repo_schedules + 1))
-                unguarded_schedules=$((unguarded_schedules + 1))
-                schedule_list+=("$repo:$(basename $workflow)")
-            fi
-        fi
+		# Check 2: Unguarded scheduled workflows
+		if grep -q "schedule:" "$workflow" 2>/dev/null; then
+			if ! grep -q "github.ref.*main\|github.ref.*develop\|github.event_name != 'schedule'" "$workflow" 2>/dev/null; then
+				repo_schedules=$((repo_schedules + 1))
+				unguarded_schedules=$((unguarded_schedules + 1))
+				schedule_list+=("$repo:$(basename $workflow)")
+			fi
+		fi
 
-        # Check 3: Python/JS heredocs without sed fix
-        if grep -q "cat.*\\.py.*<<.*EOF\|cat.*\\.js.*<<.*EOF" "$workflow" 2>/dev/null; then
-            if ! grep -q "sed.*'s/\\^" "$workflow" 2>/dev/null; then
-                repo_heredocs=$((repo_heredocs + 1))
-                heredocs_need_fix=$((heredocs_need_fix + 1))
-                heredoc_list+=("$repo:$(basename $workflow)")
-            fi
-        fi
-    done
+		# Check 3: Python/JS heredocs without sed fix
+		if grep -q "cat.*\\.py.*<<.*EOF\|cat.*\\.js.*<<.*EOF" "$workflow" 2>/dev/null; then
+			if ! grep -q "sed.*'s/\\^" "$workflow" 2>/dev/null; then
+				repo_heredocs=$((repo_heredocs + 1))
+				heredocs_need_fix=$((heredocs_need_fix + 1))
+				heredoc_list+=("$repo:$(basename $workflow)")
+			fi
+		fi
+	done
 
-    # Print repo status
-    if [ $repo_workflows -gt 0 ]; then
-        status="${GREEN}✅${NC}"
-        [ $repo_broken -gt 0 ] && status="${RED}❌${NC}"
-        [ $repo_schedules -gt 0 ] && [ $repo_broken -eq 0 ] && status="${YELLOW}⚠️${NC}"
+	# Print repo status
+	if [ $repo_workflows -gt 0 ]; then
+		status="${GREEN}✅${NC}"
+		[ $repo_broken -gt 0 ] && status="${RED}❌${NC}"
+		[ $repo_schedules -gt 0 ] && [ $repo_broken -eq 0 ] && status="${YELLOW}⚠️${NC}"
 
-        printf "%-40s %b  %2d workflows" "$repo" "$status" "$repo_workflows"
-        [ $repo_broken -gt 0 ] && printf "  ${RED}(%d broken)${NC}" "$repo_broken"
-        [ $repo_schedules -gt 0 ] && printf "  ${YELLOW}(%d unguarded)${NC}" "$repo_schedules"
-        [ $repo_heredocs -gt 0 ] && printf "  ${YELLOW}(%d heredoc)${NC}" "$repo_heredocs"
-        printf "\n"
-    fi
+		printf "%-40s %b  %2d workflows" "$repo" "$status" "$repo_workflows"
+		[ $repo_broken -gt 0 ] && printf "  ${RED}(%d broken)${NC}" "$repo_broken"
+		[ $repo_schedules -gt 0 ] && printf "  ${YELLOW}(%d unguarded)${NC}" "$repo_schedules"
+		[ $repo_heredocs -gt 0 ] && printf "  ${YELLOW}(%d heredoc)${NC}" "$repo_heredocs"
+		printf "\n"
+	fi
 done
 
 echo ""
@@ -133,11 +133,11 @@ echo ""
 
 health_pct=$([ "$total_workflows" -gt 0 ] && echo $((100 * (total_workflows - broken_workflows) / total_workflows)) || echo 100)
 if [ $health_pct -ge 95 ]; then
-    health_color=$GREEN
+	health_color=$GREEN
 elif [ $health_pct -ge 85 ]; then
-    health_color=$YELLOW
+	health_color=$YELLOW
 else
-    health_color=$RED
+	health_color=$RED
 fi
 
 echo -e "${BLUE}=== OVERALL CI HEALTH: ${health_color}${health_pct}%${NC} ${BLUE}===${NC}"
@@ -145,32 +145,32 @@ echo ""
 
 # Estimated cost savings
 if [ $unguarded_schedules -gt 0 ]; then
-    # Assume 7 branches average, 10 min runs, $0.008/min
-    monthly_waste=$((unguarded_schedules * 7 * 30 * 10 * 8 / 1000))
-    echo -e "${YELLOW}💰 Estimated monthly waste from unguarded schedules: \$${monthly_waste}${NC}"
-    echo ""
+	# Assume 7 branches average, 10 min runs, $0.008/min
+	monthly_waste=$((unguarded_schedules * 7 * 30 * 10 * 8 / 1000))
+	echo -e "${YELLOW}💰 Estimated monthly waste from unguarded schedules: \$${monthly_waste}${NC}"
+	echo ""
 fi
 
 # Detailed breakdowns
 if [ $broken_workflows -gt 0 ]; then
-    echo -e "${RED}=== BROKEN WORKFLOWS (need immediate fix) ===${NC}"
-    printf "%s\n" "${broken_list[@]}" | sort | head -20
-    [ ${#broken_list[@]} -gt 20 ] && echo "... and $((${#broken_list[@]} - 20)) more"
-    echo ""
+	echo -e "${RED}=== BROKEN WORKFLOWS (need immediate fix) ===${NC}"
+	printf "%s\n" "${broken_list[@]}" | sort | head -20
+	[ ${#broken_list[@]} -gt 20 ] && echo "... and $((${#broken_list[@]} - 20)) more"
+	echo ""
 fi
 
 if [ $unguarded_schedules -gt 0 ]; then
-    echo -e "${YELLOW}=== UNGUARDED SCHEDULES (add branch filters) ===${NC}"
-    printf "%s\n" "${schedule_list[@]}" | sort | head -20
-    [ ${#schedule_list[@]} -gt 20 ] && echo "... and $((${#schedule_list[@]} - 20)) more"
-    echo ""
+	echo -e "${YELLOW}=== UNGUARDED SCHEDULES (add branch filters) ===${NC}"
+	printf "%s\n" "${schedule_list[@]}" | sort | head -20
+	[ ${#schedule_list[@]} -gt 20 ] && echo "... and $((${#schedule_list[@]} - 20)) more"
+	echo ""
 fi
 
 if [ $heredocs_need_fix -gt 0 ]; then
-    echo -e "${YELLOW}=== HEREDOCS NEEDING SED FIX ===${NC}"
-    printf "%s\n" "${heredoc_list[@]}" | sort | head -20
-    [ ${#heredoc_list[@]} -gt 20 ] && echo "... and $((${#heredoc_list[@]} - 20)) more"
-    echo ""
+	echo -e "${YELLOW}=== HEREDOCS NEEDING SED FIX ===${NC}"
+	printf "%s\n" "${heredoc_list[@]}" | sort | head -20
+	[ ${#heredoc_list[@]} -gt 20 ] && echo "... and $((${#heredoc_list[@]} - 20)) more"
+	echo ""
 fi
 
 echo -e "${BLUE}=== RECOMMENDATIONS ===${NC}"
@@ -179,7 +179,7 @@ echo "2. Add branch guards to $unguarded_schedules scheduled workflows"
 echo "3. Fix $heredocs_need_fix Python/JS heredocs with sed commands"
 echo ""
 if [ "$DRY_RUN" = true ]; then
-    echo -e "${YELLOW}[DRY RUN] No fixes applied. Re-run without --dry-run to enable fixes.${NC}"
+	echo -e "${YELLOW}[DRY RUN] No fixes applied. Re-run without --dry-run to enable fixes.${NC}"
 else
-    echo "Run with --fix-broken, --add-guards, or --fix-heredocs to auto-fix"
+	echo "Run with --fix-broken, --add-guards, or --fix-heredocs to auto-fix"
 fi
