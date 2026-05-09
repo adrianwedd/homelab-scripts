@@ -1,1 +1,50 @@
+name: Shell Format Check
 
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/shfmt.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.sh'
+      - '.github/workflows/shfmt.yml'
+
+jobs:
+  shfmt:
+    name: Format Check (shfmt)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install shfmt (latest via Go)
+        run: |
+          sudo apt-get update -y >/dev/null 2>&1 || true
+          sudo apt-get install -y golang >/dev/null 2>&1 || true
+          export GOPATH="$HOME/go"
+          export GOBIN="$GOPATH/bin"
+          export PATH="$GOBIN:$PATH"
+          GO111MODULE=on go install mvdan.cc/sh/v3/cmd/shfmt@latest
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          shfmt --version
+
+      - name: Run shfmt (check only)
+        run: |
+          echo "Checking shell script formatting..."
+          find . -name "*.sh" -type f | while read -r script; do
+            echo "Checking format: $script"
+            if ! shfmt -d "$script"; then
+              echo "❌ Format issues found in: $script"
+              echo "   Fix with: shfmt -w $script"
+              exit 1
+            fi
+          done
+
+      - name: Format check summary
+        if: success()
+        run: |
+          echo "✅ All scripts are properly formatted"
